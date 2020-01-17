@@ -7,7 +7,7 @@
  这个项目大量参考了:[cquery:][1]
 
 
- 这个工程是用来支持JCIDE ,配合jdt.ls和我们写的scp使用的.
+ 这个工程是用来支持JCIDE [JcKit:][2],配合jdt.ls和我们写的scp使用的.
  等有空在详细写写.
  例子:
 ```cpp
@@ -43,3 +43,4 @@
 ```
 
 [1]: https://github.com/cquery-project/cquery "cquery:"
+[2]: https://www.javacardos.com/tools "JcKit:"

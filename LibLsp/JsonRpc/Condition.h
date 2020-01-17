@@ -28,7 +28,7 @@ public:
 	};
 
 	
-	std::unique_ptr<T> wait(unsigned timeout)
+	std::unique_ptr<T> wait(unsigned timeout=0)
 	{
 		boost::unique_lock<boost::mutex> ul(m_mutex);
 		if (!timeout) {
@@ -45,12 +45,14 @@ public:
 	
 		else
 		{
-			boost::cv_status status = m_condition.wait_for(ul, boost::chrono::milliseconds(timeout));
-			if (status == boost::cv_status::timeout)
+			if(!any)
 			{
-				return {};
+				boost::cv_status status = m_condition.wait_for(ul, boost::chrono::milliseconds(timeout));
+				if (status == boost::cv_status::timeout)
+				{
+					return {};
+				}
 			}
-
 		}
 		return std::unique_ptr<T>(any.release());
 		
