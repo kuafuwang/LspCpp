@@ -204,7 +204,7 @@ ResourceOperation* GetResourceOperation(lsp::Any& lspAny)
 	auto& data = lspAny.Data();
 	document.Parse(data.c_str(), data.length());
 	if (document.HasParseError()) {
-		// ��ʾ
+		// ÌáÊ¾
 		return nullptr;
 	}
 	auto find = document.FindMember("kind");
@@ -583,20 +583,21 @@ AbsolutePath NormalizePath(const std::string& path0,
 	return AbsolutePath(UnicodeToUtf8(path), false /*validate*/);
 }
 AbsolutePath lsDocumentUri::GetAbsolutePath() const {
-	
-	try
-	{
-		if (raw_uri_.find("file://") == 0){
+
+
+	if (raw_uri_.find("file://") != std::string::npos) {
+		try
+		{
 			return NormalizePath(GetRawPath(), false /*ensure_exists*/, false);
 		}
-		else{
-			return raw_uri_;
+		catch (std::exception&)
+		{
+			return AbsolutePath("", false);
 		}
 	}
-	catch (std::exception&)
-	{
-		return AbsolutePath("",false);
-	}
+
+	return AbsolutePath(raw_uri_, false);
+
 }
 
 AbsolutePath::AbsolutePath(const std::string& path, bool validate)
