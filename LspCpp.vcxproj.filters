@@ -71,6 +71,9 @@
     <ClCompile Include="sct\ApduModelTest.cpp">
       <Filter>sct</Filter>
     </ClCompile>
+    <ClCompile Include="LibLsp\JsonRpc\TcpServer.cpp">
+      <Filter>JsonRpc</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="LibLsp\JsonRpc\MessageIssue.h">
@@ -519,6 +522,9 @@
     </ClInclude>
     <ClInclude Include="sct\ApduModelTest.h">
       <Filter>sct</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\JsonRpc\TcpServer.h">
+      <Filter>JsonRpc</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

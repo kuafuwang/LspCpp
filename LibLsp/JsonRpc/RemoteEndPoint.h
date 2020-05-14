@@ -3,6 +3,8 @@
 #include "threaded_queue.h"
 #include <unordered_map>
 #include "MessageIssue.h"
+
+
 struct lsResponseMessage;
 class PendingRequestInfo;
 class StreamMessageProducer;
@@ -13,14 +15,17 @@ class Endpoint;
 struct RequestInMessage;
 struct LspMessage;
 
+struct  RemoteEndPointData;
+
 class RemoteEndPoint :MessageIssueHandler
 {
 public:
 	using RequestCallFun = std::function< bool(std::unique_ptr<LspMessage>) >;
-	RemoteEndPoint(std::istream& in, std::ostream& out, MessageJsonHandler& json_handler, Endpoint& localEndPoint, lsp::Log& _log);
+	RemoteEndPoint(std::istream& in, std::ostream& out, MessageJsonHandler& json_handler, Endpoint& localEndPoint, lsp::Log& _log,uint8_t max_workers = 2);
 	~RemoteEndPoint();
-	bool consumer(std::string&&);
+	void consumer(std::string&&);
 	std::unique_ptr<LspMessage> waitResponse(RequestInMessage&,unsigned time_out= 0);
+	
 	long sendRequest( RequestInMessage&, RequestCallFun);
 	long sendRequest( RequestInMessage&);
 	void sendNotification( NotificationInMessage& msg);
@@ -31,7 +36,8 @@ public:
 	void StartThread();
 	void StopThread();
 	void removeRequestInfo(int _id);
-
+	std::shared_ptr < std::thread > message_producer_thread_;
+	
 private:
 
 	std::unordered_map <int, PendingRequestInfo >  _client_request_futures;
@@ -41,16 +47,16 @@ private:
 	std::istream& input;
 	std::ostream& output;
 	lsp::Log& log;
-	void mainLoop();
+	void mainLoop(std::unique_ptr<LspMessage>);
+	bool dispatch(const std::string&);
 public:
 	void handle(std::vector<MessageIssue>&&) override;
 	void handle(MessageIssue&&) override;
 private:
+	RemoteEndPointData* d_ptr;
 	StreamMessageProducer* message_producer;
 	
-	std::shared_ptr < MultiQueueWaiter> request_waiter;
-	ThreadedQueue< std::unique_ptr<LspMessage> > on_request;
-
+	
 	MessageJsonHandler& jsonHandler;
 	std::mutex m_sendMutex;
 	std::mutex m_requsetInfo;

@@ -56,8 +56,9 @@ void Reflect(Reader& visitor, lsRequestId& value) {
 	}
 	else if (visitor.IsString()) {
 		value.type = lsRequestId::kString;
-		std::string s = visitor.GetString();
-		value.value = atoi(s.c_str());
+		value.k_string = visitor.GetString();
+		value.value = atoi(value.k_string.c_str());
+		
 	}
 	else {
 		value.type = lsRequestId::kNone;
@@ -74,15 +75,31 @@ void Reflect(Writer& visitor, lsRequestId& value) {
 		visitor.Int(value.value);
 		break;
 	case lsRequestId::kString:
-		std::string str = std::to_string(value.value);
-		visitor.String(str.c_str(), str.length());
+		
+		if(value.k_string.empty())
+		{
+			std::string str = std::to_string(value.value);
+			visitor.String(str.c_str(), str.length());
+		}
+		else
+		{
+			visitor.String(value.k_string.c_str(), value.k_string.length());
+		}
 		break;
 	}
 }
 
 std::string ToString(const lsRequestId& id) {
 	if (id.type != lsRequestId::kNone)
+	{
+		if(id.type == lsRequestId::kString)
+		{
+			if (!id.k_string.empty())
+				return id.k_string;
+		}
 		return std::to_string(id.value);
+	}
+	
 	return "";
 }
 

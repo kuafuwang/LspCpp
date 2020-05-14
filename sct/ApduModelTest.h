@@ -3,7 +3,7 @@
 
 #include <LibLsp/JsonRpc/RemoteEndPoint.h>
 #include <LibLsp/JsonRpc/EndPoint.h>
-#include <LibLsp/lsp/ProtocolJsonHandler.h>
+
 
 #include <boost/process/child.hpp>
 #include <boost/process/pipe.hpp>
@@ -82,7 +82,7 @@ public:
 	sct::ProtocolJsonHandler json_handler;
 
 	GenericEndpoint* local_endpoint_;
-	bool start_jdt_service();
+	bool start_scp_service();
 
 	std::atomic<bool> m_exit = false;
 

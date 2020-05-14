@@ -136,11 +136,11 @@ DEFINE_REQUEST_RESPONSE_TYPE(sct_GetCardInfo, GetCardInfoParams, NormalActionRes
 struct JdwpInfo
 {
 	std::string host="127.0.0.1";
-	uint32_t cmd_port = 9045;
-	uint32_t event_port = 9055;
+	uint32_t jdwp_port = 9075;
+
 };
 
-MAKE_REFLECT_STRUCT(JdwpInfo, host, cmd_port, event_port);
+MAKE_REFLECT_STRUCT(JdwpInfo, host, jdwp_port);
 
 struct  LaunchResult
 {
@@ -162,7 +162,20 @@ MAKE_REFLECT_STRUCT(JcvmOutputParams, data);
 DEFINE_NOTIFICATION_TYPE(sct_NotifyJcvmOutput, JcvmOutputParams);
 
 
-DEFINE_REQUEST_RESPONSE_TYPE(sct_Launch, JsonNull, LaunchResult);
+struct LaunchParam
+{
+	enum
+	{
+		LAUNCH_FOR_DEBUG = 0,
+		LAUNCH_FOR_RUN = 1
+	};
+	optional<uint32_t> launch_for_what;
+	
+};
+MAKE_REFLECT_STRUCT(LaunchParam, launch_for_what);
+
+
+DEFINE_REQUEST_RESPONSE_TYPE(sct_Launch, LaunchParam, LaunchResult);
 
 
 DEFINE_REQUEST_RESPONSE_TYPE(sct_CheckBeforeLaunch, JsonNull, NormalActionResult);
@@ -186,16 +199,18 @@ struct sctInitializeParams {
 
 	// User provided initialization options.
 	optional<lsp::Any> initializationOptions;
+	optional<int> version;
 
 };
-MAKE_REFLECT_STRUCT(sctInitializeParams,processId,initializationOptions);
+MAKE_REFLECT_STRUCT(sctInitializeParams,processId,initializationOptions, version);
 
 struct sctServerCapabilities {
 	bool gp_auth = false;
 	bool gp_key = false;
-	MAKE_SWAP_METHOD(sctServerCapabilities, gp_auth, gp_key);
+	optional<int> version;
+	MAKE_SWAP_METHOD(sctServerCapabilities, gp_auth, gp_key, version);
 };
-MAKE_REFLECT_STRUCT(sctServerCapabilities, gp_auth, gp_key);
+MAKE_REFLECT_STRUCT(sctServerCapabilities, gp_auth, gp_key, version);
 
 
 struct stcInitializeResult

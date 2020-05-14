@@ -25,13 +25,7 @@ public:
 		RESPONCE_MESSAGE,
 		NOTIFICATION_MESSAGE
 	};
-	enum  ProcessSate
-	{
-		CANCLE_STATE,
-		GO_ON_STATE,
-		SHOW_WINDOW_STATE
-	};
-	
+
 	virtual  Kind GetKid() = 0;
 	virtual std::string ToJson()  ;
 	

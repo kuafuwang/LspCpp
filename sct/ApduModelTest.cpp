@@ -70,7 +70,7 @@ bool  ApduModelTest::DisConnect()
 bool ApduModelTest::startLsp()
 {
 	
-	start_jdt_service();
+	start_scp_service();
 	return true;
 }
 
@@ -231,7 +231,8 @@ void AddNotifyJsonRpcMethod(GenericEndpoint& handler, ApduModelTest*proxy)
 
 CCommandView output;
 using namespace boost::asio::ip;
-bool ApduModelTest::start_jdt_service()
+
+bool ApduModelTest::start_scp_service()
 {
 	
 	if (!log)
@@ -276,7 +277,7 @@ bool ApduModelTest::start_jdt_service()
 
 		proxy->sct->StartThread();
 
-		proxy->initialize(::GetCurrentProcessId());
+		proxy->initialize(::GetCurrentProcessId(), SmartCardTool::V5_KIND);
 		
 		return true;
 	}

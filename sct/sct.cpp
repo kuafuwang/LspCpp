@@ -91,7 +91,7 @@ MethodType sct_initialize::kMethodType = "sct/initialize";
 }
 
 
-SmartCardTool::SmartCardTool():  m_cmdPort(0), m_eventPort(0), m_curProtocol(SctProtocol::T01), log(nullptr)
+SmartCardTool::SmartCardTool():  m_jdwpPort(0), m_curProtocol(SctProtocol::T01), log(nullptr)
 {
 	m_ipAddr = "127.0.0.1";
 }
@@ -237,7 +237,7 @@ bool SmartCardTool::check_sct_alive()
 	return false;
 }
 
-bool SmartCardTool::initialize(int processId)
+bool SmartCardTool::initialize(int processId, int version)
 {
 
  	if(!check_sct_alive())
@@ -246,6 +246,7 @@ bool SmartCardTool::initialize(int processId)
  	}
 	sct_initialize::request request;
 	request.params.processId = processId;
+	request.params.version = version;
 	auto  eventFuture = std::make_shared< Condition< LspMessage > >();
 	sct->sendRequest(request, [&](std::unique_ptr<LspMessage> msg)
 		{
@@ -260,10 +261,7 @@ bool SmartCardTool::initialize(int processId)
 	auto  result = dynamic_cast<sct_initialize::response*>(msg.get());
 	if (result)
 	{
-		sctServerCapabilities  _lsServerCapabilities;
 		_lsServerCapabilities.swap(result->result.capabilities);
-		//Notify_InitializedNotification::notify _notify;
-		//sct->sendNotification(_notify);
 		return true;
 	}
 	else
@@ -334,13 +332,21 @@ bool SmartCardTool::GetCardInfo(CardInfoType type_, std::vector<unsigned char>& 
 
 
 
-bool SmartCardTool::Launch()
+bool SmartCardTool::Launch(bool for_debug)
 {
 	if (!check_sct_alive())
 	{
 		return false;
 	}
 	sct_Launch::request request;
+ 	if(for_debug)
+ 	{
+		request.params.launch_for_what = LaunchParam::LAUNCH_FOR_DEBUG;
+ 	}
+	else
+	{
+		request.params.launch_for_what = LaunchParam::LAUNCH_FOR_RUN;
+	}
 	auto  data = sct->waitResponse(request, 100000);
 
 	if (!data)
@@ -372,8 +378,8 @@ bool SmartCardTool::Launch()
 		if(rsp->result.info)
 		{
 			m_ipAddr.swap(rsp->result.info.value().host);
-			m_cmdPort = rsp->result.info.value().cmd_port;
-			m_eventPort = rsp->result.info.value().event_port;
+			m_jdwpPort = rsp->result.info.value().jdwp_port;
+
 		}
 	}
 	else

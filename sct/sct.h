@@ -26,18 +26,21 @@ class SmartCardTool
 {
 	//IP ÍøÂç×Ö½ÚÐò
 	std::string m_ipAddr;
-	volatile uint16_t m_cmdPort;
-	volatile uint16_t m_eventPort;
+	volatile uint16_t m_jdwpPort;
+
 	
 	SctProtocol m_curProtocol;
 public:
-
+	enum JCIDE_VERSION
+	{
+		V5_KIND = 5
+	};
 	SmartCardTool();
 	~SmartCardTool();
 
 	
 	bool GetCardInfo(CardInfoType type_,std::vector<unsigned char>&);
-	bool Launch();
+	bool Launch(bool for_debug = false);
 
 	void TerminateLaunch();
 	void show_message(lsMessageType type_,const std::string& msg);
@@ -45,10 +48,9 @@ public:
 	
 	 string GetIpAddr(){return m_ipAddr;}
 	
-	 uint16_t GetCmdPort(){return m_cmdPort;}
+	 uint16_t GetJdwpPort(){return m_jdwpPort;}
 	
 
-	 uint16_t GetEventPort(){ return m_eventPort; }
 
 	 void SetWindowsVisible(SetWindowVisibleParams&);
 	 void SetWindowPos(SetWindowPosParams&);
@@ -90,8 +92,12 @@ public:
 	std::shared_ptr<RemoteEndPoint> sct;
 
 
-	bool initialize(int processId);
-
+	bool initialize(int processId,int version);
+	const sctServerCapabilities& getServerCapabilities()const
+	{
+		return _lsServerCapabilities;
+	}
 private:
+	sctServerCapabilities _lsServerCapabilities;
 	bool check_sct_alive();
 };
