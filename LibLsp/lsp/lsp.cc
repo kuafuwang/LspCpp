@@ -125,7 +125,7 @@ void Reflect(Reader& visitor, lsMarkedString& value)
 
   void Reflect(Reader& visitor, LocationListEither::Either& value)
 {
-	  if(visitor.IsArray())
+	  if(!visitor.IsArray())
 	  {
 		  throw std::invalid_argument("Rsp_LocationListEither::Either& value is not array");
 	  }

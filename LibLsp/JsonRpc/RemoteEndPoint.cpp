@@ -425,7 +425,11 @@ void RemoteEndPoint::StartThread()
 
 void RemoteEndPoint::StopThread()
 {
-	message_producer_thread_->detach();
+	if(message_producer_thread_ && message_producer_thread_->joinable())
+	{
+		message_producer_thread_->detach();
+	}
+
 	d_ptr->tp.clear();
 	if(!quit.load(std::memory_order_relaxed))
 		quit.store(true, std::memory_order_relaxed);
