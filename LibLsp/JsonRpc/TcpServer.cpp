@@ -11,8 +11,7 @@
 
         TcpServer::TcpServer(const std::string& address, const std::string& port, 
             MessageJsonHandler& _handler, Endpoint& _endpoint, lsp::Log& log, uint32_t _max_workers)
-            : /*io_context_(1),*/
-            signals_(io_context_),
+            : 
             acceptor_(io_context_),
             jsonHandler(_handler),
             local_endpoint(_endpoint),
@@ -20,16 +19,8 @@
        
 
         {
-            // Register to handle the signals that indicate when the TcpServer should exit.
-            // It is safe to register for the same signal multiple times in a program,
-            // provided all registration for the specified signal is made through Asio.
-            signals_.add(SIGINT);
-            signals_.add(SIGTERM);
-#if defined(SIGQUIT)
-            signals_.add(SIGQUIT);
-#endif // defined(SIGQUIT)
-
-            do_await_stop();
+           
+            work = std::make_shared<boost::asio::io_service::work>(io_context_);
 
             // Open the acceptor with the option to reuse the address (i.e. SO_REUSEADDR).
             boost::asio::ip::tcp::resolver resolver(io_context_);
@@ -66,8 +57,15 @@
 
         void TcpServer::stop()
         {
-            io_context_.stop();
-            // signals_.cancel();
+            try
+            {
+                work.reset();
+
+                do_stop();
+            }
+            catch (...)
+            {
+            }
         }
 
         void TcpServer::do_accept()
@@ -84,29 +82,28 @@
 
                     if (!ec)
                     {
+                    	if(remote_end_point_)
+                    	{
+                            iostream_.close();
+                            remote_end_point_->StopThread();
+                    	}
                         iostream_ = boost::asio::ip::tcp::iostream(std::move(socket));
                         remote_end_point_ = std::make_shared<RemoteEndPoint>(iostream_, iostream_, jsonHandler,local_endpoint,_log, max_workers);
                         remote_end_point_->StartThread();
+                        do_accept();
                     }
 
                    
                 });
         }
 
-        void TcpServer::do_await_stop()
+        void TcpServer::do_stop()
         {
-            signals_.async_wait(
-                [this](boost::system::error_code /*ec*/, int /*signo*/)
-                {
-                    // The TcpServer is stopped by cancelling all outstanding asynchronous
-                    // operations. Once all operations have finished the io_context::run()
-                    // call will exit.
-                    acceptor_.close();
-                    if(remote_end_point_)
-                    {
-                        remote_end_point_->StopThread();
-                    }
-                });
+            acceptor_.close();
+            if(remote_end_point_)
+            {
+                remote_end_point_->StopThread();
+            }
         }
 
     } // namespace 

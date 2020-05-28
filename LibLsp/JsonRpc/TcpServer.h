@@ -39,13 +39,12 @@ namespace lsp
             void do_accept();
 
             /// Wait for a request to stop the server.
-            void do_await_stop();
+            void do_stop();
 
             /// The io_context used to perform asynchronous operations.
             boost::asio::io_context io_context_;
 
-            /// The signal_set is used to register for process termination notifications.
-            boost::asio::signal_set signals_;
+            std::shared_ptr<boost::asio::io_service::work> work;
 
             /// Acceptor used to listen for incoming connections.
             boost::asio::ip::tcp::acceptor acceptor_;
