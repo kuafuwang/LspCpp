@@ -65,6 +65,7 @@
 #include "language/language.h"
 #include "client/registerCapability.h"
 #include "client/unregisterCapability.h"
+#include "textDocument/didRenameFiles.h"
 
 
 void AddStadardResponseJsonRpcMethod(MessageJsonHandler& handler)
@@ -77,6 +78,7 @@ void AddStadardResponseJsonRpcMethod(MessageJsonHandler& handler)
 		
 		return td_initialize::response::ReflectReader(visitor);
 	};
+	
 	handler.method2response[td_shutdown::kMethodType] = [](Reader& visitor)
 	{
 		if (visitor.HasMember("error"))
@@ -297,6 +299,22 @@ void AddStadardResponseJsonRpcMethod(MessageJsonHandler& handler)
 			return 	Rsp_Error::ReflectReader(visitor);
 
 		return td_selectionRange::response::ReflectReader(visitor);
+
+	};
+	handler.method2response[td_didRenameFiles::kMethodType] = [](Reader& visitor)
+	{
+		if (visitor.HasMember("error"))
+			return 	Rsp_Error::ReflectReader(visitor);
+
+		return td_didRenameFiles::response::ReflectReader(visitor);
+
+	};
+	handler.method2response[td_willRenameFiles::kMethodType] = [](Reader& visitor)
+	{
+		if (visitor.HasMember("error"))
+			return 	Rsp_Error::ReflectReader(visitor);
+
+		return td_willRenameFiles::response::ReflectReader(visitor);
 
 	};
 	
@@ -661,8 +679,17 @@ void AddStandardRequestJsonRpcMethod(MessageJsonHandler& handler)
 	
 		return td_implementation::request::ReflectReader(visitor);
 	};
+	
+	handler.method2request[td_didRenameFiles::kMethodType] = [](Reader& visitor)
+	{
 
-
+		return td_didRenameFiles::request::ReflectReader(visitor);
+	};
+	
+	handler.method2request[td_willRenameFiles::kMethodType] = [](Reader& visitor)
+	{
+		return td_willRenameFiles::request::ReflectReader(visitor);
+	};
 }
 
 

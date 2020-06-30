@@ -69,6 +69,7 @@
 #include "general/initialized.h"
 #include "windows/MessageNotify.h"
 #include "language/language.h"
+#include "textDocument/didRenameFiles.h"
  MethodType kMethodType_Unknown = "$unknown";
 
  MethodType kMethodType_Exit = "exit";
@@ -118,6 +119,10 @@
 
  MethodType kMethodType_TextDocumentDidOpen = "textDocument/didOpen";
  MethodType Notify_TextDocumentDidOpen::kMethodType = "textDocument/didOpen";
+
+ MethodType td_didRenameFiles::kMethodType = "java/didRenameFiles";
+ MethodType td_willRenameFiles::kMethodType = "java/willRenameFiles";
+ 
 
  MethodType kMethodType_TextDocumentDidSave = "textDocument/didSave";
  MethodType Notify_TextDocumentDidSave::kMethodType = "textDocument/didSave";

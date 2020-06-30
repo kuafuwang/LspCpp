@@ -30,6 +30,7 @@ bool isResponseMessage(JsonReader& visitor)
 	{
 		return false;
 	}
+	
 	if (!visitor.HasMember("result") && !visitor.HasMember("error"))
 	{
 		return false;
@@ -150,6 +151,7 @@ bool RemoteEndPoint::dispatch(const std::string& content)
 		else if (isResponseMessage(visitor))
 		{
 			// 找到对应的request ,然后执行handler
+			
 			try
 			{
 				lsRequestId id;
@@ -177,7 +179,16 @@ bool RemoteEndPoint::dispatch(const std::string& content)
 				{
 					
 					auto msg = jsonHandler.parseResponseMessage(msgInfo->method, visitor);
-					mainLoop(std::move(msg));
+					if(msg){
+						mainLoop(std::move(msg));
+					}
+					else
+					{
+						std::string info = "Unknown response message :\n";
+						info += content;
+						log.log(Log::Level::SEVERE, info);
+						return  false;
+					}
 
 				}
 			}

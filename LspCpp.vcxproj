@@ -340,6 +340,7 @@
     <ClInclude Include="LibLsp\lsp\textDocument\colorPresentation.h" />
     <ClInclude Include="LibLsp\lsp\textDocument\completion.h" />
     <ClInclude Include="LibLsp\lsp\textDocument\declaration_definition.h" />
+    <ClInclude Include="LibLsp\lsp\textDocument\didRenameFiles.h" />
     <ClInclude Include="LibLsp\lsp\textDocument\did_change.h" />
     <ClInclude Include="LibLsp\lsp\textDocument\did_close.h" />
     <ClInclude Include="LibLsp\lsp\textDocument\did_open.h" />

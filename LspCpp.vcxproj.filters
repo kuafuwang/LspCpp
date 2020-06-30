@@ -526,6 +526,9 @@
     <ClInclude Include="LibLsp\JsonRpc\TcpServer.h">
       <Filter>JsonRpc</Filter>
     </ClInclude>
+    <ClInclude Include="LibLsp\lsp\textDocument\didRenameFiles.h">
+      <Filter>lsp\textDocument</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="JsonRpc">
