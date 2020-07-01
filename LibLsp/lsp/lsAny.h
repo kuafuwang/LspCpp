@@ -18,14 +18,14 @@ namespace lsp
 
 		
 		template <typename  T>                       
-		void  Get(T& value)
+		bool  Get(T& value)
 		{
 			
 			rapidjson::Document document;
 			document.Parse(data.c_str(), data.length());
 			if (document.HasParseError()) {
 				// 提示
-				return ;
+				return false;
 			}
 			if(jsonType == -1)
 			{
@@ -33,6 +33,7 @@ namespace lsp
 			}
 			JsonReader visitor{ &document };
 			Reflect(visitor, value);
+			return true;
 		}
 		
 		template <typename  T>
@@ -43,58 +44,20 @@ namespace lsp
 			JsonWriter json_writer{ &writer };
 			Reflect(json_writer,value);
 			data =  output.GetString();
-			if(!data.empty())
-			{
-				if(data[0] == '{')
-				{
-					jsonType = rapidjson::kObjectType;
-				}
-				else if(data[0] == '[')
-				{
-					if (data.size() >= 2 && data[1] == '{')
-						jsonType = rapidjson::kStringType;
-					else
-						jsonType = rapidjson::kArrayType;
-				}
-				else if (data[0] == '"')
-				{
-					jsonType = rapidjson::kStringType;
-				}
-			}
+			GuessType();
 		}
-		
-		int GetType() 
-		{
-			if (jsonType == -1)
-			{
-				rapidjson::Document document;
-				document.Parse(data.c_str(), data.length());
-				if (document.HasParseError()) {
-					// 提示
-					assert(false);
-				}
-				jsonType = document.GetType();
-			}
-			return  jsonType;
-		}
-		void  Set(std::unique_ptr<LspMessage> value)
-		{
-			if(value)
-			{
-				jsonType = rapidjson::Type::kObjectType;
-				data = value->ToJson();
-			}
-			else
-			{
-				assert(false);
-			}
-			
-		}
-		
+
+		int GuessType();
+		int GetType();
+
+		void Set(std::unique_ptr<LspMessage> value);
+
 		void SetJsonString(std::string&& _data,rapidjson::Type _type)
 		{
 			jsonType = _type;
 			data.swap(_data);
+			JsonWriter json_writer{nullptr};
+			
 			
 		}
 		void SetJsonString(const std::string& _data ,rapidjson::Type _type)

@@ -268,13 +268,81 @@ ResourceOperation* GetResourceOperation(lsp::Any& lspAny)
 	
 }
 
- void Reflect(Reader& visitor, lsp::Any& value)
+int lsp::Any::GuessType()
+{
+	if (jsonType != -1)
+		return jsonType;
+	
+	if (!data.empty())
+	{
+		if (data[0] == '{')
+		{
+			jsonType = rapidjson::kObjectType;
+		}
+		else if (data[0] == '[')
+		{
+			if (data.size() >= 2 && data[1] == '{')
+				jsonType = rapidjson::kStringType;
+			else
+				jsonType = rapidjson::kArrayType;
+		}
+		else if (data[0] == '"')
+		{
+			jsonType = rapidjson::kStringType;
+		}
+	}
+	else
+	{
+		jsonType = rapidjson::kNullType;
+	}
+	return  jsonType;
+}
+
+int lsp::Any::GetType()
+{
+	if (jsonType == -1)
+	{
+		if (data.empty())
+		{
+			jsonType = rapidjson::kNullType;
+			return jsonType;
+		}
+		rapidjson::Document document;
+		document.Parse(data.c_str(), data.length());
+		if (document.HasParseError())
+		{
+			// ÌבÊ¾
+			return jsonType;
+		}
+		jsonType = document.GetType();
+	}
+	return jsonType;
+}
+
+void lsp::Any::Set(std::unique_ptr<LspMessage> value)
+{
+	if (value)
+	{
+		jsonType = rapidjson::Type::kObjectType;
+		data = value->ToJson();
+	}
+	else
+	{
+		assert(false);
+	}
+}
+
+void Reflect(Reader& visitor, lsp::Any& value)
 {
 	 
-	 if (visitor.IsNull()) {
-		 visitor.GetNull();
-		 return;
-	 }
+	 //if (visitor.IsNull()) {
+		// visitor.GetNull();
+		// value.SetJsonString("", rapidjson::Type::kNullType);
+		// return;
+	 //}else
+	 //{
+		// 
+	 //}
 	 JsonReader& json_reader = reinterpret_cast<JsonReader&>(visitor);
 	 value.SetJsonString(visitor.ToString(), json_reader.m_->GetType());
 }
