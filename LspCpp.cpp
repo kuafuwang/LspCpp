@@ -1,6 +1,4 @@
-﻿// JcKitLangClient.cpp : 此文件包含 "main" 函数。程序执行将在此处开始并结束。
-//
-
+﻿
 
 #include "LibLsp/lsp/textDocument/signature_help.h"
 #include "LibLsp/lsp/general/initialize.h"
@@ -10,71 +8,115 @@
 #include "LibLsp/lsp/textDocument/resolveCompletionItem.h"
 #include <network/uri.hpp>
 
+#include "LibLsp/JsonRpc/TcpServer.h"
+
 #ifdef _CONSOLE
 #include <boost/filesystem.hpp>
 #include <boost/asio.hpp>
 #include "sct/ApduModelTest.h"
 #include <iostream>
-
 using namespace boost::asio::ip;
-
-
-string UnicodeToUtf8(const wstring& strUnicode)
+class DummyLog :public lsp::Log
 {
-	int iLen = 0;
-	char* pChar = NULL;
-	iLen = WideCharToMultiByte(CP_UTF8, 0, strUnicode.c_str(), -1, NULL, 0, NULL, NULL);
-	pChar = new char[iLen + 1];
-	memset(pChar, 0x00, iLen + 1);
-	WideCharToMultiByte(CP_UTF8, 0, strUnicode.c_str(), -1, pChar, iLen, NULL, NULL);
-	string strResult(pChar);
-	delete[] (pChar);
-	return strResult;
-}
+public:
+	
+	void log(Level level, std::wstring&& msg)
+	{
+		
+	};
+	void log(Level level, const std::wstring& msg)
+	{
+		
+	};
+	void log(Level level, std::string&& msg)
+	{
+		
+	};
+	void log(Level level, const std::string& msg)
+	{
+		
+	};
+};
+std::string _address = "127.0.0.1";
+std::string _port = "9333";
 
-int test_sct_main() {
-	wstring file_path = LR"(C:\workspace\J3R_SC_ECKA\bin\com\nxp\cas\SC\ecka\javacard\ecka.cap)";
-	ApduModelTest apdu;
-	apdu.startLsp();
-	//apdu.Launch();
-	//apdu.Connect();
-	apdu.DownLoadCapFile(UnicodeToUtf8(file_path));
-	std::vector<unsigned char> cmdApdu= {0x00,0xa4,0x00,0x00,0x00};
-	std::vector<unsigned char> rspApdu;
-	apdu.Transmit(cmdApdu, rspApdu);
-	apdu.stop();
-	return 0;
-}
-int main() 
+class Server
 {
-	string uri_str = "D:/test  ddd/testdfdf/testdfdf/src/com/nxp/cas/SC/ecka/ECKA.java";
-	uri_str = make_file_scheme_uri(uri_str);
-	lsDocumentUri doc;
-	doc.raw_uri_ = uri_str;
-	std::cout << doc.GetRawPath() << std::endl;
-	std::cout << doc.GetAbsolutePath().path << std::endl;
-	network::uri  uri(uri_str);
-	network::uri_builder buider;
+public:
+	Server(): endpoint(_log),server(_address, _port, protocol_json_handler, endpoint, _log)
+	{
+		endpoint.method2request[td_initialize::kMethodType] = [&](std::unique_ptr<LspMessage> msg)
+		{
+			auto req = reinterpret_cast<td_initialize::request*>(msg.get());
+			td_initialize::response rsp;
+			rsp.id = req->id;
+			CodeLensOptions code_lens_options;
+			code_lens_options.resolveProvider = true;
+			rsp.result.capabilities.codeLensProvider = code_lens_options;
+			server.remote_end_point_->sendResponse(rsp);
+			return true;
+		};
+		
+		std::thread([&]()
+			{
+				server.run();
+		}).detach();
+	}
+	lsp::ProtocolJsonHandler  protocol_json_handler;
+	DummyLog _log;
+	GenericEndpoint endpoint;
+	lsp::TcpServer server;
+	
+};
 
-	buider.scheme(uri.scheme().to_string());
-	buider.authority(uri.authority().to_string());
-	buider.path(uri.path().to_string());
-	std::cout << buider.uri().string() << std::endl;
-	buider.append_query(uri.query().to_string());
+class Client
+{
+public:
+	Client() : endpoint(_log)
+	{
+		tcp::endpoint end_point( address::from_string(_address), 9333);
 
-	std::cout << buider.uri().string() << std::endl;
+		auto  socket_ = std::make_shared<tcp::iostream>();
+		socket_->connect(end_point);
+		if (!socket_)
+		{
+			string temp = "Unable to connect: " + socket_->error().message();
+			std::cout << temp << std::endl;
+		}
+		write_to_service = socket_;
+		read_from_service = socket_;
+
+
+		vector<string> args;
 
 	
-	std::cout<<"scheme:"  << uri.scheme().to_string() << std::endl;
-
-	std::cout << "authority:" << uri.authority().to_string() << std::endl;
-	std::cout << "host:" << uri.host().to_string() << std::endl;
-	std::cout << "user_info:" << uri.user_info().to_string() << std::endl;
-	std::cout << "port:" << uri.port().to_string() << std::endl;
-	std::cout << "path:" << uri.path().to_string() << std::endl;
-	std::cout << "query:" << uri.query().to_string() << std::endl;
-	std::cout << "fragment:" << uri.fragment().to_string() << std::endl;
+		remote_end_point_ = std::make_shared<RemoteEndPoint>(*(read_from_service.get()), *(write_to_service.get()),
+			protocol_json_handler, endpoint, _log);
 
 
+		remote_end_point_->StartThread();
+	}
+	
+	lsp::ProtocolJsonHandler  protocol_json_handler;
+	DummyLog _log;
+	GenericEndpoint endpoint;
+	std::shared_ptr<RemoteEndPoint> remote_end_point_;
+	
+	std::shared_ptr<std::ostream>  write_to_service;
+	std::shared_ptr< std::istream >   read_from_service;
+};
+
+int main() 
+{
+	
+	Server server;
+	Client client;
+	td_initialize::request req;
+	auto rsp = client.remote_end_point_->waitResponse(req);
+	if(rsp)
+	{
+		std::cout << rsp->ToJson() << std::endl;
+	}
+	return 0;
 }
 #endif

@@ -16,7 +16,7 @@
 #include "PendingRequestInfo.h"
 #include "rapidjson/error/en.h"
 #include "json.h"
-#include <boost/threadpool.hpp>
+#include "third_party/threadpool/boost/threadpool.hpp"
 using namespace  lsp;
 
 struct RemoteEndPointData
