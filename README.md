@@ -11,7 +11,7 @@
 ## Reference
  Some code from :[cquery][1]
 
-## Projects using cppdap:
+## Projects using LspCpp:
 * [JCIDE](https://www.javacardos.com/tools)
 
 ##  Demo:
