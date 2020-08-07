@@ -1,17 +1,20 @@
 # LspCpp
-Third Party Lib: boost and rapidjson
-Build:
- 1.Open project with Vistual Studio.
- 2.[Restore packages][3]
- 3.Build it.
+
+## Dependencies
+`LspCpp` depends on the boost and rapidjson
+
+## Build
+ * `1.Open project with Vistual Studio.
+ * `2.[Restore packages][3]
+ * `3.Build it.
  
-Reference::
- I learn a lot about LSP from :[cquery][1]
+## Reference
+ Some code from :[cquery][1]
 
 ## Projects using cppdap:
 * [JCIDE](https://www.javacardos.com/tools)
 
- Demo:
+##  Demo:
 ```cpp
 
 
