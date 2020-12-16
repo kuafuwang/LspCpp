@@ -66,6 +66,8 @@
 #include "client/registerCapability.h"
 #include "client/unregisterCapability.h"
 #include "textDocument/didRenameFiles.h"
+#include "textDocument/semanticHighlighting.h"
+#include "workspace/configuration.h"
 
 
 void AddStadardResponseJsonRpcMethod(MessageJsonHandler& handler)
@@ -487,6 +489,14 @@ void AddJavaExtentionResponseJsonRpcMethod(MessageJsonHandler& handler)
 		return java_searchSymbols::response::ReflectReader(visitor);
 	};
 
+	handler.method2request[WorkspaceConfiguration::kMethodType] = [](Reader& visitor)
+	{
+		return WorkspaceConfiguration::request::ReflectReader(visitor);
+	};
+	handler.method2request[WorkspaceFolders::kMethodType] = [](Reader& visitor)
+	{
+		return WorkspaceFolders::request::ReflectReader(visitor);
+	};
 	
 }
 
@@ -530,6 +540,10 @@ void AddNotifyJsonRpcMethod(MessageJsonHandler& handler)
 	handler.method2notification[Notify_TextDocumentPublishDiagnostics::kMethodType] = [](Reader& visitor)
 	{
 		return Notify_TextDocumentPublishDiagnostics::notify::ReflectReader(visitor);
+	};
+	handler.method2notification[Notify_semanticHighlighting::kMethodType] = [](Reader& visitor)
+	{
+		return Notify_semanticHighlighting::notify::ReflectReader(visitor);
 	};
 	handler.method2notification[td_willSave::kMethodType] = [](Reader& visitor)
 	{
@@ -575,6 +589,10 @@ void AddNotifyJsonRpcMethod(MessageJsonHandler& handler)
 	handler.method2notification[lang_progressReport::kMethodType] = [](Reader& visitor)
 	{
 		return lang_progressReport::notify::ReflectReader(visitor);
+	};
+	handler.method2notification[lang_eventNotification::kMethodType] = [](Reader& visitor)
+	{
+		return lang_eventNotification::notify::ReflectReader(visitor);
 	};
 }
 

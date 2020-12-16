@@ -2,7 +2,7 @@
 
 #include "LibLsp/JsonRpc/RequestInMessage.h"
 #include "LibLsp/JsonRpc/lsResponseMessage.h"
-
+#include "LibLsp/lsp/lsTextDocumentPositionParams.h"
 #include "document_symbol.h"
 
 /**

@@ -70,6 +70,7 @@
 #include "windows/MessageNotify.h"
 #include "language/language.h"
 #include "textDocument/didRenameFiles.h"
+#include "textDocument/semanticHighlighting.h"
  MethodType kMethodType_Unknown = "$unknown";
 
  MethodType kMethodType_Exit = "exit";
@@ -291,10 +292,13 @@
 
  MethodType Notify_WorkspaceDidChangeWorkspaceFolders::kMethodType = "workspace/didChangeWorkspaceFolders";
 
+ MethodType Notify_semanticHighlighting::kMethodType = "textDocument/semanticHighlighting";
 
  MethodType lang_status::kMethodType = "language/status";
 
  MethodType lang_actionableNotification::kMethodType = "language/actionableNotification";
 
  MethodType lang_progressReport::kMethodType = "language/progressReport";
+
+ MethodType lang_eventNotification::kMethodType = "language/eventNotification";
  

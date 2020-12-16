@@ -347,6 +347,17 @@ void Reflect(Reader& visitor, std::pair< optional<bool>, optional<_Ty2> >& value
 
 	Reflect(visitor, value.second);
 }
+template<class _Ty2>
+void Reflect(Reader& visitor, std::pair< optional<std::string>, optional<_Ty2> >& value)
+{
+	if (visitor.IsString())
+	{
+		Reflect(visitor, value.first);
+		return;
+	}
+
+	Reflect(visitor, value.second);
+}
 
 
 template<class _Ty1, class _Ty2>

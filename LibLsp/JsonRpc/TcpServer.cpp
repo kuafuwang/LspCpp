@@ -59,7 +59,8 @@
         {
             try
             {
-                work.reset();
+            	if(work)
+					 work.reset();
 
                 do_stop();
             }

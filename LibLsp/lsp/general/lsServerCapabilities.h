@@ -115,6 +115,65 @@ struct StaticRegistrationOptions :public TextDocumentRegistrationOptions
 };
 MAKE_REFLECT_STRUCT(StaticRegistrationOptions, documentSelector,id);
 
+/**
+ * The server supports workspace folder.
+ *
+ * Since 3.6.0
+ */
+
+struct WorkspaceFoldersOptions {
+	/**
+	 * The server has support for workspace folders
+	 */
+	optional<bool>  supported;
+
+	/**
+	 * Whether the server wants to receive workspace folder
+	 * change notifications.
+	 *
+	 * If a string is provided, the string is treated as an ID
+	 * under which the notification is registered on the client
+	 * side. The ID can be used to unregister for these events
+	 * using the `client/unregisterCapability` request.
+	 */
+	optional<std::pair<  optional<std::string>, optional<bool> > > changeNotifications;
+	MAKE_SWAP_METHOD(WorkspaceFoldersOptions, supported, changeNotifications);
+};
+MAKE_REFLECT_STRUCT(WorkspaceFoldersOptions, supported, changeNotifications);
+
+
+struct WorkspaceServerCapabilities {
+	/**
+	 * The server supports workspace folder.
+	 *
+	 * Since 3.6.0
+	 */
+	WorkspaceFoldersOptions workspaceFolders;
+	MAKE_SWAP_METHOD(WorkspaceServerCapabilities, workspaceFolders);
+};
+MAKE_REFLECT_STRUCT(WorkspaceServerCapabilities, workspaceFolders);
+
+
+/**
+ * Semantic highlighting server capabilities.
+ *
+ * <p>
+ * <b>Note:</b> the <a href=
+ * "https://github.com/Microsoft/vscode-languageserver-node/pull/367">{@code textDocument/semanticHighlighting}
+ * language feature</a> is not yet part of the official LSP specification.
+ */
+
+struct SemanticHighlightingServerCapabilities {
+	/**
+	 * A "lookup table" of semantic highlighting <a href="https://manual.macromates.com/en/language_grammars">TextMate scopes</a>
+	 * supported by the language server. If not defined or empty, then the server does not support the semantic highlighting
+	 * feature. Otherwise, clients should reuse this "lookup table" when receiving semantic highlighting notifications from
+	 * the server.
+	 */
+	 std::vector< std::vector<std::string> > scopes;
+	 MAKE_SWAP_METHOD(SemanticHighlightingServerCapabilities, scopes);
+};
+MAKE_REFLECT_STRUCT(SemanticHighlightingServerCapabilities, scopes);
 
 struct lsServerCapabilities {
 	// Defines how text documents are synced. Is either a detailed structure
@@ -183,6 +242,45 @@ struct lsServerCapabilities {
 	// The server provides execute command support.
 	optional < lsExecuteCommandOptions >executeCommandProvider;
 
+
+	/**
+	 * Workspace specific server capabilities
+	 */
+	optional< WorkspaceServerCapabilities > workspace;
+
+	/**
+	 * Semantic highlighting server capabilities.
+	 */
+
+	 optional<	 SemanticHighlightingServerCapabilities >semanticHighlighting;
+
+	/**
+	 * Server capability for calculating super- and subtype hierarchies.
+	 * The LS supports the type hierarchy language feature, if this capability is set to {@code true}.
+	 *
+	 * <p>
+	 * <b>Note:</b> the <a href=
+	 * "https://github.com/Microsoft/vscode-languageserver-node/pull/426">{@code textDocument/typeHierarchy}
+	 * language feature</a> is not yet part of the official LSP specification.
+	 */
+	
+	 optional< std::pair< optional<bool>, optional<StaticRegistrationOptions> > > typeHierarchyProvider;
+
+	/**
+	 * The server provides Call Hierarchy support.
+	 */
+	
+	 optional< std::pair< optional<bool>, optional<StaticRegistrationOptions> > > callHierarchyProvider;
+
+	/**
+	 * The server provides selection range support.
+	 *
+	 * Since 3.15.0
+	 */
+	 optional< std::pair< optional<bool>, optional<StaticRegistrationOptions> > > selectionRangeProvider;
+
+
+
 	optional<lsp::Any> experimental;
 
 
@@ -205,7 +303,13 @@ struct lsServerCapabilities {
 		documentOnTypeFormattingProvider,
 		renameProvider,
 		documentLinkProvider,
-		executeCommandProvider, experimental);
+		executeCommandProvider, 
+		workspace,
+		semanticHighlighting,
+		typeHierarchyProvider,
+		callHierarchyProvider,
+		selectionRangeProvider,
+		experimental)
 	
 };
 MAKE_REFLECT_STRUCT(lsServerCapabilities,
@@ -227,6 +331,11 @@ MAKE_REFLECT_STRUCT(lsServerCapabilities,
 	documentOnTypeFormattingProvider,
 	renameProvider,
 	documentLinkProvider,
-	executeCommandProvider, experimental);
-
+	executeCommandProvider,
+	workspace,
+	semanticHighlighting,
+	typeHierarchyProvider,
+	callHierarchyProvider,
+	selectionRangeProvider,
+	experimental)
 

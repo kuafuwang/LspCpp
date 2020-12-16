@@ -73,10 +73,11 @@ MethodType sct_initialize::kMethodType = "sct/initialize";
 
 		 Document d;
 		 d.ParseStream(isw);
-
-		
-		 JsonReader reader{ &d };
-		 Reflect(reader, *sct.get());
+		 if(!d.HasParseError())
+		 {
+			 JsonReader reader{ &d };
+			 Reflect(reader, *sct.get());
+		 }
 	 }
  	catch (std::exception& e)
  	{

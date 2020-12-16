@@ -270,12 +270,21 @@ ResourceOperation* GetResourceOperation(lsp::Any& lspAny)
 
 int lsp::Any::GuessType()
 {
-	if (jsonType != -1)
-		return jsonType;
-	
 	if (!data.empty())
 	{
-		if (data[0] == '{')
+		if (data == "null")
+		{
+			jsonType = rapidjson::kNullType;
+		}
+		else if (data == "true")
+		{
+			jsonType = rapidjson::kTrueType;
+		}
+		else if(data == "false")
+		{
+			jsonType = rapidjson::kFalseType;
+		}
+		else if (data[0] == '{')
 		{
 			jsonType = rapidjson::kObjectType;
 		}
@@ -290,9 +299,15 @@ int lsp::Any::GuessType()
 		{
 			jsonType = rapidjson::kStringType;
 		}
+		else
+		{
+			jsonType = rapidjson::kNumberType;
+		}
 	}
 	else
 	{
+		if (jsonType != -1)
+			return jsonType;
 		jsonType = rapidjson::kNullType;
 	}
 	return  jsonType;
@@ -718,6 +733,29 @@ void Reflect(Reader& visitor, lsDocumentUri& value) {
 	return info;
 }
 
+std::string EventNotification::ToString() const
+{
+	std::string info;
+	if (ClasspathUpdated == eventType)
+	{
+		info += "eventType:ClasspathUpdated\n";
+	}
+	else if (ProjectsImported == eventType)
+	{
+		info += "eventType:ProjectsImported\n";
+	}
+	else
+	{
+		std::ostringstream oss;
+		oss << std::hex << eventType << std::endl;
+		
+		info += "eventType:";
+		info += oss.str();
+	}
+	info += "data:" + data.Data() + "\n";
+	return info;
+}
+
 std::string lsp::ToString(lsCompletionItemKind _kind)
 {
 	switch (_kind) {
@@ -944,3 +982,5 @@ namespace  JDT
 
 
 }
+
+

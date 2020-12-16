@@ -141,3 +141,26 @@ MAKE_REFLECT_STRUCT(ProgressReport, id, task, subTask, status, workDone, complet
  * client.
  */
 DEFINE_NOTIFICATION_TYPE(lang_progressReport, ProgressReport);
+
+enum EventType {
+	/**
+	 * classpath updated event.
+	 */
+	ClasspathUpdated = (100),
+
+	/**
+	 * projects imported event.
+	 */
+	 ProjectsImported = (200)
+};
+
+struct EventNotification
+{
+	int eventType;
+	lsp::Any data;
+	std::string ToString() const;
+	MAKE_SWAP_METHOD(EventNotification, eventType, data)
+};
+MAKE_REFLECT_STRUCT(EventNotification, eventType, data);
+
+DEFINE_NOTIFICATION_TYPE(lang_eventNotification, EventNotification);

@@ -2,7 +2,7 @@
 #include "LibLsp/lsp/lsDocumentUri.h"
 #include "LibLsp/lsp/lsVersionedTextDocumentIdentifier.h"
 
-#include "LibLsp/JsonRpc/RequestInMessage.h"
+#include "LibLsp/JsonRpc/NotificationInMessage.h"
 #include "LibLsp/JsonRpc/lsResponseMessage.h"
 
 /**
@@ -63,4 +63,4 @@ MAKE_REFLECT_STRUCT(SemanticHighlightingParams, textDocument, lines);
 	 * "https://github.com/Microsoft/vscode-languageserver-node/pull/367">{@code textDocument/semanticHighlighting}
 	 * language feature</a> is not yet part of the official LSP specification.
 	 */
-DEFINE_REQUEST_TYPE(Req_semanticHighlighting, SemanticHighlightingParams);
+DEFINE_NOTIFICATION_TYPE(Notify_semanticHighlighting, SemanticHighlightingParams);

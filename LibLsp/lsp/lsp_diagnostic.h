@@ -64,10 +64,13 @@ struct DiagnosticRelatedInformation {
 
 	 MAKE_SWAP_METHOD(DiagnosticRelatedInformation, location, message)
 };
-MAKE_REFLECT_STRUCT(DiagnosticRelatedInformation,location,message)
+MAKE_REFLECT_STRUCT(DiagnosticRelatedInformation, location, message)
 
-
-
+struct DiagnosticCodeDescription {
+	std::string href;
+	MAKE_SWAP_METHOD(DiagnosticCodeDescription, href)
+};
+MAKE_REFLECT_STRUCT(DiagnosticCodeDescription, href)
 struct lsDiagnostic {
   // The range at which the message applies.
   lsRange range;
@@ -77,11 +80,12 @@ struct lsDiagnostic {
   optional<lsDiagnosticSeverity> severity;
 
   // The diagnostic's code. Can be omitted.
-  int code = 0;
+  optional<  std::pair<optional<std::string>, optional<int>> >  code;
 
+  optional<DiagnosticCodeDescription> codeDescription;
   // A human-readable string describing the source of this
   // diagnostic, e.g. 'typescript' or 'super lint'.
-  std::string source ;
+  optional < std::string >source ;
 
   // The diagnostic's message.
   std::string message;
@@ -105,9 +109,9 @@ struct lsDiagnostic {
   bool operator==(const lsDiagnostic& rhs) const;
   bool operator!=(const lsDiagnostic& rhs) const;
 
-  MAKE_SWAP_METHOD(lsDiagnostic, range, severity, source, message, tags);
+  MAKE_SWAP_METHOD(lsDiagnostic, range, severity,  code, codeDescription, source, message, tags)
 };
-MAKE_REFLECT_STRUCT(lsDiagnostic, range, severity, source, message, tags);
+MAKE_REFLECT_STRUCT(lsDiagnostic, range, severity, code, codeDescription, source, message, tags)
 
 
 

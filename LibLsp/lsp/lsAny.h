@@ -56,9 +56,6 @@ namespace lsp
 		{
 			jsonType = _type;
 			data.swap(_data);
-			JsonWriter json_writer{nullptr};
-			
-			
 		}
 		void SetJsonString(const std::string& _data ,rapidjson::Type _type)
 		{
