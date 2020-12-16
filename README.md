@@ -13,7 +13,9 @@
 
 ## Projects using LspCpp:
 * [JCIDE](https://www.javacardos.com/tools)
-
+## License
+   MIT
+   
 ##  Demo:
 ```cpp
 
@@ -142,9 +144,7 @@ int main()
 
 ```
 
-# License
 
-MIT
 [1]: https://github.com/cquery-project/cquery "cquery:"
 [2]: https://www.javacardos.com/tools "JcKit:"
 [3]: https://docs.microsoft.com/en-us/nuget/consume-packages/package-restore "Package Restore"
