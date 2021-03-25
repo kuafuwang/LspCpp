@@ -5,6 +5,14 @@
 #include "lsClientCapabilities.h"
 #include "LibLsp/lsp/workspace/workspaceFolders.h"
 
+struct ClientInfo {
+	std::string name;
+	optional<std::string> version;
+	
+	MAKE_SWAP_METHOD(ClientInfo,name,version);
+};
+MAKE_REFLECT_STRUCT(ClientInfo,name,version);
+
 struct lsInitializeParams {
   // The process Id of the parent process that started
   // the server. Is null if the process has not been started by another process.
@@ -37,6 +45,7 @@ struct lsInitializeParams {
  // @Deprecated
   optional< std::string >clientName;
 
+  optional<ClientInfo> clientInfo;
 	
   enum class lsTrace {
     // NOTE: serialized as a string, one of 'off' | 'messages' | 'verbose';
@@ -60,19 +69,13 @@ struct lsInitializeParams {
  */
   optional< std::vector<WorkspaceFolder> >  workspaceFolders;
 
-  void swap(lsInitializeParams& arg) noexcept
-  {
-	  processId.swap(arg.processId);
-	  rootPath.swap(arg.rootPath);
-	  rootUri.swap(arg.rootUri);
-	  initializationOptions.swap(arg.initializationOptions);
-	  capabilities.swap(arg.capabilities);
-	  clientName.swap(arg.clientName);
-	  workspaceFolders.swap(arg.workspaceFolders);
-	  auto temp = trace;
-	  trace = arg.trace;
-	  arg.trace = temp;
-  }
+  MAKE_SWAP_METHOD(lsInitializeParams,
+      processId,
+      rootPath,
+      rootUri,
+      initializationOptions,
+      capabilities, clientName, clientInfo,
+      trace, workspaceFolders);
 };
 
 void Reflect(Reader& reader, lsInitializeParams::lsTrace& value);
@@ -86,7 +89,7 @@ MAKE_REFLECT_STRUCT(lsInitializeParams,
                     rootPath,
                     rootUri,
                     initializationOptions,
-                    capabilities, clientName,
+                    capabilities, clientName, clientInfo,
                     trace, workspaceFolders);
 
 struct lsInitializeError {

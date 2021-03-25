@@ -5,6 +5,10 @@
 #include <iostream>
 #include "MessageIssue.h"
 
+namespace lsp {
+	class istream;
+}
+
 class StreamMessageProducer : public MessageProducer
 {
 public:
@@ -20,7 +24,7 @@ public:
 	};
 	bool handleMessage(Headers& headers, MessageConsumer callBack);
 	StreamMessageProducer(
-		MessageIssueHandler& message_issue_handler, std::istream& input)
+		MessageIssueHandler& message_issue_handler, lsp::istream& input)
 		: issueHandler(message_issue_handler),
 		  input(input)
 	{
@@ -30,7 +34,7 @@ public:
 	void parseHeader(std::string& line, StreamMessageProducer::Headers& headers);
 private:
 	MessageIssueHandler& issueHandler;
-	 std::istream& input;
+	lsp::istream& input;
 	
 
 };

@@ -1,4 +1,5 @@
-﻿
+﻿#ifdef _CONSOLE
+#ifdef TCP_SERVER_EXAMPLE
 
 #include "LibLsp/lsp/textDocument/signature_help.h"
 #include "LibLsp/lsp/general/initialize.h"
@@ -8,14 +9,18 @@
 #include "LibLsp/lsp/textDocument/resolveCompletionItem.h"
 #include <network/uri.hpp>
 
-#include "LibLsp/JsonRpc/TcpServer.h"
 
-#ifdef _CONSOLE
+#include "LibLsp/JsonRpc/Endpoint.h"
+#include "LibLsp/JsonRpc/stream.h"
+#include "LibLsp/JsonRpc/TcpServer.h"
+#include "LibLsp/lsp/textDocument/document_symbol.h"
+#include "LibLsp/lsp/workspace/execute_command.h"
+
 #include <boost/filesystem.hpp>
 #include <boost/asio.hpp>
-#include "sct/ApduModelTest.h"
 #include <iostream>
 using namespace boost::asio::ip;
+using namespace std;
 class DummyLog :public lsp::Log
 {
 public:
@@ -62,6 +67,10 @@ public:
 				server.run();
 		}).detach();
 	}
+	~Server()
+	{
+		server.stop();
+	}
 	lsp::ProtocolJsonHandler  protocol_json_handler;
 	DummyLog _log;
 	GenericEndpoint endpoint;
@@ -76,34 +85,37 @@ public:
 	{
 		tcp::endpoint end_point( address::from_string(_address), 9333);
 
-		auto  socket_ = std::make_shared<tcp::iostream>();
+		socket_ = std::make_shared<tcp::iostream>();
 		socket_->connect(end_point);
 		if (!socket_)
 		{
 			string temp = "Unable to connect: " + socket_->error().message();
 			std::cout << temp << std::endl;
 		}
-		write_to_service = socket_;
-		read_from_service = socket_;
-
+		
 
 		vector<string> args;
-
+		socket_proxy = std::make_shared<lsp::base_iostream<std::iostream>>(*socket_.get());
 	
-		remote_end_point_ = std::make_shared<RemoteEndPoint>(*(read_from_service.get()), *(write_to_service.get()),
+		remote_end_point_ = std::make_shared<RemoteEndPoint>(*socket_proxy.get(), *socket_proxy.get(),
 			protocol_json_handler, endpoint, _log);
 
 
 		remote_end_point_->StartThread();
 	}
-	
+	~Client()
+	{
+		remote_end_point_->StopThread();
+		::Sleep(1000);
+		socket_->close();
+	}
 	lsp::ProtocolJsonHandler  protocol_json_handler;
 	DummyLog _log;
 	GenericEndpoint endpoint;
 	std::shared_ptr<RemoteEndPoint> remote_end_point_;
-	
-	std::shared_ptr<std::ostream>  write_to_service;
-	std::shared_ptr< std::istream >   read_from_service;
+	std::shared_ptr < lsp::base_iostream<std::iostream>> socket_proxy;
+	std::shared_ptr<tcp::iostream>  socket_;
+
 };
 
 int main() 
@@ -111,7 +123,11 @@ int main()
 	
 	Server server;
 	Client client;
+
+
+	
 	td_initialize::request req;
+	
 	auto rsp = client.remote_end_point_->waitResponse(req);
 	if(rsp)
 	{
@@ -119,4 +135,6 @@ int main()
 	}
 	return 0;
 }
+#endif
+
 #endif

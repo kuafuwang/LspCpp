@@ -5,6 +5,11 @@
 #include "MessageIssue.h"
 
 
+namespace lsp {
+	class ostream;
+	class istream;
+}
+
 struct lsResponseMessage;
 class PendingRequestInfo;
 class StreamMessageProducer;
@@ -21,7 +26,7 @@ class RemoteEndPoint :MessageIssueHandler
 {
 public:
 	using RequestCallFun = std::function< bool(std::unique_ptr<LspMessage>) >;
-	RemoteEndPoint(std::istream& in, std::ostream& out, MessageJsonHandler& json_handler, Endpoint& localEndPoint, lsp::Log& _log,uint8_t max_workers = 2);
+	RemoteEndPoint(lsp::istream& in, lsp::ostream& out, MessageJsonHandler& json_handler, Endpoint& localEndPoint, lsp::Log& _log,uint8_t max_workers = 2);
 	~RemoteEndPoint();
 	void consumer(std::string&&);
 	std::unique_ptr<LspMessage> waitResponse(RequestInMessage&,unsigned time_out= 0);
@@ -44,8 +49,8 @@ private:
 	std::unordered_map <int, LspMessage* >  receivedRequestMap;
 	const PendingRequestInfo* const GetRequestInfo(int _id);
 	std::atomic<bool> quit{};
-	std::istream& input;
-	std::ostream& output;
+	lsp::istream& input;
+	lsp::ostream& output;
 	lsp::Log& log;
 	void mainLoop(std::unique_ptr<LspMessage>);
 	bool dispatch(const std::string&);

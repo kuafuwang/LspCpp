@@ -16,15 +16,15 @@ namespace lsp {
 
 namespace lsp
 {
-
-
+		struct TcpServerData;
+	
         /// The top-level class of the HTTP server.
         class TcpServer
         {
         public:
             TcpServer(const TcpServer&) = delete;
             TcpServer& operator=(const TcpServer&) = delete;
-
+            ~TcpServer();
             /// Construct the server to listen on the specified TCP address and port, and
             /// serve up files from the given directory.
             explicit TcpServer(const std::string& address, const std::string& port, MessageJsonHandler& , Endpoint& , lsp::Log& ,uint32_t _max_workers = 2);
@@ -40,22 +40,8 @@ namespace lsp
 
             /// Wait for a request to stop the server.
             void do_stop();
-
-            /// The io_context used to perform asynchronous operations.
-            boost::asio::io_context io_context_;
-
-            std::shared_ptr<boost::asio::io_service::work> work;
-
-            /// Acceptor used to listen for incoming connections.
-            boost::asio::ip::tcp::acceptor acceptor_;
-
-
-        	
-            boost::asio::ip::tcp::iostream iostream_;
-            MessageJsonHandler& jsonHandler;
-            uint32_t max_workers;
-            Endpoint& local_endpoint;
-            lsp::Log& _log;
+            TcpServerData* d_ptr = nullptr;
+         
 
         };
 

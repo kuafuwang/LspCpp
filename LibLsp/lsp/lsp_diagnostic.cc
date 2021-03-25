@@ -57,7 +57,8 @@ std::string lsResponseError::ToString()
 
 	if(data.has_value())
 	{
-		info += "data:" + data.get().Data();
+		
+		info += "data:" + data.value().Data();
 		info += "\n";
 	}
 	return info;

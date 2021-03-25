@@ -2,6 +2,8 @@
 #include "StreamMessageProducer.h"
 #include <cassert>
 
+#include "stream.h"
+
 
 bool StartsWith(std::string value, std::string start);
 bool StartsWith(std::string value, std::string start) {
@@ -79,6 +81,10 @@ void StreamMessageProducer::listen(MessageConsumer callBack)
 					{
 						 MessageIssue issue(L"Unexpected token (expected Content-Length: sequence)", lsp::Log::Level::WARNING);
 						 issueHandler.handle(std::move(issue));
+					}
+					if(headers.contentLength == 0)
+					{
+						
 					}
 					else {
 						bool result = handleMessage(headers,callBack);

@@ -204,7 +204,7 @@ ResourceOperation* GetResourceOperation(lsp::Any& lspAny)
 	auto& data = lspAny.Data();
 	document.Parse(data.c_str(), data.length());
 	if (document.HasParseError()) {
-		// 提示
+		// 锟斤拷示
 		return nullptr;
 	}
 	auto find = document.FindMember("kind");
@@ -326,7 +326,7 @@ int lsp::Any::GetType()
 		document.Parse(data.c_str(), data.length());
 		if (document.HasParseError())
 		{
-			// 提示
+			// 锟斤拷示
 			return jsonType;
 		}
 		jsonType = document.GetType();
@@ -841,11 +841,11 @@ const std::string& lsCompletionItem::InsertedContent() const
 std::string lsCompletionItem::DisplayText()
 {
 
-	if (detail)
+	 if (detail)
 	{
 		
 		return label + " in " + detail.value();
-	}
+	} 
 	return label;
 }
 

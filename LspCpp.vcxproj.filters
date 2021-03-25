@@ -34,7 +34,7 @@
     <ClCompile Include="LibLsp\lsp\textDocument\textDocument.cpp">
       <Filter>lsp\textDocument</Filter>
     </ClCompile>
-    <ClCompile Include="LspCpp.cpp" />
+    <ClCompile Include="TcpServerExample.cpp" />
     <ClCompile Include="LibLsp\JsonRpc\threaded_queue.cc">
       <Filter>JsonRpc</Filter>
     </ClCompile>
@@ -68,12 +68,13 @@
     <ClCompile Include="sct\sct.cpp">
       <Filter>sct</Filter>
     </ClCompile>
-    <ClCompile Include="sct\ApduModelTest.cpp">
-      <Filter>sct</Filter>
-    </ClCompile>
     <ClCompile Include="LibLsp\JsonRpc\TcpServer.cpp">
       <Filter>JsonRpc</Filter>
     </ClCompile>
+    <ClCompile Include="LibLsp\JsonRpc\WebSocketServer.cpp">
+      <Filter>JsonRpc</Filter>
+    </ClCompile>
+    <ClCompile Include="WebsocketExample.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="LibLsp\JsonRpc\MessageIssue.h">
@@ -520,14 +521,17 @@
     <ClInclude Include="sct\sct.h">
       <Filter>sct</Filter>
     </ClInclude>
-    <ClInclude Include="sct\ApduModelTest.h">
-      <Filter>sct</Filter>
-    </ClInclude>
     <ClInclude Include="LibLsp\JsonRpc\TcpServer.h">
       <Filter>JsonRpc</Filter>
     </ClInclude>
     <ClInclude Include="LibLsp\lsp\textDocument\didRenameFiles.h">
       <Filter>lsp\textDocument</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\JsonRpc\stream.h">
+      <Filter>JsonRpc</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\JsonRpc\WebSocketServer.h">
+      <Filter>JsonRpc</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

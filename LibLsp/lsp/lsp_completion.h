@@ -169,7 +169,7 @@ struct lsCompletionItem {
 * additional modifications to the current document should be described with the
 * additionalTextEdits-property.
 */
-  optional<lsCommandWithAny>Command;
+  optional<lsCommandWithAny> command;
 
   /**
 * An data entry field that is preserved on a completion item between a completion and a completion resolve request.
@@ -187,7 +187,7 @@ struct lsCompletionItem {
 	  insertTextFormat,
 	  textEdit,
 	  deprecated, preselect, additionalTextEdits, commitCharacters,
-	  Command, data);
+	  command, data);
 	
 };
 
@@ -204,7 +204,7 @@ MAKE_REFLECT_STRUCT(lsCompletionItem,
                     insertTextFormat,
                     textEdit,
                     deprecated, preselect, additionalTextEdits, commitCharacters,
-                    Command, data);
+	command, data);
 
 
 

@@ -16,6 +16,7 @@
 #include "PendingRequestInfo.h"
 #include "rapidjson/error/en.h"
 #include "json.h"
+#include "stream.h"
 #include "third_party/threadpool/boost/threadpool.hpp"
 using namespace  lsp;
 
@@ -72,7 +73,7 @@ bool isNotificationMessage(JsonReader& visitor)
 	return true;
 }
 
-RemoteEndPoint::RemoteEndPoint(std::istream& in, std::ostream& out,
+RemoteEndPoint::RemoteEndPoint(lsp::istream& in, lsp::ostream& out,
 	MessageJsonHandler& json_handler, Endpoint& localEndPoint, lsp::Log& _log, uint8_t max_workers):
 	input(in),
 	output(out),
@@ -277,7 +278,8 @@ long RemoteEndPoint::sendRequest( RequestInMessage& info, RequestCallFun call_fu
 		std::lock_guard<std::mutex> lock2(m_requsetInfo);
 		_client_request_futures[info.id.value] = PendingRequestInfo(info.method, call_fun);
 		const auto s = info.ToJson();
-		output << "Content-Length: " << s.size() << "\r\n\r\n" << s;
+		
+		output.write("Content-Length: ").write(s.size()) .write("\r\n\r\n").write(s) ;
 		output.flush();
 		return  m_generate;
 	}
@@ -466,6 +468,6 @@ void RemoteEndPoint::sendMsg( LspMessage& msg)
 		return;
 	}
 	const auto& s = msg.ToJson();
-	output << "Content-Length: " << s.size() << "\r\n\r\n" << s;
+	output.write(  "Content-Length: " ).write(s.size()) .write("\r\n\r\n").write(s);
 	output.flush();
 }
