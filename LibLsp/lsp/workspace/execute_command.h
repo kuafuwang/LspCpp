@@ -18,7 +18,7 @@
  *
  * Registration Options: ExecuteCommandRegistrationOptions
  */
-DEFINE_REQUEST_RESPONSE_TYPE(wp_executeCommand, ExecuteCommandParams, lsp::Any);
+DEFINE_REQUEST_RESPONSE_TYPE(wp_executeCommand, ExecuteCommandParams, lsp::Any, "workspace/executeCommand");
 
 
-DEFINE_NOTIFICATION_TYPE(Notify_sendNotification, ExecuteCommandParams)
+DEFINE_NOTIFICATION_TYPE(Notify_sendNotification, ExecuteCommandParams, "workspace/notify")

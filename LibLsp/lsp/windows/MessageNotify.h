@@ -32,14 +32,14 @@ MAKE_REFLECT_STRUCT(MessageParams, type, message)
   * The log message notification is send from the server to the client to ask
   * the client to log a particular message.
   */
-DEFINE_NOTIFICATION_TYPE(Notify_LogMessage, MessageParams)
+DEFINE_NOTIFICATION_TYPE(Notify_LogMessage, MessageParams, "window/logMessage")
 
 
 /**
  * The show message notification is sent from a server to a client to ask
  * the client to display a particular message in the user interface.
  */
-DEFINE_NOTIFICATION_TYPE(Notify_ShowMessage, MessageParams)
+DEFINE_NOTIFICATION_TYPE(Notify_ShowMessage, MessageParams, "window/showMessage")
 
 
 
@@ -77,7 +77,7 @@ MAKE_REFLECT_STRUCT(ShowMessageRequestParams, type, message, actions)
 * to wait for an answer from the client.
 */
 
-DEFINE_REQUEST_RESPONSE_TYPE(WindowShowMessage, ShowMessageRequestParams, MessageActionItem)
+DEFINE_REQUEST_RESPONSE_TYPE(WindowShowMessage, ShowMessageRequestParams, MessageActionItem, "window/showMessage")
 
 
 

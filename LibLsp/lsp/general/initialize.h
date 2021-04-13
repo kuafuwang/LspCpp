@@ -36,4 +36,4 @@ MAKE_REFLECT_STRUCT(InitializeResult, capabilities);
  * window/logMessage and telemetry/event as well as the window/showMessageRequest request to the client.
  */
 
-DEFINE_REQUEST_RESPONSE_TYPE(td_initialize, lsInitializeParams, InitializeResult);
+DEFINE_REQUEST_RESPONSE_TYPE(td_initialize, lsInitializeParams, InitializeResult, "initialize");

@@ -78,13 +78,14 @@ namespace lsp
             /// Construct the server to listen on the specified TCP address and port, and
             /// serve up files from the given directory.
             explicit WebSocketServer(const std::string& user_agent, const std::string& address, const std::string& port,
-                MessageJsonHandler& , Endpoint& , lsp::Log& ,uint32_t _max_workers = 2);
+                std::shared_ptr < MessageJsonHandler> json_handler,
+                std::shared_ptr < Endpoint> localEndPoint, lsp::Log& ,uint32_t _max_workers = 2);
 
             /// Run the server's io_context loop.
             void run();
             void stop();
 
-            std::shared_ptr<RemoteEndPoint> remote_end_point_;
+            RemoteEndPoint remote_end_point_;
         private:
             /// Perform an asynchronous accept operation.
             void do_accept();

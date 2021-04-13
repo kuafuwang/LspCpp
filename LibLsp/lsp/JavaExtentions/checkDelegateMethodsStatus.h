@@ -24,6 +24,6 @@ struct CheckDelegateMethodsResponse {
 MAKE_REFLECT_STRUCT(CheckDelegateMethodsResponse, delegateFields)
 
 DEFINE_REQUEST_RESPONSE_TYPE(java_checkDelegateMethodsStatus,
-	lsCodeActionParams, CheckDelegateMethodsResponse);
+	lsCodeActionParams, CheckDelegateMethodsResponse, "java/checkDelegateMethodsStatus");
 
 

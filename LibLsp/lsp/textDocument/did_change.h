@@ -47,5 +47,5 @@ MAKE_REFLECT_STRUCT(lsTextDocumentDidChangeParams,
  *
  * Registration Options: TextDocumentChangeRegistrationOptions
  */
-DEFINE_NOTIFICATION_TYPE(Notify_TextDocumentDidChange, lsTextDocumentDidChangeParams);
+DEFINE_NOTIFICATION_TYPE(Notify_TextDocumentDidChange, lsTextDocumentDidChangeParams, "textDocument/didChange");
 

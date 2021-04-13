@@ -21,7 +21,7 @@ struct SearchSymbolParams :public WorkspaceSymbolParams
 MAKE_REFLECT_STRUCT(SearchSymbolParams, query, projectName, sourceOnly, maxResults);
 
 
-DEFINE_REQUEST_RESPONSE_TYPE(java_searchSymbols, SearchSymbolParams, std::vector<lsSymbolInformation>);
+DEFINE_REQUEST_RESPONSE_TYPE(java_searchSymbols, SearchSymbolParams, std::vector<lsSymbolInformation>, "java/searchSymbols");
 
 
 

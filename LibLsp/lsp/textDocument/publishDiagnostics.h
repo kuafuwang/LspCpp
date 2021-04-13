@@ -24,5 +24,5 @@ MAKE_REFLECT_STRUCT(TextDocumentPublishDiagnostics::Params,
  * Diagnostics notifications are sent from the server to the client to
  * signal results of validation runs.
  */
-DEFINE_NOTIFICATION_TYPE(Notify_TextDocumentPublishDiagnostics, TextDocumentPublishDiagnostics::Params);
+DEFINE_NOTIFICATION_TYPE(Notify_TextDocumentPublishDiagnostics, TextDocumentPublishDiagnostics::Params, "textDocument/publishDiagnostics");
 

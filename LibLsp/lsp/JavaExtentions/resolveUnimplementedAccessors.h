@@ -21,4 +21,4 @@ struct AccessorField {
 
 MAKE_REFLECT_STRUCT(AccessorField, fieldName,isStatic,generateGetter,generateSetter)
 
-DEFINE_REQUEST_RESPONSE_TYPE(java_resolveUnimplementedAccessors, lsCodeActionParams, std::vector<AccessorField>);
+DEFINE_REQUEST_RESPONSE_TYPE(java_resolveUnimplementedAccessors, lsCodeActionParams, std::vector<AccessorField>, "java/resolveUnimplementedAccessors");

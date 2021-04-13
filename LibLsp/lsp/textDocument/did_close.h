@@ -30,4 +30,4 @@ MAKE_REFLECT_STRUCT(TextDocumentDidClose::Params, textDocument);
  *
  * Registration Options: TextDocumentRegistrationOptions
  */
-DEFINE_NOTIFICATION_TYPE(Notify_TextDocumentDidClose, TextDocumentDidClose::Params);
+DEFINE_NOTIFICATION_TYPE(Notify_TextDocumentDidClose, TextDocumentDidClose::Params, "textDocument/didClose");

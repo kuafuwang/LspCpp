@@ -89,4 +89,4 @@ MAKE_REFLECT_STRUCT(lsSignatureHelp,
  *
  * Registration Options: SignatureHelpRegistrationOptions
  */
-DEFINE_REQUEST_RESPONSE_TYPE(td_signatureHelp, lsTextDocumentPositionParams, lsSignatureHelp);
+DEFINE_REQUEST_RESPONSE_TYPE(td_signatureHelp, lsTextDocumentPositionParams, lsSignatureHelp, "textDocument/signatureHelp");

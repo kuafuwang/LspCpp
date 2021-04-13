@@ -37,5 +37,5 @@ MAKE_REFLECT_STRUCT(TextDocumentRename::Params,
  *
  * Registration Options: TextDocumentRegistrationOptions
  */
-DEFINE_REQUEST_RESPONSE_TYPE(td_rename, TextDocumentRename::Params, lsWorkspaceEdit);
+DEFINE_REQUEST_RESPONSE_TYPE(td_rename, TextDocumentRename::Params, lsWorkspaceEdit, "textDocument/rename");
 

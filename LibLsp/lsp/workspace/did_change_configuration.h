@@ -22,4 +22,4 @@ MAKE_REFLECT_STRUCT(lsDidChangeConfigurationParams, settings);
  * A notification sent from the client to the server to signal the change of
  * configuration settings.
  */
-DEFINE_NOTIFICATION_TYPE(Notify_WorkspaceDidChangeConfiguration, lsDidChangeConfigurationParams);
+DEFINE_NOTIFICATION_TYPE(Notify_WorkspaceDidChangeConfiguration, lsDidChangeConfigurationParams, "workspace/didChangeConfiguration");

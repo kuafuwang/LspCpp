@@ -23,37 +23,37 @@ using namespace std;
 using lsp::Log;
 
 
-
-MethodType sct_DownLoadCapFile::kMethodType = "sct/download_cap";
-
-MethodType sct_Transmit::kMethodType = "sct/transmit";
-
-MethodType sct_Connect::kMethodType = "sct/connect";
-
-MethodType sct_Disconnect::kMethodType = "sct/disconnect";
-
-MethodType sct_InstalllApplet::kMethodType = "sct/install_applet";
-
-MethodType sct_gp_auth::kMethodType = "sct/gp_auth";
-
-MethodType sct_SetWindowsPos::kMethodType = "sct/set_windows_pos";
-
-MethodType sct_SetWindowsVisible::kMethodType = "sct/set_windows_visible";
-
-
-MethodType sct_NotifyJcvmOutput::kMethodType = "sct/notify_jcvm_output";
-
-MethodType sct_Launch::kMethodType = "sct/launch";
-
-MethodType sct_SetProtocol::kMethodType = "sct/set_protocol";
-
-MethodType sct_CheckBeforeLaunch::kMethodType = "sct/check_before_launch";
-
-MethodType sct_GetCardInfo::kMethodType = "sct/get_card_info";
-
-MethodType sct_NotifyDisconnect::kMethodType = "sct/notify_disconnect";
-MethodType sct_TerminateLaunch::kMethodType = "sct/terminate_launch";
-MethodType sct_initialize::kMethodType = "sct/initialize";
+//
+//MethodType sct_DownLoadCapFile::request::kMethodInfo = "sct/download_cap";
+//
+//MethodType sct_Transmit::request::kMethodInfo = "sct/transmit";
+//
+//MethodType sct_Connect::request::kMethodInfo = "sct/connect";
+//
+//MethodType sct_Disconnect::request::kMethodInfo = "sct/disconnect";
+//
+//MethodType sct_InstalllApplet::request::kMethodInfo = "sct/install_applet";
+//
+//MethodType sct_gp_auth::request::kMethodInfo = "sct/gp_auth";
+//
+//MethodType sct_SetWindowsPos::request::kMethodInfo = "sct/set_windows_pos";
+//
+//MethodType sct_SetWindowsVisible::request::kMethodInfo = "sct/set_windows_visible";
+//
+//
+//MethodType sct_NotifyJcvmOutput::request::kMethodInfo = "sct/notify_jcvm_output";
+//
+//MethodType sct_Launch::request::kMethodInfo = "sct/launch";
+//
+//MethodType sct_SetProtocol::request::kMethodInfo = "sct/set_protocol";
+//
+//MethodType sct_CheckBeforeLaunch::request::kMethodInfo = "sct/check_before_launch";
+//
+//MethodType sct_GetCardInfo::request::kMethodInfo = "sct/get_card_info";
+//
+//MethodType sct_NotifyDisconnect::request::kMethodInfo = "sct/notify_disconnect";
+//MethodType sct_TerminateLaunch::request::kMethodInfo = "sct/terminate_launch";
+//MethodType sct_initialize::request::kMethodInfo = "sct/initialize";
 
 
  SCTConfig* SCTConfig::newInstance(const wstring& file_path, string& error)
@@ -99,45 +99,45 @@ SmartCardTool::SmartCardTool():  m_jdwpPort(0), m_curProtocol(SctProtocol::T01),
 
 void AddNotifyJsonRpcMethod(sct::ProtocolJsonHandler& handler)
 {
-	handler.method2notification[Notify_Exit::kMethodType] = [](Reader& visitor)
+	handler.method2notification[Notify_Exit::notify::kMethodInfo] = [](Reader& visitor)
 	{
 		return Notify_Exit::notify::ReflectReader(visitor);
 	};
-	handler.method2notification[Notify_InitializedNotification::kMethodType] = [](Reader& visitor)
+	handler.method2notification[Notify_InitializedNotification::notify::kMethodInfo] = [](Reader& visitor)
 	{
 		return Notify_InitializedNotification::notify::ReflectReader(visitor);
 	};
 
 	
-	handler.method2notification[Notify_LogMessage::kMethodType] = [](Reader& visitor)
+	handler.method2notification[Notify_LogMessage::notify::kMethodInfo] = [](Reader& visitor)
 	{
 		return Notify_LogMessage::notify::ReflectReader(visitor);
 	};
-	handler.method2notification[Notify_ShowMessage::kMethodType] = [](Reader& visitor)
+	handler.method2notification[Notify_ShowMessage::notify::kMethodInfo] = [](Reader& visitor)
 	{
 		return Notify_ShowMessage::notify::ReflectReader(visitor);
 	};
 	
-	handler.method2notification[Notify_sendNotification::kMethodType] = [](Reader& visitor)
+	handler.method2notification[Notify_sendNotification::notify::kMethodInfo] = [](Reader& visitor)
 	{
 		return Notify_sendNotification::notify::ReflectReader(visitor);
 	};
 	
-	handler.method2notification[lang_actionableNotification::kMethodType] = [](Reader& visitor)
+	handler.method2notification[lang_actionableNotification::notify::kMethodInfo] = [](Reader& visitor)
 	{
 		return lang_actionableNotification::notify::ReflectReader(visitor);
 	};
-	handler.method2notification[lang_progressReport::kMethodType] = [](Reader& visitor)
+	handler.method2notification[lang_progressReport::notify::kMethodInfo] = [](Reader& visitor)
 	{
 		return lang_progressReport::notify::ReflectReader(visitor);
 	};
 	
 
-	handler.method2notification[sct_NotifyJcvmOutput::kMethodType] = [](Reader& visitor)
+	handler.method2notification[sct_NotifyJcvmOutput::notify::kMethodInfo] = [](Reader& visitor)
 	{
 		return sct_NotifyJcvmOutput::notify::ReflectReader(visitor);
 	};
-	handler.method2notification[sct_NotifyDisconnect::kMethodType] = [](Reader& visitor)
+	handler.method2notification[sct_NotifyDisconnect::notify::kMethodInfo] = [](Reader& visitor)
 	{
 		return sct_NotifyDisconnect::notify::ReflectReader(visitor);
 	};
@@ -148,42 +148,42 @@ sct::ProtocolJsonHandler::ProtocolJsonHandler()
 {
 	AddNotifyJsonRpcMethod(*this);
 
-	method2response[sct_DownLoadCapFile::kMethodType ] = [](Reader& visitor)
+	method2response[sct_DownLoadCapFile::request::kMethodInfo ] = [](Reader& visitor)
 	{
 		if (visitor.HasMember("error"))
 			return 	Rsp_Error::ReflectReader(visitor);
 
 		return sct_DownLoadCapFile::response::ReflectReader(visitor);
 	};
-	method2response[sct_Connect::kMethodType] = [](Reader& visitor)
+	method2response[sct_Connect::request::kMethodInfo] = [](Reader& visitor)
 	{
 		if (visitor.HasMember("error"))
 			return 	Rsp_Error::ReflectReader(visitor);
 
 		return sct_Connect::response::ReflectReader(visitor);
 	};
-	method2response[sct_SetProtocol::kMethodType] = [](Reader& visitor)
+	method2response[sct_SetProtocol::request::kMethodInfo] = [](Reader& visitor)
 	{
 		if (visitor.HasMember("error"))
 			return 	Rsp_Error::ReflectReader(visitor);
 
 		return sct_SetProtocol::response::ReflectReader(visitor);
 	};
-	method2response[sct_gp_auth::kMethodType] = [](Reader& visitor)
+	method2response[sct_gp_auth::request::kMethodInfo] = [](Reader& visitor)
 	{
 		if (visitor.HasMember("error"))
 			return 	Rsp_Error::ReflectReader(visitor);
 
 		return sct_gp_auth::response::ReflectReader(visitor);
 	};
-	method2response[sct_InstalllApplet::kMethodType] = [](Reader& visitor)
+	method2response[sct_InstalllApplet::request::kMethodInfo] = [](Reader& visitor)
 	{
 		if (visitor.HasMember("error"))
 			return 	Rsp_Error::ReflectReader(visitor);
 
 		return sct_InstalllApplet::response::ReflectReader(visitor);
 	};
-	method2response[sct_Transmit::kMethodType] = [](Reader& visitor)
+	method2response[sct_Transmit::request::kMethodInfo] = [](Reader& visitor)
 	{
 		if (visitor.HasMember("error"))
 			return 	Rsp_Error::ReflectReader(visitor);
@@ -191,7 +191,7 @@ sct::ProtocolJsonHandler::ProtocolJsonHandler()
 		return sct_Transmit::response::ReflectReader(visitor);
 	};
  	
-	method2response[sct_GetCardInfo::kMethodType] = [](Reader& visitor)
+	method2response[sct_GetCardInfo::request::kMethodInfo] = [](Reader& visitor)
 	{
 		if (visitor.HasMember("error"))
 			return 	Rsp_Error::ReflectReader(visitor);
@@ -199,14 +199,14 @@ sct::ProtocolJsonHandler::ProtocolJsonHandler()
 		return sct_GetCardInfo::response::ReflectReader(visitor);
 	};
  	
-	method2response[sct_Launch::kMethodType] = [](Reader& visitor)
+	method2response[sct_Launch::request::kMethodInfo] = [](Reader& visitor)
 	{
 		if (visitor.HasMember("error"))
 			return 	Rsp_Error::ReflectReader(visitor);
 
 		return sct_Launch::response::ReflectReader(visitor);
 	};
-	method2response[sct_CheckBeforeLaunch::kMethodType] = [](Reader& visitor)
+	method2response[sct_CheckBeforeLaunch::request::kMethodInfo] = [](Reader& visitor)
 	{
 		if (visitor.HasMember("error"))
 			return 	Rsp_Error::ReflectReader(visitor);
@@ -215,7 +215,7 @@ sct::ProtocolJsonHandler::ProtocolJsonHandler()
 	};
  	
 
-	method2response[sct_initialize::kMethodType] = [](Reader& visitor)
+	method2response[sct_initialize::request::kMethodInfo] = [](Reader& visitor)
 	{
 		if (visitor.HasMember("error"))
 			return 	Rsp_Error::ReflectReader(visitor);
@@ -248,13 +248,9 @@ bool SmartCardTool::initialize(int processId, int version)
 	sct_initialize::request request;
 	request.params.processId = processId;
 	request.params.version = version;
-	auto  eventFuture = std::make_shared< Condition< LspMessage > >();
-	sct->sendRequest(request, [&](std::unique_ptr<LspMessage> msg)
-		{
-			eventFuture->notify(std::move(msg));
-			return true;
-		});
-	auto msg = eventFuture->wait(100000);
+	
+	auto msg = sct->waitResponse(request, 100000);
+	
 	if (!msg)
 	{
 		return false;

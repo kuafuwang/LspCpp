@@ -31,6 +31,6 @@ struct CheckHashCodeEqualsResponse {
 MAKE_REFLECT_STRUCT(CheckHashCodeEqualsResponse, type, fields, type, existingMethods)
 
 DEFINE_REQUEST_RESPONSE_TYPE(java_checkHashCodeEqualsStatus,
-	lsCodeActionParams, CheckHashCodeEqualsResponse)
+	lsCodeActionParams, CheckHashCodeEqualsResponse, "java/checkHashCodeEqualsStatus")
 
 

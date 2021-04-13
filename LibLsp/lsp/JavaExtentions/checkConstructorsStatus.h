@@ -22,7 +22,7 @@ struct CheckConstructorsResponse {
 };
 MAKE_REFLECT_STRUCT(CheckConstructorsResponse, constructors,fields)
 
-DEFINE_REQUEST_RESPONSE_TYPE(java_checkConstructorsStatus, lsCodeActionParams, CheckConstructorsResponse)
+DEFINE_REQUEST_RESPONSE_TYPE(java_checkConstructorsStatus, lsCodeActionParams, CheckConstructorsResponse,"java/checkConstructorsStatus")
 
 
 

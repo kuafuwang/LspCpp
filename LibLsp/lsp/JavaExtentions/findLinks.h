@@ -16,7 +16,7 @@ struct  FindLinksParams {
 };
 MAKE_REFLECT_STRUCT(FindLinksParams,type,position)
 
-DEFINE_REQUEST_TYPE(java_findLinks, FindLinksParams);
+DEFINE_REQUEST_RESPONSE_TYPE(java_findLinks, FindLinksParams,lsp::Any, "java/findLinks");
 
 
 

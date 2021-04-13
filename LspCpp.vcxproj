@@ -146,7 +146,7 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <SDLCheck>false</SDLCheck>
-      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;WEBSOCKET_SERVER_EXAMPLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;TCP_SERVER_EXAMPLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>false</ConformanceMode>
       <LanguageStandard>stdcpp14</LanguageStandard>
       <AdditionalOptions>/Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions>
@@ -230,7 +230,6 @@
     <ClCompile Include="LibLsp\JsonRpc\TcpServer.cpp" />
     <ClCompile Include="LibLsp\JsonRpc\threaded_queue.cc" />
     <ClCompile Include="LibLsp\JsonRpc\WebSocketServer.cpp" />
-    <ClCompile Include="LibLsp\lsp\method_type.cc" />
     <ClCompile Include="TcpServerExample.cpp" />
     <ClCompile Include="LibLsp\JsonRpc\RemoteEndPoint.cpp" />
     <ClCompile Include="LibLsp\JsonRpc\Endpoint.cpp" />

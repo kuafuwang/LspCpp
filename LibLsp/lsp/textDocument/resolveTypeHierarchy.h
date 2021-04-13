@@ -28,4 +28,4 @@ struct ResolveTypeHierarchyItemParams {
 	MAKE_SWAP_METHOD(ResolveTypeHierarchyItemParams, item, resolve, direction)
 };
 MAKE_REFLECT_STRUCT(ResolveTypeHierarchyItemParams,item,resolve,direction)
-DEFINE_REQUEST_RESPONSE_TYPE(typeHierarchy_resolve, ResolveTypeHierarchyItemParams, TypeHierarchyItem)
+DEFINE_REQUEST_RESPONSE_TYPE(typeHierarchy_resolve, ResolveTypeHierarchyItemParams, TypeHierarchyItem, "typeHierarchy/resolve")

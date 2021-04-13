@@ -23,5 +23,5 @@ MAKE_REFLECT_STRUCT(TextDocumentFormatting::Params, textDocument, options, range
  * Registration Options: TextDocumentRegistrationOptions
  */
 DEFINE_REQUEST_RESPONSE_TYPE(td_formatting, TextDocumentFormatting::Params,
-	std::vector<lsTextEdit>);
+	std::vector<lsTextEdit>, "textDocument/formatting");
 

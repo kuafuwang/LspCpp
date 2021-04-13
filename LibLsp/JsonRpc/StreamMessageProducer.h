@@ -24,17 +24,24 @@ public:
 	};
 	bool handleMessage(Headers& headers, MessageConsumer callBack);
 	StreamMessageProducer(
-		MessageIssueHandler& message_issue_handler, lsp::istream& input)
+		MessageIssueHandler& message_issue_handler, std::shared_ptr < lsp::istream> _input)
 		: issueHandler(message_issue_handler),
-		  input(input)
+		  input(_input)
 	{
 	}
+	StreamMessageProducer(
+		MessageIssueHandler& message_issue_handler)
+		: issueHandler(message_issue_handler)
+	{
+	}
+	
 	bool keepRunning = false;
 	void listen(MessageConsumer) override;
+	void bind(std::shared_ptr < lsp::istream>);
 	void parseHeader(std::string& line, StreamMessageProducer::Headers& headers);
 private:
 	MessageIssueHandler& issueHandler;
-	lsp::istream& input;
+	std::shared_ptr < lsp::istream> input;
 	
 
 };

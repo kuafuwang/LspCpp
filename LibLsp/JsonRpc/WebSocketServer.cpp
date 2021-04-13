@@ -2,6 +2,8 @@
 // server.cpp
 
 #include "WebSocketServer.h"
+
+#include <iostream>
 #include <signal.h>
 #include <utility>
 #include "MessageIssue.h"
@@ -24,7 +26,7 @@ namespace lsp {
         beast::flat_buffer buffer_;
         std::string user_agent_;
     public:
-        websocket_stream_wraper proxy_ = ws_;
+       std::shared_ptr<websocket_stream_wraper>  proxy_ =  std::make_shared<websocket_stream_wraper>(ws_) ;
         // Take ownership of the socket
         explicit
             server_session(tcp::socket&& socket,const std::string& user_agent)
@@ -100,8 +102,9 @@ namespace lsp {
                 return;
             char* data = reinterpret_cast<char*>(buffer_.data().data());
             std::vector<char> elements(data, data + bytes_transferred);
+           
             buffer_.clear();
-            proxy_.on_request.EnqueueAll(std::move(elements), false);
+            proxy_->on_request.EnqueueAll(std::move(elements), false);
         	
             // Read a message into our buffer
             ws_.async_read(
@@ -115,7 +118,8 @@ namespace lsp {
         
         void close()
         {
-            ws_.close(websocket::close_code::normal);
+        	if(ws_.is_open())
+			 ws_.close(websocket::close_code::normal);
         }
     };
 
@@ -123,12 +127,9 @@ namespace lsp {
 
 	    struct WebSocketServerData
 	    {
-		    WebSocketServerData(const std::string& user_agent,
-                MessageJsonHandler& _handler, Endpoint& _endpoint, lsp::Log& log, uint32_t _max_workers) :
-			    acceptor_(io_context_), user_agent_(user_agent),
-			    jsonHandler(_handler),
-			    local_endpoint(_endpoint),
-			    _log(log), max_workers(_max_workers)
+		    WebSocketServerData(const std::string& user_agent, lsp::Log& log) :
+			    acceptor_(io_context_), user_agent_(user_agent), _log(log)
+		
 		    {
 		    }
 
@@ -146,12 +147,9 @@ namespace lsp {
 
             std::shared_ptr < server_session> _server_session;
          
-         
-            std::string user_agent_;
-            MessageJsonHandler& jsonHandler;
-            uint32_t max_workers;
-            Endpoint& local_endpoint;
             lsp::Log& _log;
+            std::string user_agent_;
+     
 	    };
 
     websocket_stream_wraper::websocket_stream_wraper(boost::beast::websocket::stream<boost::beast::tcp_stream>& _w):
@@ -196,8 +194,9 @@ namespace lsp {
 	    }
 
         WebSocketServer::WebSocketServer(const std::string& user_agent, const std::string& address, const std::string& port,
-	                         MessageJsonHandler& _handler, Endpoint& _endpoint, lsp::Log& log, uint32_t _max_workers)
-            : d_ptr(new WebSocketServerData(user_agent,_handler, _endpoint, log, _max_workers))
+            std::shared_ptr < MessageJsonHandler> json_handler,
+            std::shared_ptr < Endpoint> localEndPoint, lsp::Log& log, uint32_t _max_workers)
+            : remote_end_point_(json_handler,localEndPoint,log, _max_workers),d_ptr(new WebSocketServerData(user_agent,log))
            
         {
            
@@ -264,19 +263,16 @@ namespace lsp {
 
                     if (!ec)
                     {
-                    	if(remote_end_point_)
+                    	if(d_ptr->_server_session)
                     	{
-                            d_ptr->_server_session->close();
-                            remote_end_point_->StopThread();
+                    		
+						   d_ptr->_server_session->close();
+                            remote_end_point_.Stop();
                     	}
                         d_ptr->_server_session = std::make_shared<server_session>(std::move(socket), d_ptr->user_agent_);
                         d_ptr->_server_session->run();
-                    	
-                        
-                        remote_end_point_ = std::make_shared<RemoteEndPoint>(d_ptr->_server_session->proxy_,
-                            d_ptr->_server_session->proxy_, d_ptr->jsonHandler,
-                            d_ptr->local_endpoint, d_ptr->_log, d_ptr->max_workers);
-                        remote_end_point_->StartThread();
+          
+                        remote_end_point_.startProcessingMessages(d_ptr->_server_session->proxy_, d_ptr->_server_session->proxy_);
                         do_accept();
                     }
 
@@ -287,10 +283,9 @@ namespace lsp {
         void WebSocketServer::do_stop()
         {
             d_ptr->acceptor_.close();
-            if(remote_end_point_)
-            {
-                remote_end_point_->StopThread();
-            }
+           
+          remote_end_point_.Stop();
+            
         }
 
     } // namespace 

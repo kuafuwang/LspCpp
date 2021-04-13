@@ -8,6 +8,8 @@ struct NotificationInMessage;
 struct lsBaseOutMessage;
 struct  RequestInMessage;
 
+struct lsResponseMessage;
+
 class Endpoint
 {
 public:
@@ -16,11 +18,13 @@ public:
 	virtual  bool notify(std::unique_ptr<LspMessage>) = 0;
 	
 	virtual  bool onResponse(const std::string&, std::unique_ptr<LspMessage>) = 0;
-	
+	virtual  void registerRequestHandler(const std::string&, std::function< bool(std::unique_ptr<LspMessage>) >) = 0;
+	virtual  void registerNotifyHandler(const std::string&, std::function< bool(std::unique_ptr<LspMessage>) >) = 0;
 };
 
 class GenericEndpoint :public Endpoint
 {
+
 public:
 	GenericEndpoint(lsp::Log& l):log(l){}
 	bool notify(std::unique_ptr<LspMessage>) override;
@@ -30,6 +34,18 @@ public:
 	std::map< std::string, std::function< bool(std::unique_ptr<LspMessage>) > > method2request;
 	std::map< std::string, std::function< bool(std::unique_ptr<LspMessage>) > > method2response;
 	std::map< std::string, std::function< bool(std::unique_ptr<LspMessage>) >  > method2notification;
+	
+	  void registerRequestHandler(const std::string& method, std::function< bool(std::unique_ptr<LspMessage>) > cb) override
+	{
+		  method2request[method] = cb;
+	}
+
+	void registerNotifyHandler(const std::string& method, std::function<bool(std::unique_ptr<LspMessage>)>cb) override
+	  {
+		method2notification[method] = cb;
+	  }
 	lsp::Log& log;
+
+
 
 };

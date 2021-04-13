@@ -14,6 +14,6 @@ struct AddOverridableMethodParams {
 
 MAKE_REFLECT_STRUCT(AddOverridableMethodParams, context, overridableMethods);
 
-DEFINE_REQUEST_RESPONSE_TYPE(java_addOverridableMethods, AddOverridableMethodParams, lsWorkspaceEdit);
+DEFINE_REQUEST_RESPONSE_TYPE(java_addOverridableMethods, AddOverridableMethodParams, lsWorkspaceEdit, "java/addOverridableMethods");
 
 

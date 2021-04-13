@@ -44,6 +44,9 @@ namespace
 
 void StreamMessageProducer::listen(MessageConsumer callBack)
 {
+  	if(!input)
+		return;
+  	
 	keepRunning = true;
 	bool newLine = false;
 	Headers headers;
@@ -52,19 +55,19 @@ void StreamMessageProducer::listen(MessageConsumer callBack)
 	// Read the content length. It is terminated by the "\r\n" sequence.
 	while (keepRunning) 
 	{
-		if(input.bad())
+		if(input->bad())
 		{
 			MessageIssue issue(L"input stream corrupted", lsp::Log::Level::INFO);
 			issueHandler.handle(std::move(issue));
 			return;
 		}
-		if(input.fail())
+		if(input->fail())
 		{
 			MessageIssue issue(L"input fail", lsp::Log::Level::INFO);
 			issueHandler.handle(std::move(issue));
 			continue;
 		}
-		int c = input.get();
+		int c = input->get();
 		if (c == EOF) {
 			// End of input stream has been reached
 			keepRunning = false;
@@ -112,26 +115,32 @@ void StreamMessageProducer::listen(MessageConsumer callBack)
 	}
 
 }
- bool StreamMessageProducer::handleMessage(Headers& headers ,MessageConsumer callBack)
+
+void StreamMessageProducer::bind(std::shared_ptr<lsp::istream>_in)
+{
+	input = _in;
+}
+
+bool StreamMessageProducer::handleMessage(Headers& headers ,MessageConsumer callBack)
 {
 	 		 // Read content.
 	auto content_length = headers.contentLength;
  	 std::string content(content_length,0);
  	 auto data = &content[0];
-	 input.read(data, content_length);
-	 if (input.bad())
+	 input->read(data, content_length);
+	 if (input->bad())
 	 {
 		 MessageIssue issue(L"input stream corrupted", lsp::Log::Level::INFO);
 		 issueHandler.handle(std::move(issue));
 		 return false;
 	 }
-	 if (input.fail())
+	 if (input->fail())
 	 {
 		 MessageIssue issue(L"input fail", lsp::Log::Level::INFO);
 		 issueHandler.handle(std::move(issue));
 		 return false;
 	 }
-	 if (input.eof())
+	 if (input->eof())
 	 {
 		 MessageIssue issue(L"No more input when reading content body", lsp::Log::Level::INFO);
 		 issueHandler.handle(std::move(issue));

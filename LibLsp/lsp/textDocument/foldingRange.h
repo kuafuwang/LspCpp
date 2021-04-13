@@ -58,5 +58,5 @@ MAKE_REFLECT_STRUCT(FoldingRange,startLine,endLine,startCharacter,endCharacter,k
  * The folding range request is sent from the client to the server to return all folding
  * ranges found in a given text document.
  */
-DEFINE_REQUEST_RESPONSE_TYPE(td_foldingRange, FoldingRangeRequestParams, std::vector<FoldingRange>);
+DEFINE_REQUEST_RESPONSE_TYPE(td_foldingRange, FoldingRangeRequestParams, std::vector<FoldingRange>, "textDocument/foldingRange");
 

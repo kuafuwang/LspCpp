@@ -89,21 +89,24 @@ class Client : public std::enable_shared_from_this<Client>
     beast::flat_buffer buffer_;
     std::string host_;
     std::string user_agent_;
-    lsp::ProtocolJsonHandler  protocol_json_handler;
+    std::shared_ptr < lsp::ProtocolJsonHandler >  protocol_json_handler = std::make_shared< lsp::ProtocolJsonHandler>();
     DummyLog _log;
-    GenericEndpoint endpoint;
-    lsp::websocket_stream_wraper proxy_;
+	
+    std::shared_ptr<GenericEndpoint>  endpoint = std::make_shared<GenericEndpoint>(_log);
+	
+    std::shared_ptr<lsp::websocket_stream_wraper>  proxy_;
 public:
-    std::shared_ptr<RemoteEndPoint> remote_end_point_;
+   RemoteEndPoint remote_end_point_;
 
 public:
     // Resolver and socket require an io_context
     explicit
         Client()
         : resolver_(net::make_strand(ioc))
-        , ws_(net::make_strand(ioc)),
-        endpoint(_log), proxy_(ws_)
+        , ws_(net::make_strand(ioc)),remote_end_point_(protocol_json_handler, endpoint, _log)
     {
+        proxy_ = std::make_shared<lsp::websocket_stream_wraper>(ws_);
+ 
     }
 
     // Start the asynchronous operation
@@ -126,7 +129,7 @@ public:
         {
                ioc.run();
         }).detach();
-        while (!remote_end_point_)
+        while (!remote_end_point_.IsWorking())
         {
             ::Sleep(50);
         }
@@ -188,11 +191,9 @@ public:
             return;
 
         // Send the message
-        remote_end_point_ = std::make_shared<RemoteEndPoint>(proxy_, proxy_,
-            protocol_json_handler, endpoint, _log);
+    
 
-
-        remote_end_point_->StartThread();
+        remote_end_point_.startProcessingMessages(proxy_, proxy_);
         // Read a message into our buffer
         ws_.async_read(
             buffer_,
@@ -215,7 +216,7 @@ public:
         char* data = reinterpret_cast<char*>(buffer_.data().data());
         std::vector<char> elements(data, data + bytes_transferred);
         buffer_.clear();
-        proxy_.on_request.EnqueueAll(std::move(elements), false);
+        proxy_->on_request.EnqueueAll(std::move(elements), false);
         
         ws_.async_read(
             buffer_,
@@ -236,23 +237,22 @@ public:
         std::cout << beast::make_printable(buffer_.data()) << std::endl;
     }
 };
+
 class Server
 {
 public:
-    Server(const std::string& user_agent) : endpoint(_log), server(user_agent,_address, _port, protocol_json_handler, endpoint, _log)
+    Server(const std::string& user_agent) : server(user_agent,_address, _port, protocol_json_handler, endpoint, _log)
     {
-        endpoint.method2request[td_initialize::kMethodType] = [&](std::unique_ptr<LspMessage> msg)
-        {
-            auto req = reinterpret_cast<td_initialize::request*>(msg.get());
-            td_initialize::response rsp;
-            rsp.id = req->id;
-            CodeLensOptions code_lens_options;
-            code_lens_options.resolveProvider = true;
-            rsp.result.capabilities.codeLensProvider = code_lens_options;
-            server.remote_end_point_->sendResponse(rsp);
-            return true;
-        };
-
+        server.remote_end_point_.registerRequestHandler(td_initialize::kMethodType, 
+            [&](const td_initialize::request& req)
+            {
+                td_initialize::response rsp;
+                rsp.id = req.id;
+                CodeLensOptions code_lens_options;
+                code_lens_options.resolveProvider = true;
+                rsp.result.capabilities.codeLensProvider = code_lens_options;
+                return rsp;
+		});
         std::thread([&]()
             {
                 server.run();
@@ -262,9 +262,10 @@ public:
     {
         server.stop();
     }
-    lsp::ProtocolJsonHandler  protocol_json_handler;
+    std::shared_ptr <  lsp::ProtocolJsonHandler >  protocol_json_handler = std::make_shared < lsp::ProtocolJsonHandler >();
     DummyLog _log;
-    GenericEndpoint endpoint;
+    
+    std::shared_ptr < GenericEndpoint >  endpoint = std::make_shared<GenericEndpoint>(_log);
     lsp::WebSocketServer server;
 
 };
@@ -280,7 +281,7 @@ int main()
 	
     td_initialize::request req;
 
-    auto rsp = client->remote_end_point_->waitResponse(req);
+    auto rsp = client->remote_end_point_.waitResponse(req);
     if (rsp)
     {
         std::cout << rsp->ToJson() << std::endl;

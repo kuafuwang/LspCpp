@@ -16,4 +16,4 @@ struct GenerateAccessorsParams {
 };
 MAKE_REFLECT_STRUCT(GenerateAccessorsParams, context, accessors)
 
-DEFINE_REQUEST_RESPONSE_TYPE(java_generateAccessors, GenerateAccessorsParams, lsWorkspaceEdit);
+DEFINE_REQUEST_RESPONSE_TYPE(java_generateAccessors, GenerateAccessorsParams, lsWorkspaceEdit, "java/generateAccessors");

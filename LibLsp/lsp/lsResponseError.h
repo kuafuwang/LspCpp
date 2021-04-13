@@ -22,7 +22,7 @@ enum class lsErrorCodes:int32_t {
 MAKE_REFLECT_TYPE_PROXY(lsErrorCodes);
 struct lsResponseError {
 	
-
+	inline operator bool() const { return message.size() > 0; }
 	lsErrorCodes code;
 	// Short description.
 	std::string message;

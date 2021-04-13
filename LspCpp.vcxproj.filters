@@ -38,9 +38,6 @@
     <ClCompile Include="LibLsp\JsonRpc\threaded_queue.cc">
       <Filter>JsonRpc</Filter>
     </ClCompile>
-    <ClCompile Include="LibLsp\lsp\method_type.cc">
-      <Filter>lsp</Filter>
-    </ClCompile>
     <ClCompile Include="network\uri\detail\uri_advance_parts.cpp">
       <Filter>network\uri\detail</Filter>
     </ClCompile>

@@ -9,5 +9,5 @@
  * server can use the initialized notification for example to dynamically
  * register capabilities.
  */
-DEFINE_NOTIFICATION_TYPE(Notify_InitializedNotification, JsonNull);
+DEFINE_NOTIFICATION_TYPE(Notify_InitializedNotification, JsonNull, "initialized");
 

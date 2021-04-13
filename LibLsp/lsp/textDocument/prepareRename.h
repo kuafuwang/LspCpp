@@ -37,4 +37,4 @@ extern void  Reflect(Reader& visitor, TextDocumentPrepareRenameResult& value);
 
 
 DEFINE_REQUEST_RESPONSE_TYPE(td_prepareRename, 
-	lsTextDocumentPositionParams, TextDocumentPrepareRenameResult);
+	lsTextDocumentPositionParams, TextDocumentPrepareRenameResult, "textDocument/prepareRename");

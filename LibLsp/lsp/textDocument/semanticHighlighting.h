@@ -63,4 +63,4 @@ MAKE_REFLECT_STRUCT(SemanticHighlightingParams, textDocument, lines);
 	 * "https://github.com/Microsoft/vscode-languageserver-node/pull/367">{@code textDocument/semanticHighlighting}
 	 * language feature</a> is not yet part of the official LSP specification.
 	 */
-DEFINE_NOTIFICATION_TYPE(Notify_semanticHighlighting, SemanticHighlightingParams);
+DEFINE_NOTIFICATION_TYPE(Notify_semanticHighlighting, SemanticHighlightingParams, "textDocument/semanticHighlighting");

@@ -19,6 +19,6 @@ struct CheckToStringResponse {
 MAKE_REFLECT_STRUCT(CheckToStringResponse,type,fields,exists)
 
 DEFINE_REQUEST_RESPONSE_TYPE(java_checkToStringStatus,
-	lsCodeActionParams, CheckToStringResponse)
+	lsCodeActionParams, CheckToStringResponse ,"java/checkToStringStatus")
 
 

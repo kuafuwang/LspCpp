@@ -73,5 +73,5 @@ struct RefactorWorkspaceEdit {
 };
 MAKE_REFLECT_STRUCT(RefactorWorkspaceEdit,edit,command,errorMessage)
 
-DEFINE_REQUEST_RESPONSE_TYPE(java_getRefactorEdit, GetRefactorEditParams, RefactorWorkspaceEdit);
+DEFINE_REQUEST_RESPONSE_TYPE(java_getRefactorEdit, GetRefactorEditParams, RefactorWorkspaceEdit, "java/getRefactorEdit");
 

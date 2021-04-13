@@ -14,6 +14,11 @@ struct NotificationInMessage : public LspMessage {
 	}
 	
 	std::string method;
+	MethodType GetMethodType() const override { return method.c_str(); }
+	void SetMethodType(MethodType _t)
+	{
+		method = _t;
+	}								  
 };
 template <class T, class TDerived >
 struct lsNotificationInMessage : NotificationInMessage {
@@ -25,6 +30,7 @@ struct lsNotificationInMessage : NotificationInMessage {
 	{
 		method = _method;
 	}
+
 	static std::unique_ptr<LspMessage> ReflectReader(Reader& visitor) {
 
 		TDerived* temp = new TDerived();
@@ -43,13 +49,12 @@ struct lsNotificationInMessage : NotificationInMessage {
 	T params;
 };
 
-#define DEFINE_NOTIFICATION_TYPE(MSG,paramType)\
+#define DEFINE_NOTIFICATION_TYPE(MSG,paramType,methodInfo)\
 namespace  MSG {\
-	extern  MethodType  kMethodType;\
 	struct notify : public lsNotificationInMessage< paramType , notify >{\
-		MethodType GetMethodType() const override { return kMethodType; }\
-		notify():lsNotificationInMessage(kMethodType){}                                   \
-		void SetMethodType(MethodType){}								  \
+		static constexpr   MethodType  kMethodInfo = methodInfo;\
+		notify():lsNotificationInMessage(kMethodInfo){}                                   \
 	};\
 };\
 MAKE_REFLECT_STRUCT(MSG::notify, jsonrpc,method, params)
+

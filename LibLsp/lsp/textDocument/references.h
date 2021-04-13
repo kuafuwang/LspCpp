@@ -44,4 +44,5 @@ MAKE_REFLECT_STRUCT(TextDocumentReferences::Params,
  *
  * Registration Options: TextDocumentRegistrationOptions
  */
-DEFINE_REQUEST_RESPONSE_TYPE(td_references, TextDocumentReferences::Params, std::vector<lsLocation>);
+DEFINE_REQUEST_RESPONSE_TYPE(td_references, TextDocumentReferences::Params, 
+    std::vector<lsLocation>, "textDocument/references");

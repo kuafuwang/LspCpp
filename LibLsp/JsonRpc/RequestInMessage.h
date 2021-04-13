@@ -27,6 +27,11 @@ struct lsRequest : public RequestInMessage
 	{
 		method = _method;
 	}
+	MethodType GetMethodType() const override { return method.c_str(); }
+	void SetMethodType(MethodType _method) override
+	{
+		method = _method;
+	}								  \
 	void ReflectWriter(Writer& writer) override {
 		Reflect(writer, static_cast<TDerived&>(*this));
 	}
@@ -49,35 +54,15 @@ struct lsRequest : public RequestInMessage
 };
 
 
-#define DEFINE_REQUEST_RESPONSE_TYPE(MSG,request_param,response_result)\
+#define DEFINE_REQUEST_RESPONSE_TYPE(MSG,request_param,response_result,methodInfo)\
 namespace  MSG {\
-	extern  MethodType  kMethodType;\
+	struct response :public ResponseMessage< response_result, response> {}; \
 	struct request : public lsRequest< request_param , request >{\
-		MethodType GetMethodType() const override { return kMethodType; }\
-		request():lsRequest(kMethodType){}                                   \
-		void SetMethodType(MethodType){}								  \
+		static constexpr   MethodType  kMethodInfo = methodInfo;\
+		request():lsRequest(kMethodInfo){}                                   \
+		 using _Response = response;\
 	};\
-	struct response :public ResponseMessage< response_result , response>{};\
 };\
 MAKE_REFLECT_STRUCT(MSG::request, jsonrpc, id, method, params);\
 MAKE_REFLECT_STRUCT(MSG::response, jsonrpc, id, result);
 
-
-
-#define DEFINE_REQUEST_TYPE(MSG,request_param)\
-namespace  MSG {\
-	extern  MethodType  kMethodType;\
-	struct request : public lsRequest< request_param , request >{\
-		MethodType GetMethodType() const override { return kMethodType; }\
-		request():lsRequest(kMethodType){}                                   \
-		void SetMethodType(MethodType){}								  \
-	};\
-};\
-MAKE_REFLECT_STRUCT(MSG::request, jsonrpc, id, method, params);
-
-
-#define DEFINE_RESPONSE_TYPE(MSG,response_result)\
-namespace  MSG {\
-	struct response :public ResponseMessage< response_result , response>{};\
-};\
-MAKE_REFLECT_STRUCT(MSG::response, jsonrpc, id, result);

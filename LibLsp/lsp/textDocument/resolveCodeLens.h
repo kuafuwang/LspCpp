@@ -6,5 +6,5 @@
 
 #include "code_lens.h"
 
-DEFINE_REQUEST_RESPONSE_TYPE(codeLens_resolve, lsCodeLens, lsCodeLens)
+DEFINE_REQUEST_RESPONSE_TYPE(codeLens_resolve, lsCodeLens, lsCodeLens, "codeLens/resolve")
 

@@ -21,5 +21,5 @@ struct GenerateDelegateMethodsParams {
 };
 MAKE_REFLECT_STRUCT(GenerateDelegateMethodsParams, context, delegateEntries)
 
-DEFINE_REQUEST_RESPONSE_TYPE(java_generateDelegateMethods, GenerateDelegateMethodsParams, lsWorkspaceEdit);
+DEFINE_REQUEST_RESPONSE_TYPE(java_generateDelegateMethods, GenerateDelegateMethodsParams, lsWorkspaceEdit, "java/generateDelegateMethods");
 

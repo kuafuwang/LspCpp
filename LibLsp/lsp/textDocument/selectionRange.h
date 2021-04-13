@@ -48,5 +48,5 @@ MAKE_REFLECT_STRUCT(SelectionRange,range,parent)
  * suggested selection ranges at an array of given positions. A selection range is a range around
  * the cursor position which the user might be interested in selecting.
  */
-DEFINE_REQUEST_RESPONSE_TYPE(td_selectionRange, SelectionRangeParams, std::vector<SelectionRange>);
+DEFINE_REQUEST_RESPONSE_TYPE(td_selectionRange, SelectionRangeParams, std::vector<SelectionRange>, "textDocument/selectionRange");
 

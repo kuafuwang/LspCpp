@@ -9,5 +9,5 @@
 
 #include "LibLsp/lsp/lsTextDocumentIdentifier.h"
 
-DEFINE_NOTIFICATION_TYPE(java_projectConfigurationUpdate, lsTextDocumentIdentifier);
+DEFINE_NOTIFICATION_TYPE(java_projectConfigurationUpdate, lsTextDocumentIdentifier, "java/projectConfigurationUpdate");
 

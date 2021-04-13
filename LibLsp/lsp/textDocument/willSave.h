@@ -56,7 +56,7 @@ MAKE_REFLECT_STRUCT(WillSaveTextDocumentParams::Params, textDocument, reason);
  *
  * Registration Options: TextDocumentSaveRegistrationOptions
  */
-DEFINE_NOTIFICATION_TYPE(td_willSave, WillSaveTextDocumentParams::Params);
+DEFINE_NOTIFICATION_TYPE(td_willSave, WillSaveTextDocumentParams::Params, "textDocument/willSave");
 
 /**
  * The document will save request is sent from the client to the server before the document is actually saved.
@@ -67,5 +67,5 @@ DEFINE_NOTIFICATION_TYPE(td_willSave, WillSaveTextDocumentParams::Params);
  * Registration Options: TextDocumentRegistrationOptions
  */
 DEFINE_REQUEST_RESPONSE_TYPE(td_willSaveWaitUntil,
-	WillSaveTextDocumentParams::Params, std::vector<lsTextEdit>);
+	WillSaveTextDocumentParams::Params, std::vector<lsTextEdit>, "textDocument/willSaveWaitUntil");
 

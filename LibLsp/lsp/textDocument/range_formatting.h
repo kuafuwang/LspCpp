@@ -28,7 +28,8 @@ MAKE_REFLECT_STRUCT(lsTextDocumentRangeFormattingParams,
  *
  * Registration Options: TextDocumentRegistrationOptions
  */
-DEFINE_REQUEST_TYPE(td_rangeFormatting, lsTextDocumentRangeFormattingParams);
+DEFINE_REQUEST_RESPONSE_TYPE(td_rangeFormatting, lsTextDocumentRangeFormattingParams, std::vector<lsTextEdit>,
+	"textDocument/rangeFormatting");
 
-DEFINE_RESPONSE_TYPE(td_rangeFormatting, std::vector<lsTextEdit>);
+
 

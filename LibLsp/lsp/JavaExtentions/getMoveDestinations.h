@@ -59,7 +59,7 @@ struct MoveDestinationsResponse {
 };
 MAKE_REFLECT_STRUCT(MoveDestinationsResponse, errorMessage, destinations);
 
-DEFINE_REQUEST_RESPONSE_TYPE(java_getMoveDestinations, MoveParams, MoveDestinationsResponse);
+DEFINE_REQUEST_RESPONSE_TYPE(java_getMoveDestinations, MoveParams, MoveDestinationsResponse, "java/getMoveDestinations");
 
 
 

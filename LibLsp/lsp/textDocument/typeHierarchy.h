@@ -130,4 +130,4 @@ MAKE_REFLECT_STRUCT(TypeHierarchyItem, name, detail, kind, deprecated, uri, rang
 
 
 
-DEFINE_REQUEST_RESPONSE_TYPE(td_typeHierarchy, TypeHierarchyParams, TypeHierarchyItem);
+DEFINE_REQUEST_RESPONSE_TYPE(td_typeHierarchy, TypeHierarchyParams, TypeHierarchyItem, "textDocument/typeHierarchy");

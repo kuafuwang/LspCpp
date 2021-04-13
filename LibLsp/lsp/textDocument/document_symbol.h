@@ -49,7 +49,7 @@ void Reflect(Reader& visitor, TextDocumentDocumentSymbol::Either& value);
 
 DEFINE_REQUEST_RESPONSE_TYPE(td_symbol, 
 	lsDocumentSymbolParams,
-	std::vector< lsDocumentSymbol > );
+	std::vector< lsDocumentSymbol >,"textDocument/documentSymbol" );
 
 
 

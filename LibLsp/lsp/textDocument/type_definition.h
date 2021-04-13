@@ -13,4 +13,4 @@
  * Since version 3.6.0
  */
 DEFINE_REQUEST_RESPONSE_TYPE(td_typeDefinition,
-	lsTextDocumentPositionParams, LocationListEither::Either);
+	lsTextDocumentPositionParams, LocationListEither::Either, "textDocument/typeDefinition");

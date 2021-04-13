@@ -20,6 +20,6 @@ struct GenerateHashCodeEqualsParams {
 };
 MAKE_REFLECT_STRUCT(GenerateHashCodeEqualsParams, context, fields, regenerate);
 
-DEFINE_REQUEST_RESPONSE_TYPE(java_generateHashCodeEquals, GenerateHashCodeEqualsParams, lsWorkspaceEdit)
+DEFINE_REQUEST_RESPONSE_TYPE(java_generateHashCodeEquals, GenerateHashCodeEqualsParams, lsWorkspaceEdit, "java/generateHashCodeEquals")
 
 

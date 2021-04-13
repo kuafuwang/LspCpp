@@ -43,4 +43,4 @@ struct RegistrationParams
  */
 MAKE_REFLECT_STRUCT(RegistrationParams, registrations);
 
-DEFINE_REQUEST_RESPONSE_TYPE(Req_ClientRegisterCapability, RegistrationParams,JsonNull);
+DEFINE_REQUEST_RESPONSE_TYPE(Req_ClientRegisterCapability, RegistrationParams,JsonNull, "client/registerCapability");

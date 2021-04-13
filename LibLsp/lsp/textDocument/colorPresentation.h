@@ -60,4 +60,4 @@ MAKE_REFLECT_STRUCT(ColorPresentation, label, textEdit, additionalTextEdits)
 
 
 DEFINE_REQUEST_RESPONSE_TYPE(td_colorPresentation,
-	ColorPresentationParams, std::vector<ColorPresentation>)
+	ColorPresentationParams, std::vector<ColorPresentation>, "textDocument/colorPresentation")

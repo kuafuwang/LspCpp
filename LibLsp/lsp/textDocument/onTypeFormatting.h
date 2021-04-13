@@ -40,5 +40,5 @@ MAKE_REFLECT_STRUCT(lsDocumentOnTypeFormattingParams,
  * Registration Options: TextDocumentRegistrationOptions
  */
 DEFINE_REQUEST_RESPONSE_TYPE(td_onTypeFormatting,
-	lsDocumentOnTypeFormattingParams, std::vector<lsTextEdit>);
+	lsDocumentOnTypeFormattingParams, std::vector<lsTextEdit>, "textDocument/onTypeFormatting");
 

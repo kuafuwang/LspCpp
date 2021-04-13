@@ -35,5 +35,5 @@ MAKE_REFLECT_STRUCT(TextDocumentDidOpen::Params, textDocument, text);
  */;
 
 
-DEFINE_NOTIFICATION_TYPE(Notify_TextDocumentDidOpen, TextDocumentDidOpen::Params);
+DEFINE_NOTIFICATION_TYPE(Notify_TextDocumentDidOpen, TextDocumentDidOpen::Params, "textDocument/didOpen");
 

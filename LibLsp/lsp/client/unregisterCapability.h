@@ -38,4 +38,4 @@ struct UnregistrationParams
 
 MAKE_REFLECT_STRUCT(UnregistrationParams, unregisterations);
 
-DEFINE_REQUEST_RESPONSE_TYPE(Req_ClientUnregisterCapability, UnregistrationParams,JsonNull);
+DEFINE_REQUEST_RESPONSE_TYPE(Req_ClientUnregisterCapability, UnregistrationParams,JsonNull, "client/unregisterCapability");

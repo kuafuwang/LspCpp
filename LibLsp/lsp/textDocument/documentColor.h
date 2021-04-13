@@ -70,4 +70,4 @@ struct ColorInformation {
 };
 MAKE_REFLECT_STRUCT(ColorInformation,range,color)
 
-DEFINE_REQUEST_RESPONSE_TYPE(td_documentColor, DocumentColorParams, ColorInformation);
+DEFINE_REQUEST_RESPONSE_TYPE(td_documentColor, DocumentColorParams, ColorInformation, "textDocument/documentColor");

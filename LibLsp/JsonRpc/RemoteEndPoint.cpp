@@ -22,6 +22,7 @@ using namespace  lsp;
 
 struct RemoteEndPointData
 {
+	std::atomic<long long> m_id;
 	boost::threadpool::pool tp;
 };
 bool isResponseMessage(JsonReader& visitor)
@@ -73,13 +74,11 @@ bool isNotificationMessage(JsonReader& visitor)
 	return true;
 }
 
-RemoteEndPoint::RemoteEndPoint(lsp::istream& in, lsp::ostream& out,
-	MessageJsonHandler& json_handler, Endpoint& localEndPoint, lsp::Log& _log, uint8_t max_workers):
-	input(in),
-	output(out),
+RemoteEndPoint::RemoteEndPoint(
+	std::shared_ptr < MessageJsonHandler> json_handler, std::shared_ptr < Endpoint> localEndPoint, lsp::Log& _log, uint8_t max_workers):
     jsonHandler(json_handler),log(_log),local_endpoint(localEndPoint)
 {
-	message_producer = new StreamMessageProducer(*this, in);
+	message_producer = new StreamMessageProducer(*this);
 	quit.store(false, std::memory_order_relaxed);
 	d_ptr = new RemoteEndPointData();
 	d_ptr->tp.size_controller().resize(max_workers);
@@ -132,7 +131,7 @@ bool RemoteEndPoint::dispatch(const std::string& content)
 		}
 		if (isRequestMessage(visitor))
 		{
-			auto msg = jsonHandler.parseRequstMessage(visitor["method"]->GetString(), visitor);
+			auto msg = jsonHandler->parseRequstMessage(visitor["method"]->GetString(), visitor);
 			if (msg) {
 				auto temp = reinterpret_cast<RequestInMessage*>(msg.get());
 				{
@@ -162,7 +161,7 @@ bool RemoteEndPoint::dispatch(const std::string& content)
 				if (!msgInfo)
 				{
 					std::pair<std::string, std::unique_ptr<LspMessage>> result;
-					auto b = jsonHandler.resovleResponseMessage(visitor, result);
+					auto b = jsonHandler->resovleResponseMessage(visitor, result);
 					if (b)
 					{
 						result.second->SetMethodType(result.first.c_str());
@@ -179,7 +178,7 @@ bool RemoteEndPoint::dispatch(const std::string& content)
 				else
 				{
 					
-					auto msg = jsonHandler.parseResponseMessage(msgInfo->method, visitor);
+					auto msg = jsonHandler->parseResponseMessage(msgInfo->method, visitor);
 					if(msg){
 						mainLoop(std::move(msg));
 					}
@@ -209,7 +208,7 @@ bool RemoteEndPoint::dispatch(const std::string& content)
 			// 调用notification handler来处理
 			try
 			{
-				auto msg = jsonHandler.parseNotificationMessage(visitor["method"]->GetString(), visitor);
+				auto msg = jsonHandler->parseNotificationMessage(visitor["method"]->GetString(), visitor);
 				if(!msg)
 				{
 					std::string info = "Unknown notification message :\n";
@@ -217,7 +216,7 @@ bool RemoteEndPoint::dispatch(const std::string& content)
 					log.log(Log::Level::SEVERE, info);
 					return  false;
 				}
-				if(msg->GetMethodType() == Notify_Cancellation::kMethodType)
+				if(msg->GetMethodType() == Notify_Cancellation::notify::kMethodInfo)
 				{
 					
 					auto temp = reinterpret_cast<Notify_Cancellation::notify*>(msg.get());
@@ -258,30 +257,28 @@ bool RemoteEndPoint::dispatch(const std::string& content)
 	return  true;
 }
 
-long RemoteEndPoint::sendRequest( RequestInMessage& info)
-{
-	return sendRequest(info, nullptr);
-}
 
-long RemoteEndPoint::sendRequest( RequestInMessage& info, RequestCallFun call_fun)
+
+void RemoteEndPoint::internalSendRequest( RequestInMessage& info, RequestCallFun call_fun)
 {
 	{
 		std::lock_guard<std::mutex> lock(m_sendMutex);
-		if (!output || !output.good())
+		if (!output || !output->good())
 		{
 			std::string info = "output isn't good any more:\n";
 			log.log(Log::Level::INFO, info);
-			return -1;
+			return ;
 		}
-		::_InterlockedIncrement(&m_generate);
-		info.id.set(m_generate);
+		
+		d_ptr->m_id.fetch_add(1, std::memory_order_relaxed);
+		
+		info.id.set(d_ptr->m_id);
 		std::lock_guard<std::mutex> lock2(m_requsetInfo);
 		_client_request_futures[info.id.value] = PendingRequestInfo(info.method, call_fun);
 		const auto s = info.ToJson();
 		
-		output.write("Content-Length: ").write(s.size()) .write("\r\n\r\n").write(s) ;
-		output.flush();
-		return  m_generate;
+		output->write("Content-Length: ").write(s.size()) .write("\r\n\r\n").write(s) ;
+		output->flush();
 	}
 }
 
@@ -290,11 +287,11 @@ void RemoteEndPoint::sendNotification( NotificationInMessage& msg)
 	sendMsg(msg);
 }
 
-std::unique_ptr<LspMessage> RemoteEndPoint::waitResponse(RequestInMessage& request, unsigned time_out)
+std::unique_ptr<LspMessage> RemoteEndPoint::internalWaitResponse(RequestInMessage& request, unsigned time_out)
 {
 	auto  eventFuture = std::make_shared< Condition< LspMessage > >();
 
-	sendRequest(request, [=](std::unique_ptr<LspMessage> data)
+	internalSendRequest(request, [=](std::unique_ptr<LspMessage> data)
 	{
 			eventFuture->notify(std::move(data));
 			return  true;
@@ -336,7 +333,7 @@ void RemoteEndPoint::mainLoop(std::unique_ptr<LspMessage>msg)
 					std::lock_guard<std::mutex> lock(m_sendMutex);
 					receivedRequestMap.erase(temp->id.value);
 				}
-				local_endpoint.onRequest(std::move(msg));
+				local_endpoint->onRequest(std::move(msg));
 
 			}
 			catch (std::exception& e)
@@ -357,7 +354,7 @@ void RemoteEndPoint::mainLoop(std::unique_ptr<LspMessage>msg)
 				auto msgInfo = GetRequestInfo(id);
 				if (!msgInfo)
 				{
-					local_endpoint.onResponse(msg->GetMethodType(), std::move(msg));
+					local_endpoint->onResponse(msg->GetMethodType(), std::move(msg));
 				}
 				else
 				{
@@ -376,7 +373,7 @@ void RemoteEndPoint::mainLoop(std::unique_ptr<LspMessage>msg)
 					
 					if (needLocal)
 					{
-						local_endpoint.onResponse(msgInfo->method, std::move(msg));
+						local_endpoint->onResponse(msgInfo->method, std::move(msg));
 					}
 					removeRequestInfo(id);
 				}
@@ -396,7 +393,7 @@ void RemoteEndPoint::mainLoop(std::unique_ptr<LspMessage>msg)
 			// 调用notification handler来处理
 			try
 			{
-				local_endpoint.notify(std::move(msg));
+				local_endpoint->notify(std::move(msg));
 			}
 			catch (std::exception& e)
 			{
@@ -426,8 +423,12 @@ void RemoteEndPoint::handle(MessageIssue&& issue)
 }
 
 
-void RemoteEndPoint::StartThread()
+void RemoteEndPoint::startProcessingMessages(std::shared_ptr<lsp::istream> r,
+	std::shared_ptr<lsp::ostream> w)
 {
+	input = r;
+	output = w;
+	message_producer->bind(r);
 	message_producer_thread_ = std::make_shared<std::thread>([&]()
 		{
 			message_producer->listen(std::bind(&RemoteEndPoint::consumer, this, std::placeholders::_1));
@@ -436,7 +437,7 @@ void RemoteEndPoint::StartThread()
 
 }
 
-void RemoteEndPoint::StopThread()
+void RemoteEndPoint::Stop()
 {
 	if(message_producer_thread_ && message_producer_thread_->joinable())
 	{
@@ -460,14 +461,15 @@ void RemoteEndPoint::removeRequestInfo(int _id)
 
 void RemoteEndPoint::sendMsg( LspMessage& msg)
 {
+
 	std::lock_guard<std::mutex> lock(m_sendMutex);
-	if (!output || !output.good())
+	if (!output || !output->good())
 	{
 		std::string info = "output isn't good any more:\n";
 		log.log(Log::Level::INFO, info);
 		return;
 	}
 	const auto& s = msg.ToJson();
-	output.write(  "Content-Length: " ).write(s.size()) .write("\r\n\r\n").write(s);
-	output.flush();
+	output->write(  "Content-Length: " ).write(s.size()) .write("\r\n\r\n").write(s);
+	output->flush();
 }

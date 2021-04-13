@@ -12,11 +12,10 @@ namespace lsp {
 	    struct TcpServerData
 	    {
 		    TcpServerData(
-                MessageJsonHandler& _handler, Endpoint& _endpoint, lsp::Log& log, uint32_t _max_workers) :
+                lsp::Log& log, uint32_t _max_workers) :
 			    acceptor_(io_context_), proxy_iostream_(nullptr),
-			    jsonHandler(_handler),
-			    local_endpoint(_endpoint),
-			    _log(log), max_workers(_max_workers)
+			   
+			    _log(log)
 		    {
 		    }
 
@@ -36,9 +35,9 @@ namespace lsp {
           
             boost::asio::ip::tcp::iostream iostream_;
             std::shared_ptr < base_iostream<boost::asio::ip::tcp::iostream>> proxy_iostream_;
-            MessageJsonHandler& jsonHandler;
-            uint32_t max_workers;
-            Endpoint& local_endpoint;
+        
+         
+          
             lsp::Log& _log;
 	    };
 
@@ -48,8 +47,9 @@ namespace lsp {
 	    }
 
         TcpServer::TcpServer(const std::string& address, const std::string& port, 
-	                         MessageJsonHandler& _handler, Endpoint& _endpoint, lsp::Log& log, uint32_t _max_workers)
-            : d_ptr(new TcpServerData(_handler, _endpoint, log, _max_workers))
+            std::shared_ptr < MessageJsonHandler> json_handler,
+            std::shared_ptr < Endpoint> localEndPoint, lsp::Log& log, uint32_t _max_workers)
+            : remote_end_point_(json_handler, localEndPoint, log, _max_workers),d_ptr(new TcpServerData( log, _max_workers))
            
         {
            
@@ -116,21 +116,18 @@ namespace lsp {
 
                     if (!ec)
                     {
-                    	if(remote_end_point_)
+                    	if(d_ptr->proxy_iostream_)
                     	{
                             d_ptr->iostream_.close();
-                            remote_end_point_->StopThread();
+                            remote_end_point_.Stop();
                     	}
                      
                         d_ptr->iostream_ = boost::asio::ip::tcp::iostream(std::move(socket));
                     	
                         d_ptr->proxy_iostream_ = std::make_shared < base_iostream<boost::asio::ip::tcp::iostream> >(d_ptr->iostream_);
                     	
-                        remote_end_point_ = std::make_shared<RemoteEndPoint>(*(d_ptr->proxy_iostream_),
-                            *(d_ptr->proxy_iostream_), d_ptr->jsonHandler, d_ptr->local_endpoint, 
-                            d_ptr->_log, d_ptr->max_workers);
-                    	
-                        remote_end_point_->StartThread();
+                     
+                        remote_end_point_.startProcessingMessages(d_ptr->proxy_iostream_, d_ptr->proxy_iostream_);
                         do_accept();
                     }
 
@@ -141,10 +138,9 @@ namespace lsp {
         void TcpServer::do_stop()
         {
             d_ptr->acceptor_.close();
-            if(remote_end_point_)
-            {
-                remote_end_point_->StopThread();
-            }
+           
+           remote_end_point_.Stop();
+            
         }
 
     } // namespace 

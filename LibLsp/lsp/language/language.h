@@ -35,7 +35,7 @@ MAKE_REFLECT_STRUCT(StatusReport, type, message);
  * The show message notification is sent from a server to a client to ask
  * the client to display a particular message in the user interface.
  */
-DEFINE_NOTIFICATION_TYPE(lang_status, StatusReport);
+DEFINE_NOTIFICATION_TYPE(lang_status, StatusReport, "language/status");
 
 
 enum class MessageType {
@@ -105,7 +105,7 @@ MAKE_REFLECT_STRUCT(ActionableNotification, severity, message, data, commands)
  * client to display a particular message in the user interface, and possible
  * commands to execute. The commands must be implemented on the client side.
  */
-DEFINE_NOTIFICATION_TYPE(lang_actionableNotification, ActionableNotification);
+DEFINE_NOTIFICATION_TYPE(lang_actionableNotification, ActionableNotification, "language/actionableNotification");
 
 
 
@@ -140,7 +140,7 @@ MAKE_REFLECT_STRUCT(ProgressReport, id, task, subTask, status, workDone, complet
  * The progress report notification is sent from a server to be handled by the
  * client.
  */
-DEFINE_NOTIFICATION_TYPE(lang_progressReport, ProgressReport);
+DEFINE_NOTIFICATION_TYPE(lang_progressReport, ProgressReport, "language/progressReport");
 
 enum EventType {
 	/**
@@ -163,4 +163,4 @@ struct EventNotification
 };
 MAKE_REFLECT_STRUCT(EventNotification, eventType, data);
 
-DEFINE_NOTIFICATION_TYPE(lang_eventNotification, EventNotification);
+DEFINE_NOTIFICATION_TYPE(lang_eventNotification, EventNotification, "language/eventNotification");

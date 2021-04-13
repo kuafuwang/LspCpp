@@ -26,6 +26,6 @@ namespace  buildpath
 }
 
 
-DEFINE_REQUEST_RESPONSE_TYPE(java_executeCommand, ExecuteCommandParams, lsWorkspaceEdit);
+DEFINE_REQUEST_RESPONSE_TYPE(java_executeCommand, ExecuteCommandParams, lsWorkspaceEdit, "java/executeCommand");
 
 

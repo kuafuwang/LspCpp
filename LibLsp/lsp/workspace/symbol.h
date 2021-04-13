@@ -12,5 +12,5 @@
  * Registration Options: void
  */
 
-DEFINE_REQUEST_RESPONSE_TYPE(wp_symbol, WorkspaceSymbolParams, std::vector<lsSymbolInformation>);
+DEFINE_REQUEST_RESPONSE_TYPE(wp_symbol, WorkspaceSymbolParams, std::vector<lsSymbolInformation>, "workspace/symbol");
 

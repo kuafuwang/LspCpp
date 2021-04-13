@@ -34,4 +34,4 @@ MAKE_REFLECT_STRUCT(ConfigurationParams, items);
  * order of the passed ConfigurationItems (e.g. the first item in the response is the
  * result for the first configuration item in the params).
  */
-DEFINE_REQUEST_RESPONSE_TYPE(WorkspaceConfiguration, ConfigurationParams,std::vector<lsp::Any>);
+DEFINE_REQUEST_RESPONSE_TYPE(WorkspaceConfiguration, ConfigurationParams,std::vector<lsp::Any>, "workspace/configuration");

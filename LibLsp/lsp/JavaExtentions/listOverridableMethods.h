@@ -10,7 +10,7 @@
 
 
 
-DEFINE_REQUEST_RESPONSE_TYPE(java_listOverridableMethods, lsCodeActionParams, OverridableMethodsResponse);
+DEFINE_REQUEST_RESPONSE_TYPE(java_listOverridableMethods, lsCodeActionParams, OverridableMethodsResponse, "java/listOverridableMethods");
 
 
 

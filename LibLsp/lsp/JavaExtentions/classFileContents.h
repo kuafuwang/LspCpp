@@ -6,5 +6,5 @@
 #include <string>
 #include "LibLsp/lsp/lsTextDocumentIdentifier.h"
 
-DEFINE_REQUEST_RESPONSE_TYPE(java_classFileContents, lsTextDocumentIdentifier, std::string);
+DEFINE_REQUEST_RESPONSE_TYPE(java_classFileContents, lsTextDocumentIdentifier, std::string ,"java/classFileContents");
 

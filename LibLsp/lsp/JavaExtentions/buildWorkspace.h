@@ -14,4 +14,4 @@ enum class  BuildWorkspaceStatus : uint8_t{
 };
 MAKE_REFLECT_TYPE_PROXY(BuildWorkspaceStatus)
 
-DEFINE_REQUEST_RESPONSE_TYPE(java_buildWorkspace, bool, BuildWorkspaceStatus);
+DEFINE_REQUEST_RESPONSE_TYPE(java_buildWorkspace, bool, BuildWorkspaceStatus, "java/buildWorkspace");

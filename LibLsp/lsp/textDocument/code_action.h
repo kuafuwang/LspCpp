@@ -34,6 +34,4 @@ namespace  QuickAssistProcessor {
  * Registration Options: TextDocumentRegistrationOptions
  */
 
-//DEFINE_REQUEST_RESPONSE_TYPE(td_codeAction, lsCodeActionParams, std::vector<TextDocumentCodeAction::Either>);
-
-DEFINE_REQUEST_RESPONSE_TYPE(td_codeAction, lsCodeActionParams, std::vector<lsCommandWithAny>);
+DEFINE_REQUEST_RESPONSE_TYPE(td_codeAction, lsCodeActionParams, std::vector<lsCommandWithAny>, "textDocument/codeAction");

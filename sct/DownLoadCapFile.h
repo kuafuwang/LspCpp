@@ -20,7 +20,7 @@ struct NormalActionResult
 };
 MAKE_REFLECT_STRUCT(NormalActionResult, data, state, info)
 
-DEFINE_REQUEST_RESPONSE_TYPE(sct_DownLoadCapFile, DownLoadCapFileParams, NormalActionResult);
+DEFINE_REQUEST_RESPONSE_TYPE(sct_DownLoadCapFile, DownLoadCapFileParams, NormalActionResult, "sct/download_cap");
 
 
 
@@ -40,7 +40,7 @@ struct ConnectParams
 	MAKE_SWAP_METHOD(ConnectParams, reader, protocol,data);
 };
 MAKE_REFLECT_STRUCT(ConnectParams, reader, protocol, data);
-DEFINE_REQUEST_RESPONSE_TYPE(sct_Connect, ConnectParams, NormalActionResult);
+DEFINE_REQUEST_RESPONSE_TYPE(sct_Connect, ConnectParams, NormalActionResult, "sct/connect");
 
 
 
@@ -52,7 +52,7 @@ struct SetProtocolParams
 };
 MAKE_REFLECT_STRUCT(SetProtocolParams, protocol);
 
-DEFINE_REQUEST_RESPONSE_TYPE(sct_SetProtocol, SetProtocolParams, NormalActionResult);
+DEFINE_REQUEST_RESPONSE_TYPE(sct_SetProtocol, SetProtocolParams, NormalActionResult, "sct/set_protocol");
 
 struct GPAuthParams
 {
@@ -62,7 +62,7 @@ struct GPAuthParams
 	MAKE_SWAP_METHOD(GPAuthParams, key, scp, option);
 };
 MAKE_REFLECT_STRUCT(GPAuthParams, key, scp, option);
-DEFINE_REQUEST_RESPONSE_TYPE(sct_gp_auth, GPAuthParams, NormalActionResult);
+DEFINE_REQUEST_RESPONSE_TYPE(sct_gp_auth, GPAuthParams, NormalActionResult ,"sct/gp_auth");
 
 
 
@@ -76,7 +76,7 @@ struct InstallAppletParams
 	MAKE_SWAP_METHOD(InstallAppletParams, package_aid, applet_aid, instance_aid, authority, parameters);
 };
 MAKE_REFLECT_STRUCT(InstallAppletParams, package_aid, applet_aid, instance_aid, authority, parameters);
-DEFINE_REQUEST_RESPONSE_TYPE(sct_InstalllApplet, InstallAppletParams, NormalActionResult);
+DEFINE_REQUEST_RESPONSE_TYPE(sct_InstalllApplet, InstallAppletParams, NormalActionResult, "sct/install_applet");
 
 
 struct TransmitParams
@@ -86,9 +86,9 @@ struct TransmitParams
 };
 MAKE_REFLECT_STRUCT(TransmitParams, command);
 
-DEFINE_REQUEST_RESPONSE_TYPE(sct_Transmit, TransmitParams, NormalActionResult);
+DEFINE_REQUEST_RESPONSE_TYPE(sct_Transmit, TransmitParams, NormalActionResult,"sct/transmit");
 
-DEFINE_NOTIFICATION_TYPE(sct_Disconnect,JsonNull)
+DEFINE_NOTIFICATION_TYPE(sct_Disconnect,JsonNull, "sct/disconnect")
 
 
 struct SetWindowPosParams{
@@ -100,7 +100,7 @@ struct SetWindowPosParams{
 	MAKE_SWAP_METHOD(SetWindowPosParams, X, Y, cx, cy);
 };
 MAKE_REFLECT_STRUCT(SetWindowPosParams, X, Y, cx, cy);
-DEFINE_NOTIFICATION_TYPE(sct_SetWindowsPos, SetWindowPosParams)
+DEFINE_NOTIFICATION_TYPE(sct_SetWindowsPos, SetWindowPosParams, "sct/set_windows_pos")
 
 struct SetWindowVisibleParams
 {
@@ -112,7 +112,7 @@ struct SetWindowVisibleParams
 	MAKE_SWAP_METHOD(SetWindowVisibleParams, state);
 };
 MAKE_REFLECT_STRUCT(SetWindowVisibleParams, state);
-DEFINE_NOTIFICATION_TYPE(sct_SetWindowsVisible, SetWindowVisibleParams)
+DEFINE_NOTIFICATION_TYPE(sct_SetWindowsVisible, SetWindowVisibleParams, "sct/set_windows_visible")
 
 
 
@@ -130,7 +130,7 @@ struct  GetCardInfoParams
 };
 MAKE_REFLECT_STRUCT(GetCardInfoParams, type_);
 
-DEFINE_REQUEST_RESPONSE_TYPE(sct_GetCardInfo, GetCardInfoParams, NormalActionResult);
+DEFINE_REQUEST_RESPONSE_TYPE(sct_GetCardInfo, GetCardInfoParams, NormalActionResult, "sct/get_card_info");
 
 
 struct JdwpInfo
@@ -159,7 +159,7 @@ struct JcvmOutputParams
 };
 MAKE_REFLECT_STRUCT(JcvmOutputParams, data);
 
-DEFINE_NOTIFICATION_TYPE(sct_NotifyJcvmOutput, JcvmOutputParams);
+DEFINE_NOTIFICATION_TYPE(sct_NotifyJcvmOutput, JcvmOutputParams,"sct/notify_jcvm_output");
 
 
 struct LaunchParam
@@ -175,17 +175,17 @@ struct LaunchParam
 MAKE_REFLECT_STRUCT(LaunchParam, launch_for_what);
 
 
-DEFINE_REQUEST_RESPONSE_TYPE(sct_Launch, LaunchParam, LaunchResult);
+DEFINE_REQUEST_RESPONSE_TYPE(sct_Launch, LaunchParam, LaunchResult , "sct/launch");
 
 
-DEFINE_REQUEST_RESPONSE_TYPE(sct_CheckBeforeLaunch, JsonNull, NormalActionResult);
+DEFINE_REQUEST_RESPONSE_TYPE(sct_CheckBeforeLaunch, JsonNull, NormalActionResult, "sct/check_before_launch");
 
 
 
-DEFINE_NOTIFICATION_TYPE(sct_NotifyDisconnect, JsonNull);
+DEFINE_NOTIFICATION_TYPE(sct_NotifyDisconnect, JsonNull,"sct/notify_disconnect");
 
 
-DEFINE_NOTIFICATION_TYPE(sct_TerminateLaunch, JsonNull);
+DEFINE_NOTIFICATION_TYPE(sct_TerminateLaunch, JsonNull, "sct/terminate_launch");
 
 
 
@@ -219,4 +219,4 @@ struct stcInitializeResult
 };
 MAKE_REFLECT_STRUCT(stcInitializeResult, capabilities);
 
-DEFINE_REQUEST_RESPONSE_TYPE(sct_initialize, sctInitializeParams, stcInitializeResult);
+DEFINE_REQUEST_RESPONSE_TYPE(sct_initialize, sctInitializeParams, stcInitializeResult, "sct/initialize");

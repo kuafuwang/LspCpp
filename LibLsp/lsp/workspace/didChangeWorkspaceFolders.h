@@ -41,7 +41,7 @@ MAKE_REFLECT_STRUCT(DidChangeWorkspaceFoldersParams, event);
  * registered to receive this notification it first.
  */
 DEFINE_NOTIFICATION_TYPE(Notify_WorkspaceDidChangeWorkspaceFolders, 
-	DidChangeWorkspaceFoldersParams);
+	DidChangeWorkspaceFoldersParams, "workspace/didChangeWorkspaceFolders");
 
 
 

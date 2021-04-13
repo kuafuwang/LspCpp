@@ -27,5 +27,5 @@ MAKE_REFLECT_STRUCT(TextDocumentDidSave::Params, textDocument, text);
  *
  * Registration Options: TextDocumentSaveRegistrationOptions
  */
-DEFINE_NOTIFICATION_TYPE(Notify_TextDocumentDidSave, TextDocumentDidSave::Params);
+DEFINE_NOTIFICATION_TYPE(Notify_TextDocumentDidSave, TextDocumentDidSave::Params, "textDocument/didSave");
 

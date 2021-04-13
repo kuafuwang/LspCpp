@@ -15,4 +15,4 @@ struct GenerateToStringParams {
 };
 MAKE_REFLECT_STRUCT(GenerateToStringParams, context, fields)
 
-DEFINE_REQUEST_RESPONSE_TYPE(java_generateToString, GenerateToStringParams, lsWorkspaceEdit);
+DEFINE_REQUEST_RESPONSE_TYPE(java_generateToString, GenerateToStringParams, lsWorkspaceEdit, "java/generateToString");

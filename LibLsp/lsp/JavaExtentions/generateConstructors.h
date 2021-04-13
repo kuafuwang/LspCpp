@@ -15,5 +15,5 @@ struct GenerateConstructorsParams {
 };
 MAKE_REFLECT_STRUCT(GenerateConstructorsParams, context, fields)
 
-DEFINE_REQUEST_RESPONSE_TYPE(java_generateConstructors, GenerateConstructorsParams, lsWorkspaceEdit);
+DEFINE_REQUEST_RESPONSE_TYPE(java_generateConstructors, GenerateConstructorsParams, lsWorkspaceEdit, "java/generateConstructors");
 

@@ -43,6 +43,6 @@ MAKE_REFLECT_STRUCT(lsDidChangeWatchedFilesParams, changes);
   * registered to receive this notification it first.
   */
 
-DEFINE_NOTIFICATION_TYPE(Notify_WorkspaceDidChangeWatchedFiles, lsDidChangeWatchedFilesParams);
+DEFINE_NOTIFICATION_TYPE(Notify_WorkspaceDidChangeWatchedFiles, lsDidChangeWatchedFilesParams, "workspace/didChangeWatchedFiles");
 
 

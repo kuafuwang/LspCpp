@@ -39,4 +39,4 @@ struct  ApplyWorkspaceEditResponse
 MAKE_REFLECT_STRUCT(ApplyWorkspaceEditResponse, applied, failureReason);
 
 
-DEFINE_REQUEST_RESPONSE_TYPE(WorkspaceApply, ApplyWorkspaceEditParams, ApplyWorkspaceEditResponse);
+DEFINE_REQUEST_RESPONSE_TYPE(WorkspaceApply, ApplyWorkspaceEditParams, ApplyWorkspaceEditResponse, "workspace/applyEdit");

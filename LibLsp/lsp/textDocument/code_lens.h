@@ -38,5 +38,5 @@ MAKE_REFLECT_STRUCT(lsCodeLens, range, command, data)
  *
  * Registration Options: CodeLensRegistrationOptions
  */
-DEFINE_REQUEST_RESPONSE_TYPE(td_codeLens, lsDocumentCodeLensParams, std::vector<lsCodeLens>)
+DEFINE_REQUEST_RESPONSE_TYPE(td_codeLens, lsDocumentCodeLensParams, std::vector<lsCodeLens>, "textDocument/codeLens")
 

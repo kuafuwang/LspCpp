@@ -19,5 +19,5 @@ namespace Cancellation
 };
 MAKE_REFLECT_STRUCT(Cancellation::Params, id);
 
-DEFINE_NOTIFICATION_TYPE(Notify_Cancellation, Cancellation::Params);
+DEFINE_NOTIFICATION_TYPE(Notify_Cancellation, Cancellation::Params,"$/cancelRequest");
 

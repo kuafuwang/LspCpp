@@ -72,7 +72,7 @@ extern  void Reflect(Reader& visitor, TextDocumentComplete::Either& value);
  *
  * Registration Options: CompletionRegistrationOptions
  */
-DEFINE_REQUEST_RESPONSE_TYPE(td_completion, lsCompletionParams, CompletionList)
+DEFINE_REQUEST_RESPONSE_TYPE(td_completion, lsCompletionParams, CompletionList , "textDocument/completion")
 
 
 

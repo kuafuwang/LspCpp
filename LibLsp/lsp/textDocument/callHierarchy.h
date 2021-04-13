@@ -96,4 +96,4 @@ MAKE_REFLECT_STRUCT(CallHierarchyCall, range, from, to);
 
 
 
-DEFINE_REQUEST_RESPONSE_TYPE(td_callHierarchy, CallHierarchyParams, std::vector<CallHierarchySymbol>);
+DEFINE_REQUEST_RESPONSE_TYPE(td_callHierarchy, CallHierarchyParams, std::vector<CallHierarchySymbol>, "textDocument/callHierarchy");
