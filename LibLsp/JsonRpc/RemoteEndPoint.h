@@ -214,12 +214,15 @@ public:
 			Rsp_Error* rsp_error = dynamic_cast<Rsp_Error*>(result);
 			if(rsp_error)
 			{
-				promise->set_value( lsp::ResponseOrError<Response>(*rsp_error) );
+				Rsp_Error temp;
+				std::swap(temp, *rsp_error);
+				promise->set_value( lsp::ResponseOrError<Response>(std::move(temp)) );
 			}
 			else
 			{
-				promise->set_value( lsp::ResponseOrError<Response>(
-					*reinterpret_cast<const Response*>(result)) );
+				Response temp;
+				std::swap(temp,*reinterpret_cast<Response*>(result));
+				promise->set_value( lsp::ResponseOrError<Response>( std::move(temp) ) );
 			}
 			return  true;
 		};
