@@ -5,7 +5,7 @@
 #include "MessageIssue.h"
 #include "LibLsp/lsp/lsp_diagnostic.h"
 #include "LibLsp/JsonRpc/MessageJsonHandler.h"
-
+#include "Endpoint.h"
 namespace lsp {
 	class ostream;
 	class istream;
