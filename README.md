@@ -19,7 +19,6 @@
 ##  Demo:
 ```cpp
 
-
 #include "LibLsp/lsp/general/exit.h"
 #ifdef _CONSOLE
 #ifdef TCP_SERVER_EXAMPLE
@@ -192,18 +191,41 @@ int main()
 	client.remote_end_point_.sendNotification(notify);
 	
 	td_initialize::request req;
-	
-	auto rsp = client.remote_end_point_.waitResponse(req);
-	if(rsp)
 	{
-		std::cout << rsp->ToJson() << std::endl;
+		auto rsp = client.remote_end_point_.waitResponse(req);
+		if (rsp)
+		{
+			std::cout << rsp->ToJson() << std::endl;
+		}
+		else
+		{
+			std::cout << "get initialze  response time out" << std::endl;
+		}
 	}
-	
+
+	auto future_rsp = client.remote_end_point_.sendRequest(req);
+	auto state = future_rsp.wait_for(std::chrono::seconds(4));
+	if (std::future_status::timeout == state)
+	{
+		std::cout << "get initialze  response time out" << std::endl;
+		return 0;
+	}
+	auto rsp = future_rsp.get();
+	if (rsp.error)
+	{
+		std::cout << "get initialze  response error" << std::endl;
+		
+	}
+	else
+	{
+		std::cout << rsp.response.ToJson() << std::endl;
+	}
 	return 0;
 }
 #endif
 
 #endif
+
 
 
 ```

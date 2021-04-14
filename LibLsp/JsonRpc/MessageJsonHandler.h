@@ -5,13 +5,18 @@
 #include <LibLsp/JsonRpc/message.h>
 class Reader;
 
+
+using  GenericRequestJsonHandler = std::function< std::unique_ptr<LspMessage>(Reader&) >;
+using  GenericResponseJsonHandler = std::function< std::unique_ptr<LspMessage>(Reader&) >;
+using  GenericNotificationJsonHandler = std::function< std::unique_ptr<LspMessage>(Reader&) >;
+
 class MessageJsonHandler
 {
 public:
-	std::map< std::string, std::function< std::unique_ptr<LspMessage>(Reader&) > > method2response;
-	std::map< std::string, std::function< std::unique_ptr<LspMessage>(Reader&) > > method2request;
+	std::map< std::string, GenericRequestJsonHandler  > method2response;
+	std::map< std::string, GenericResponseJsonHandler > method2request;
 
-	std::map< std::string, std::function<std::unique_ptr<LspMessage> (Reader&) > > method2notification;
+	std::map< std::string, GenericNotificationJsonHandler > method2notification;
 
 	std::unique_ptr<LspMessage> parseResponseMessage(const std::string&, Reader&);
 	std::unique_ptr<LspMessage> parseRequstMessage(const std::string&, Reader&);

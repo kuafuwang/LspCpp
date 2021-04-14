@@ -105,7 +105,7 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='console|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>.\;$(IncludePath)</IncludePath>
+    <IncludePath>.\;.\third_party\threadpool;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>

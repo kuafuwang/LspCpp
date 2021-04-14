@@ -8,7 +8,7 @@
 #include "LibLsp/JsonRpc/message.h"
 #include "LibLsp/lsp/method_type.h"
 #include "lsResponseMessage.h"
-using RequestCallFun = std::function< bool(std::unique_ptr<LspMessage>) >;
+
 struct RequestInMessage : public LspMessage {
 	// number or string, actually no null
 	lsRequestId id;
@@ -60,7 +60,7 @@ namespace  MSG {\
 	struct request : public lsRequest< request_param , request >{\
 		static constexpr   MethodType  kMethodInfo = methodInfo;\
 		request():lsRequest(kMethodInfo){}                                   \
-		 using _Response = response;\
+		 using Response = response;\
 	};\
 };\
 MAKE_REFLECT_STRUCT(MSG::request, jsonrpc, id, method, params);\

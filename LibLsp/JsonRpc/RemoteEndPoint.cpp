@@ -259,7 +259,7 @@ bool RemoteEndPoint::dispatch(const std::string& content)
 
 
 
-void RemoteEndPoint::internalSendRequest( RequestInMessage& info, RequestCallFun call_fun)
+void RemoteEndPoint::internalSendRequest( RequestInMessage& info, GenericResponseHandler handler)
 {
 	{
 		std::lock_guard<std::mutex> lock(m_sendMutex);
@@ -274,7 +274,7 @@ void RemoteEndPoint::internalSendRequest( RequestInMessage& info, RequestCallFun
 		
 		info.id.set(d_ptr->m_id);
 		std::lock_guard<std::mutex> lock2(m_requsetInfo);
-		_client_request_futures[info.id.value] = PendingRequestInfo(info.method, call_fun);
+		_client_request_futures[info.id.value] = PendingRequestInfo(info.method, handler);
 		const auto s = info.ToJson();
 		
 		output->write("Content-Length: ").write(s.size()) .write("\r\n\r\n").write(s) ;

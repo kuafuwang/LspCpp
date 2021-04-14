@@ -1,4 +1,5 @@
 #pragma once
+#include <future>
 #include <string>
 #include "threaded_queue.h"
 #include <unordered_map>
@@ -113,14 +114,14 @@ class RemoteEndPoint :MessageIssueHandler
 	template <typename F>
 	using ArgTy = typename lsp::detail::ArgTy<F>::type;
 public:
-	using RequestCallFun = std::function< bool(std::unique_ptr<LspMessage>) >;
+	
 	RemoteEndPoint(std::shared_ptr < MessageJsonHandler> json_handler,
 		std::shared_ptr < Endpoint> localEndPoint, lsp::Log& _log,uint8_t max_workers = 2);
 	~RemoteEndPoint() override;
 
 	template <typename F, typename RequestType = ArgTy<F>>
 	void  registerRequestHandler(F&& handler) {
-		using ResponseType = typename RequestType::_Response;
+		using ResponseType = typename RequestType::Response;
 		
 		 std::string method = RequestType::kMethodInfo;
 		
@@ -167,9 +168,10 @@ public:
 		});
 	}
 
-	template <typename T>
-	void sendRequest(T& request, RequestCallFun call_fun)
+	template <typename T, typename F, typename ResponseType = ArgTy<F>>
+	void sendRequestAndRegisterResponseHandler(T& request, F&& handler)
 	{
+		//using Response = typename T::Response;
 		{
 			std::lock_guard<std::mutex> lock(m_sendMutex);
 			std::string method = request.GetMethodType();
@@ -177,13 +179,56 @@ public:
 			if (findIt == jsonHandler->method2response.end()) {
 				jsonHandler->method2response[method] = [](Reader& visitor)
 				{
-					using Response = typename T::_Response;
+					return ResponseType::ReflectReader(visitor);
+				};
+			}
+		}
+		auto cb = [&](std::unique_ptr<LspMessage> msg) {
+			handler(*reinterpret_cast<ResponseType*>(msg.get()));
+			return  true;
+		};
+		internalSendRequest(request, handler);
+	}
+
+	template <typename T,  typename = IsRequest<T>>
+	std::future< lsp::ResponseOrError<typename T::Response> > sendRequest(T& request) {
+		using Response = typename T::Response;
+		{
+			std::lock_guard<std::mutex> lock(m_sendMutex);
+			std::string method = request.GetMethodType();
+			auto findIt = jsonHandler->method2response.find(method);
+			if (findIt == jsonHandler->method2response.end()) {
+				jsonHandler->method2response[method] = [](Reader& visitor)
+				{
 					return Response::ReflectReader(visitor);
 				};
 			}
 		}
-		internalSendRequest(request, call_fun);
+
+		
+		auto promise = std::make_shared< std::promise<lsp::ResponseOrError<Response>>>();
+		auto cb = [=](std::unique_ptr<LspMessage> msg) {
+			if (!msg)
+				return true;
+			auto result = msg.get();
+			Rsp_Error* rsp_error = dynamic_cast<Rsp_Error*>(result);
+			if(rsp_error)
+			{
+				promise->set_value( lsp::ResponseOrError<Response>(*rsp_error) );
+			}
+			else
+			{
+				promise->set_value( lsp::ResponseOrError<Response>(
+					*reinterpret_cast<const Response*>(result)) );
+			}
+			return  true;
+		};
+		internalSendRequest(request, cb);
+		return promise->get_future();
 	}
+
+	
+	
 	template <typename T>
 	std::unique_ptr<LspMessage> waitResponse(T& request, unsigned time_out = 0)
 	{
@@ -194,7 +239,7 @@ public:
 			if (findIt == jsonHandler->method2response.end()) {
 				jsonHandler->method2response[method] = [](Reader& visitor)
 				{
-					using Response = typename T::_Response;
+					using Response = typename T::Response;
 					return Response::ReflectReader(visitor);
 				};
 			}
@@ -218,7 +263,7 @@ public:
 	
 	std::unique_ptr<LspMessage> internalWaitResponse(RequestInMessage&, unsigned time_out = 0);
 	
-	void internalSendRequest(RequestInMessage&, RequestCallFun);
+	void internalSendRequest(RequestInMessage&, GenericResponseHandler);
 
 	std::shared_ptr < std::thread > message_producer_thread_;
 

@@ -34,7 +34,7 @@ std::string LspMessage::ToJson()
 
 
 PendingRequestInfo::PendingRequestInfo(const std::string& _md,
-	const	RequestCallFun& callback) : method(_md),
+	const	RequestCallBack& callback) : method(_md),
 	futureInfo(callback)
 {
 }
