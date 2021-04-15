@@ -3,6 +3,7 @@
 #include <rapidjson/document.h>
 
 
+
 std::unique_ptr<LspMessage> MessageJsonHandler::parseResponseMessage(const std::string& method, Reader& r)
 {
 	auto findIt = method2response.find(method);

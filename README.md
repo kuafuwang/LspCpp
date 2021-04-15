@@ -18,8 +18,8 @@
    
 ##  Demo:
 ```cpp
-
 #include "LibLsp/lsp/general/exit.h"
+#include "LibLsp/lsp/textDocument/declaration_definition.h"
 #ifdef _CONSOLE
 #ifdef TCP_SERVER_EXAMPLE
 
@@ -115,14 +115,28 @@ public:
 	Server():server(_address,_port,protocol_json_handler, endpoint, _log)
 	{
 		server.remote_end_point_.registerRequestHandler([&](const td_initialize::request& req)
-			{
+		                                                ->lsp::ResponseOrError< td_initialize::response >{
+				if (req.id.value == 1)
+				{
+					Rsp_Error error;
+					
+					error.error.message = "test";
+					return  error;
+				}
 				td_initialize::response rsp;
-				rsp.id = req.id;
 				CodeLensOptions code_lens_options;
 				code_lens_options.resolveProvider = true;
 				rsp.result.capabilities.codeLensProvider = code_lens_options;
+	
 				return rsp;
 			});
+		server.remote_end_point_.registerRequestHandler([&](const td_definition::request& req)
+			{
+				td_definition::response rsp;
+				rsp.result.first= std::vector<lsLocation>();
+				return rsp;
+			});
+		
 		server.remote_end_point_.registerNotifyHandler([=](Notify_Exit::notify& notify)
 			{
 				std::cout << notify.ToJson() << std::endl;
@@ -190,8 +204,9 @@ int main()
 	Notify_Exit::notify notify;
 	client.remote_end_point_.sendNotification(notify);
 	
-	td_initialize::request req;
+	
 	{
+		td_initialize::request req;
 		auto rsp = client.remote_end_point_.waitResponse(req);
 		if (rsp)
 		{
@@ -202,24 +217,27 @@ int main()
 			std::cout << "get initialze  response time out" << std::endl;
 		}
 	}
+	{
+		td_definition::request req;
+		auto future_rsp = client.remote_end_point_.sendRequest(req);
+		auto state = future_rsp.wait_for(std::chrono::seconds(4));
+		if (std::future_status::timeout == state)
+		{
+			std::cout << "get textDocument/definition  response time out" << std::endl;
+			return 0;
+		}
+		auto rsp = future_rsp.get();
+		if (rsp.error)
+		{
+			std::cout << "get textDocument/definition  response error" << std::endl;
 
-	auto future_rsp = client.remote_end_point_.sendRequest(req);
-	auto state = future_rsp.wait_for(std::chrono::seconds(4));
-	if (std::future_status::timeout == state)
-	{
-		std::cout << "get initialze  response time out" << std::endl;
-		return 0;
+		}
+		else
+		{
+			std::cout << rsp.response.ToJson() << std::endl;
+		}
 	}
-	auto rsp = future_rsp.get();
-	if (rsp.error)
-	{
-		std::cout << "get initialze  response error" << std::endl;
-		
-	}
-	else
-	{
-		std::cout << rsp.response.ToJson() << std::endl;
-	}
+	
 	return 0;
 }
 #endif

@@ -598,7 +598,7 @@ void AddNotifyJsonRpcMethod(MessageJsonHandler& handler)
 
 void AddRequstJsonRpcMethod(MessageJsonHandler& handler)
 {
-	handler.method2request[Req_ClientRegisterCapability::request::request::kMethodInfo]= [](Reader& visitor)
+	handler.method2request[Req_ClientRegisterCapability::request::kMethodInfo]= [](Reader& visitor)
 	{
 
 		return Req_ClientRegisterCapability::request::ReflectReader(visitor);

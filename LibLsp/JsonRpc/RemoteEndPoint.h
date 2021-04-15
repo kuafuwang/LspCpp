@@ -120,29 +120,33 @@ public:
 	~RemoteEndPoint() override;
 
 	template <typename F, typename RequestType = ArgTy<F>>
-	void  registerRequestHandler(F&& handler) {
+	IsRequest<RequestType>  registerRequestHandler(F&& handler) {
 		using ResponseType = typename RequestType::Response;
 		
 		 std::string method = RequestType::kMethodInfo;
 		
 		{
 			std::lock_guard<std::mutex> lock(m_sendMutex);
-			auto findIt = jsonHandler->method2request.find(method);
-			if (findIt == jsonHandler->method2request.end()) {
-				jsonHandler->method2request[method] = [](Reader& visitor)
-				{
-					return RequestType::ReflectReader(visitor);
-				};
+			if(!jsonHandler->GetResponseJsonHandler(RequestType::kMethodInfo))
+			{
+				jsonHandler->SetRequestJsonHandler(RequestType::kMethodInfo,
+					[](Reader& visitor)
+					{
+						return RequestType::ReflectReader(visitor);
+					});
 			}
+			
 		}
-
 		local_endpoint->registerRequestHandler(method, [&](std::unique_ptr<LspMessage> msg) {
-			lsp::ResponseOrError<ResponseType> res(handler(*reinterpret_cast<const RequestType*>(msg.get())));
+			auto  req = reinterpret_cast<const RequestType*>(msg.get());
+			lsp::ResponseOrError<ResponseType> res(handler(*req));
 			if (res.error) {
+				res.error.id = req->id;
 				sendResponse(res.error);
 			}
 			else
 			{
+				res.response.id = req->id;
 				sendResponse(res.response);
 			}
 			return  true;
@@ -150,44 +154,56 @@ public:
 	}
 	template <typename F, typename NotifyType = ArgTy<F>>
 	void  registerNotifyHandler(F&& handler) {
-		const std::string methodInfo = NotifyType::kMethodInfo;
+		
 		{
 			std::lock_guard<std::mutex> lock(m_sendMutex);
-			auto findIt = jsonHandler->method2notification.find(methodInfo);
-			if (findIt == jsonHandler->method2notification.end()) {
-				jsonHandler->method2notification[methodInfo] = [](Reader& visitor)
+			if (!jsonHandler->GetNotificationJsonHandler(NotifyType::kMethodInfo))
+			{
+				jsonHandler->SetNotificationJsonHandler(NotifyType::kMethodInfo, 
+				[](Reader& visitor)
 				{
-					return NotifyType::ReflectReader(visitor);
-				};
+						return NotifyType::ReflectReader(visitor);
+				});
 			}
 		}
 
-		local_endpoint->registerNotifyHandler(methodInfo, [&](std::unique_ptr<LspMessage> msg) {
+		local_endpoint->registerNotifyHandler(NotifyType::kMethodInfo, [&](std::unique_ptr<LspMessage> msg) {
 			handler(*reinterpret_cast<NotifyType*>(msg.get()));
 			return  true;
 		});
 	}
-
+	using RequestErrorCallback = std::function<void(const Rsp_Error&)>;
 	template <typename T, typename F, typename ResponseType = ArgTy<F>>
-	void sendRequestAndRegisterResponseHandler(T& request, F&& handler)
+	void sendRequestAndRegisterResponseHandler(T& request, F&& handler, RequestErrorCallback onError)
 	{
-		//using Response = typename T::Response;
 		{
 			std::lock_guard<std::mutex> lock(m_sendMutex);
 			std::string method = request.GetMethodType();
-			auto findIt = jsonHandler->method2response.find(method);
-			if (findIt == jsonHandler->method2response.end()) {
-				jsonHandler->method2response[method] = [](Reader& visitor)
+			if (!jsonHandler->GetResponseJsonHandler(method.c_str()))
+			{
+				jsonHandler->SetResponseJsonHandler(T::kMethodInfo, [](Reader& visitor)
 				{
-					return ResponseType::ReflectReader(visitor);
-				};
+						if (visitor.HasMember("error"))
+							return 	Rsp_Error::ReflectReader(visitor);
+						return ResponseType::ReflectReader(visitor);
+				});
 			}
 		}
 		auto cb = [&](std::unique_ptr<LspMessage> msg) {
-			handler(*reinterpret_cast<ResponseType*>(msg.get()));
+			if (!msg)
+				return true;
+			const auto result = msg.get();
+			const auto rsp_error = dynamic_cast<const Rsp_Error*>(result);
+			if (rsp_error){
+				onError(*rsp_error);
+			}
+			else{
+				handler(*reinterpret_cast<ResponseType*>(result));
+			}
+			
 			return  true;
 		};
-		internalSendRequest(request, handler);
+		internalSendRequest(request, cb);
 	}
 
 	template <typename T,  typename = IsRequest<T>>
@@ -195,13 +211,14 @@ public:
 		using Response = typename T::Response;
 		{
 			std::lock_guard<std::mutex> lock(m_sendMutex);
-			std::string method = request.GetMethodType();
-			auto findIt = jsonHandler->method2response.find(method);
-			if (findIt == jsonHandler->method2response.end()) {
-				jsonHandler->method2response[method] = [](Reader& visitor)
+			if(!jsonHandler->GetResponseJsonHandler(T::kMethodInfo))
+			{
+				jsonHandler->SetResponseJsonHandler(T::kMethodInfo, [](Reader& visitor)
 				{
-					return Response::ReflectReader(visitor);
-				};
+						if (visitor.HasMember("error"))
+							return 	Rsp_Error::ReflectReader(visitor);
+						return Response::ReflectReader(visitor);
+				});
 			}
 		}
 
@@ -216,13 +233,13 @@ public:
 			{
 				Rsp_Error temp;
 				std::swap(temp, *rsp_error);
-				promise->set_value( lsp::ResponseOrError<Response>(std::move(temp)) );
+				promise->set_value( std::move( lsp::ResponseOrError<Response>(std::move(temp)) ));
 			}
 			else
 			{
 				Response temp;
 				std::swap(temp,*reinterpret_cast<Response*>(result));
-				promise->set_value( lsp::ResponseOrError<Response>( std::move(temp) ) );
+				promise->set_value(std::move(lsp::ResponseOrError<Response>( std::move(temp) )) );
 			}
 			return  true;
 		};
@@ -235,16 +252,17 @@ public:
 	template <typename T>
 	std::unique_ptr<LspMessage> waitResponse(T& request, unsigned time_out = 0)
 	{
+		using Response = typename T::Response;
 		{
 			std::lock_guard<std::mutex> lock(m_sendMutex);
-			std::string method = request.GetMethodType();
-			auto findIt = jsonHandler->method2response.find(method);
-			if (findIt == jsonHandler->method2response.end()) {
-				jsonHandler->method2response[method] = [](Reader& visitor)
-				{
-					using Response = typename T::Response;
-					return Response::ReflectReader(visitor);
-				};
+			if (!jsonHandler->GetResponseJsonHandler(T::kMethodInfo))
+			{
+				jsonHandler->SetResponseJsonHandler(T::kMethodInfo, [](Reader& visitor)
+					{
+						if (visitor.HasMember("error"))
+							return 	Rsp_Error::ReflectReader(visitor);
+						return Response::ReflectReader(visitor);
+					});
 			}
 		}
 		return internalWaitResponse(request, time_out);

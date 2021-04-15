@@ -129,14 +129,15 @@ void Reflect(Reader& visitor, lsMarkedString& value)
 	  {
 		  throw std::invalid_argument("Rsp_LocationListEither::Either& value is not array");
 	  }
-	  if (((JsonReader&)visitor).m_->GetArray()[0].HasMember("originSelectionRange"))
+	  auto data = ((JsonReader&)visitor).m_->GetArray();
+	  if (data.Size() && data[0].HasMember("originSelectionRange"))
 	  {
 		  Reflect(visitor, value.second);
 	  }
-	  else
-	  {
+	  else {
 		  Reflect(visitor, value.first);
 	  }
+	 
 }
 
  void Reflect(Writer& visitor, LocationListEither::Either& value)
