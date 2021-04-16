@@ -114,23 +114,23 @@ namespace lsp
 class MessageIssue {
 
 public:
-	std::wstring text;
+	std::string text;
 
 	lsp::Log::Level code;
 
-	MessageIssue(const std::wstring& text, lsp::Log::Level code) :text(text), code(code)
+	MessageIssue(const std::string& text, lsp::Log::Level code) :text(text), code(code)
 	{
 
 
 	}
-	MessageIssue(std::wstring&& text, lsp::Log::Level code) :text(text), code(code)
+	MessageIssue(std::string&& text, lsp::Log::Level code) :text(text), code(code)
 	{
 
 
 	}
 
 
-	std::wstring getText() {
+	std::string getText() {
 		return text;
 	}
 
@@ -139,7 +139,7 @@ public:
 	}
 
 
-	std::wstring toString() {
+	std::string toString() {
 		return getText();
 	}
 

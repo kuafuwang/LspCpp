@@ -57,13 +57,13 @@ void StreamMessageProducer::listen(MessageConsumer callBack)
 	{
 		if(input->bad())
 		{
-			MessageIssue issue(L"input stream corrupted", lsp::Log::Level::INFO);
+			MessageIssue issue("input stream corrupted", lsp::Log::Level::INFO);
 			issueHandler.handle(std::move(issue));
 			return;
 		}
 		if(input->fail())
 		{
-			MessageIssue issue(L"input fail", lsp::Log::Level::INFO);
+			MessageIssue issue("input fail", lsp::Log::Level::INFO);
 			issueHandler.handle(std::move(issue));
 			continue;
 		}
@@ -80,14 +80,12 @@ void StreamMessageProducer::listen(MessageConsumer callBack)
 			{
 				if (newLine) {
 					// Two consecutive newlines have been read, which signals the start of the message content
-					if (headers.contentLength < 0) 
+					if (headers.contentLength <= 0) 
 					{
-						 MessageIssue issue(L"Unexpected token (expected Content-Length: sequence)", lsp::Log::Level::WARNING);
+						string info = "Unexpected token:" + debugBuilder;
+						info = +"  (expected Content-Length: sequence);";
+						 MessageIssue issue(info, lsp::Log::Level::WARNING);
 						 issueHandler.handle(std::move(issue));
-					}
-					if(headers.contentLength == 0)
-					{
-						
 					}
 					else {
 						bool result = handleMessage(headers,callBack);
@@ -130,19 +128,19 @@ bool StreamMessageProducer::handleMessage(Headers& headers ,MessageConsumer call
 	 input->read(data, content_length);
 	 if (input->bad())
 	 {
-		 MessageIssue issue(L"input stream corrupted", lsp::Log::Level::INFO);
+		 MessageIssue issue("input stream corrupted", lsp::Log::Level::INFO);
 		 issueHandler.handle(std::move(issue));
 		 return false;
 	 }
 	 if (input->fail())
 	 {
-		 MessageIssue issue(L"input fail", lsp::Log::Level::INFO);
+		 MessageIssue issue("input fail", lsp::Log::Level::INFO);
 		 issueHandler.handle(std::move(issue));
 		 return false;
 	 }
 	 if (input->eof())
 	 {
-		 MessageIssue issue(L"No more input when reading content body", lsp::Log::Level::INFO);
+		 MessageIssue issue("No more input when reading content body", lsp::Log::Level::INFO);
 		 issueHandler.handle(std::move(issue));
 		 return false;
 	 }

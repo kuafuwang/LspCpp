@@ -34,7 +34,6 @@
     <ClCompile Include="LibLsp\lsp\textDocument\textDocument.cpp">
       <Filter>lsp\textDocument</Filter>
     </ClCompile>
-    <ClCompile Include="TcpServerExample.cpp" />
     <ClCompile Include="LibLsp\JsonRpc\threaded_queue.cc">
       <Filter>JsonRpc</Filter>
     </ClCompile>
@@ -71,7 +70,18 @@
     <ClCompile Include="LibLsp\JsonRpc\WebSocketServer.cpp">
       <Filter>JsonRpc</Filter>
     </ClCompile>
-    <ClCompile Include="WebsocketExample.cpp" />
+    <ClCompile Include="example\StdIOClientExample.cpp">
+      <Filter>example</Filter>
+    </ClCompile>
+    <ClCompile Include="example\StdIOServerExample.cpp">
+      <Filter>example</Filter>
+    </ClCompile>
+    <ClCompile Include="example\TcpServerExample.cpp">
+      <Filter>example</Filter>
+    </ClCompile>
+    <ClCompile Include="example\WebsocketExample.cpp">
+      <Filter>example</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="LibLsp\JsonRpc\MessageIssue.h">
@@ -570,6 +580,9 @@
     </Filter>
     <Filter Include="sct">
       <UniqueIdentifier>{c341806a-8b37-418c-b310-00bce4db084d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="example">
+      <UniqueIdentifier>{50042bb3-ac58-43e1-8cbe-0af2d1c58599}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>

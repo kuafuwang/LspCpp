@@ -18,11 +18,10 @@
    
 ##  Demo:
 ```cpp
-#include "LibLsp/lsp/general/exit.h"
-#include "LibLsp/lsp/textDocument/declaration_definition.h"
-#ifdef _CONSOLE
 #ifdef TCP_SERVER_EXAMPLE
 
+#include "LibLsp/lsp/general/exit.h"
+#include "LibLsp/lsp/textDocument/declaration_definition.h"
 #include "LibLsp/lsp/textDocument/signature_help.h"
 #include "LibLsp/lsp/general/initialize.h"
 #include "LibLsp/lsp/ProtocolJsonHandler.h"
@@ -63,45 +62,6 @@ public:
 	{
 		std::cout << msg << std::endl;
 	};
-};
-
-
-
-class StdIOServer
-{
-public:
-	StdIOServer() : remote_end_point_(protocol_json_handler, endpoint, _log)
-	{
-		remote_end_point_.registerRequestHandler([&](const td_initialize::request& req)
-			{
-				td_initialize::response rsp;
-				rsp.id = req.id;
-				CodeLensOptions code_lens_options;
-				code_lens_options.resolveProvider = true;
-				rsp.result.capabilities.codeLensProvider = code_lens_options;
-				return rsp;
-			});
-
-		remote_end_point_.registerNotifyHandler([=](Notify_Exit::notify& notify)
-			{
-				std::cout << notify.ToJson() << std::endl;
-			});
-		remote_end_point_.startProcessingMessages(input, output);
-	}
-	~StdIOServer()
-	{
-		
-	}
-	
-	std::shared_ptr < lsp::ProtocolJsonHandler >  protocol_json_handler = std::make_shared < lsp::ProtocolJsonHandler >();
-	DummyLog _log;
-	
-	std::shared_ptr<lsp::base_ostream<std::ostream> > output = std::make_shared<lsp::base_ostream<std::ostream>>(std::cout);
-	std::shared_ptr<lsp::base_istream<std::istream> > input = std::make_shared<lsp::base_istream<std::istream>>(std::cin);
-
-	std::shared_ptr < GenericEndpoint >  endpoint = std::make_shared<GenericEndpoint>(_log);
-	RemoteEndPoint remote_end_point_;
-
 };
 
 std::string _address = "127.0.0.1";
@@ -201,10 +161,6 @@ int main()
 	Server server;
 	Client client;
 
-	Notify_Exit::notify notify;
-	client.remote_end_point_.sendNotification(notify);
-	
-	
 	{
 		td_initialize::request req;
 		auto rsp = client.remote_end_point_.waitResponse(req);
@@ -237,11 +193,10 @@ int main()
 			std::cout << rsp.response.ToJson() << std::endl;
 		}
 	}
-	
+	Notify_Exit::notify notify;
+	client.remote_end_point_.sendNotification(notify);
 	return 0;
 }
-#endif
-
 #endif
 
 
