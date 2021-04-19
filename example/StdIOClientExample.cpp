@@ -32,22 +32,22 @@ public:
 
 	void log(Level level, std::wstring&& msg)
 	{
-		std::wcout << msg << std::endl;
+		
+		std::wcerr << msg << std::endl;
 	};
 	void log(Level level, const std::wstring& msg)
 	{
-		std::wcout << msg << std::endl;
+		std::wcerr << msg << std::endl;
 	};
 	void log(Level level, std::string&& msg)
 	{
-		std::cout << msg << std::endl;
+		std::cerr << msg << std::endl;
 	};
 	void log(Level level, const std::string& msg)
 	{
-		std::cout << msg << std::endl;
+		std::cerr << msg << std::endl;
 	};
 };
-
 
 class ProcessIoService
 {
@@ -101,7 +101,7 @@ public:
 		c = std::make_shared<bp::child>(asio_io.getIOService(), execPath, 
 			bp::args = args,
 			ec,
-			bp::windows::show,
+			bp::windows::show_normal,
 			bp::std_out > read_from_service,
 			bp::std_in < write_to_service,
 			bp::on_exit([&](int exit_code, const std::error_code& ec_in){
@@ -129,7 +129,6 @@ public:
 
 	std::shared_ptr<GenericEndpoint>  endpoint = std::make_shared<GenericEndpoint>(_log);
 
-	std::shared_ptr < lsp::base_iostream<std::iostream>> socket_proxy;
 	boost::process::opstream write_to_service;
 	boost::process::ipstream   read_from_service;
 
@@ -182,11 +181,11 @@ int main(int argc, char* argv[])
 		auto rsp = client.remote_end_point_.waitResponse(req);
 		if (rsp)
 		{
-			std::cout << rsp->ToJson() << std::endl;
+			std::cerr << rsp->ToJson() << std::endl;
 		}
 		else
 		{
-			std::cout << "get initialze  response time out" << std::endl;
+			std::cerr << "get initialze  response time out" << std::endl;
 		}
 	}
 	{
@@ -195,34 +194,34 @@ int main(int argc, char* argv[])
 		auto state = future_rsp.wait_for(std::chrono::seconds(4));
 		if (std::future_status::timeout == state)
 		{
-			std::cout << "get textDocument/definition  response time out" << std::endl;
+			std::cerr << "get textDocument/definition  response time out" << std::endl;
 			return 0;
 		}
 		auto rsp = future_rsp.get();
 		if (rsp.error)
 		{
-			std::cout << "get textDocument/definition  response error" << std::endl;
+			std::cerr << "get textDocument/definition  response error" << std::endl;
 
 		}
 		else
 		{
-			std::cout << rsp.response.ToJson() << std::endl;
+			std::cerr << rsp.response.ToJson() << std::endl;
 		}
 	}
-	Notify_Exit::notify notify;
-	client.remote_end_point_.sendNotification(notify);
 	{
 		td_initialize::request req;
 		auto rsp = client.remote_end_point_.waitResponse(req);
 		if (rsp)
 		{
-			std::cout << rsp->ToJson() << std::endl;
+			std::cerr << rsp->ToJson() << std::endl;
 		}
 		else
 		{
-			std::cout << "get initialze  response time out" << std::endl;
+			std::cerr << "get initialze  response time out" << std::endl;
 		}
 	}
+	Notify_Exit::notify notify;
+	client.remote_end_point_.sendNotification(notify);
 	return 0;
 }
 #endif
