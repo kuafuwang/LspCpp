@@ -19,7 +19,8 @@
 #include "lsWorkspaceEdit.h"
 #include "textDocument/code_action.h"
 #include "textDocument/document_symbol.h"
-#include "JavaExtentions/codeActionResult.h"
+#include "extention/jdtls/codeActionResult.h"
+
 #include "textDocument/selectionRange.h"
 #include "AbsolutePath.h"
 

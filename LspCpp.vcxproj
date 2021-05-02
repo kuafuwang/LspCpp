@@ -441,6 +441,7 @@
     <ClCompile Include="LibLsp\JsonRpc\MessageJsonHandler.cpp" />
     <ClCompile Include="LibLsp\JsonRpc\serializer.cc" />
     <ClCompile Include="LibLsp\JsonRpc\StreamMessageProducer.cpp" />
+    <ClCompile Include="LibLsp\lsp\extention\sct\sct.cpp" />
     <ClCompile Include="LibLsp\lsp\general\initialize.cpp" />
     <ClCompile Include="LibLsp\lsp\lsp.cc" />
     <ClCompile Include="LibLsp\lsp\lsp_diagnostic.cc" />
@@ -454,7 +455,6 @@
     <ClCompile Include="network\uri\uri.cpp" />
     <ClCompile Include="network\uri\uri_builder.cpp" />
     <ClCompile Include="network\uri\uri_errors.cpp" />
-    <ClCompile Include="sct\sct.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="LibLsp\JsonRpc\cancellation.h" />
@@ -482,6 +482,35 @@
     <ClInclude Include="LibLsp\lsp\client\unregisterCapability.h" />
     <ClInclude Include="LibLsp\lsp\CodeActionParams.h" />
     <ClInclude Include="LibLsp\lsp\ExecuteCommandParams.h" />
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\addOverridableMethods.h" />
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\buildWorkspace.h" />
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\checkConstructorsStatus.h" />
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\checkDelegateMethodsStatus.h" />
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\checkHashCodeEqualsStatus.h" />
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\checkToStringStatus.h" />
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\classFileContents.h" />
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\codeActionResult.h" />
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\executeCommand.h" />
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\findLinks.h" />
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\generateAccessors.h" />
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\generateConstructors.h" />
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\generateDelegateMethods.h" />
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\generateHashCodeEquals.h" />
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\generateToString.h" />
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\getMoveDestinations.h" />
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\getRefactorEdit.h" />
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\listOverridableMethods.h" />
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\Move.h" />
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\organizeImports.h" />
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\OverridableMethod.h" />
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\projectConfigurationUpdate.h" />
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\resolveUnimplementedAccessors.h" />
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\searchSymbols.h" />
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\WorkspaceSymbolParams.h" />
+    <ClInclude Include="LibLsp\lsp\extention\sct\protocol.h" />
+    <ClInclude Include="LibLsp\lsp\extention\sct\sct.h" />
+    <ClInclude Include="LibLsp\lsp\extention\sct\SCTConfig.h" />
+    <ClInclude Include="LibLsp\lsp\extention\sonarlint\protocol.h" />
     <ClInclude Include="LibLsp\lsp\general\exit.h" />
     <ClInclude Include="LibLsp\lsp\general\initialize.h" />
     <ClInclude Include="LibLsp\lsp\general\initialized.h" />
@@ -491,31 +520,6 @@
     <ClInclude Include="LibLsp\lsp\general\lsTextDocumentClientCapabilities.h" />
     <ClInclude Include="LibLsp\lsp\general\lsWorkspaceClientCapabilites.h" />
     <ClInclude Include="LibLsp\lsp\general\shutdown.h" />
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\addOverridableMethods.h" />
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\buildWorkspace.h" />
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\checkConstructorsStatus.h" />
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\checkDelegateMethodsStatus.h" />
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\checkHashCodeEqualsStatus.h" />
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\checkToStringStatus.h" />
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\classFileContents.h" />
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\codeActionResult.h" />
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\executeCommand.h" />
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\findLinks.h" />
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\generateAccessors.h" />
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\generateConstructors.h" />
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\generateDelegateMethods.h" />
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\generateHashCodeEquals.h" />
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\generateToString.h" />
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\getMoveDestinations.h" />
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\getRefactorEdit.h" />
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\listOverridableMethods.h" />
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\Move.h" />
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\organizeImports.h" />
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\OverridableMethod.h" />
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\projectConfigurationUpdate.h" />
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\resolveUnimplementedAccessors.h" />
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\searchSymbols.h" />
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\WorkspaceSymbolParams.h" />
     <ClInclude Include="LibLsp\lsp\language\language.h" />
     <ClInclude Include="LibLsp\lsp\location_type.h" />
     <ClInclude Include="LibLsp\lsp\lru_cache.h" />
@@ -606,9 +610,6 @@
     <ClInclude Include="network\uri\uri_builder.hpp" />
     <ClInclude Include="network\uri\uri_errors.hpp" />
     <ClInclude Include="network\uri\uri_io.hpp" />
-    <ClInclude Include="sct\DownLoadCapFile.h" />
-    <ClInclude Include="sct\sct.h" />
-    <ClInclude Include="sct\SCTConfig.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
@@ -617,30 +618,30 @@
   <ImportGroup Label="ExtensionTargets">
     <Import Project="packages\tencent.rapidjson.1.1.1\build\tencent.rapidjson.targets" Condition="Exists('packages\tencent.rapidjson.1.1.1\build\tencent.rapidjson.targets')" />
     <Import Project="..\packages\tencent.rapidjson.1.1.1\build\tencent.rapidjson.targets" Condition="Exists('..\packages\tencent.rapidjson.1.1.1\build\tencent.rapidjson.targets')" />
-    <Import Project="..\packages\boost.1.72.0.0\build\boost.targets" Condition="Exists('..\packages\boost.1.72.0.0\build\boost.targets')" />
-    <Import Project="..\packages\boost_chrono-vc141.1.72.0.0\build\boost_chrono-vc141.targets" Condition="Exists('..\packages\boost_chrono-vc141.1.72.0.0\build\boost_chrono-vc141.targets')" />
-    <Import Project="..\packages\boost_context-vc141.1.72.0.0\build\boost_context-vc141.targets" Condition="Exists('..\packages\boost_context-vc141.1.72.0.0\build\boost_context-vc141.targets')" />
-    <Import Project="..\packages\boost_coroutine-vc141.1.72.0.0\build\boost_coroutine-vc141.targets" Condition="Exists('..\packages\boost_coroutine-vc141.1.72.0.0\build\boost_coroutine-vc141.targets')" />
-    <Import Project="..\packages\boost_date_time-vc141.1.72.0.0\build\boost_date_time-vc141.targets" Condition="Exists('..\packages\boost_date_time-vc141.1.72.0.0\build\boost_date_time-vc141.targets')" />
-    <Import Project="..\packages\boost_filesystem-vc141.1.72.0.0\build\boost_filesystem-vc141.targets" Condition="Exists('..\packages\boost_filesystem-vc141.1.72.0.0\build\boost_filesystem-vc141.targets')" />
-    <Import Project="..\packages\boost_regex-vc141.1.72.0.0\build\boost_regex-vc141.targets" Condition="Exists('..\packages\boost_regex-vc141.1.72.0.0\build\boost_regex-vc141.targets')" />
-    <Import Project="..\packages\boost_system-vc140.1.72.0.0\build\boost_system-vc140.targets" Condition="Exists('..\packages\boost_system-vc140.1.72.0.0\build\boost_system-vc140.targets')" />
-    <Import Project="..\packages\boost_thread-vc141.1.72.0.0\build\boost_thread-vc141.targets" Condition="Exists('..\packages\boost_thread-vc141.1.72.0.0\build\boost_thread-vc141.targets')" />
-    <Import Project="..\packages\boost_program_options-vc141.1.72.0.0\build\boost_program_options-vc141.targets" Condition="Exists('..\packages\boost_program_options-vc141.1.72.0.0\build\boost_program_options-vc141.targets')" />
+    <Import Project="..\packages\boost.1.76.0.0\build\boost.targets" Condition="Exists('..\packages\boost.1.76.0.0\build\boost.targets')" />
+    <Import Project="..\packages\boost_chrono-vc141.1.76.0.0\build\boost_chrono-vc141.targets" Condition="Exists('..\packages\boost_chrono-vc141.1.76.0.0\build\boost_chrono-vc141.targets')" />
+    <Import Project="..\packages\boost_context-vc141.1.76.0.0\build\boost_context-vc141.targets" Condition="Exists('..\packages\boost_context-vc141.1.76.0.0\build\boost_context-vc141.targets')" />
+    <Import Project="..\packages\boost_coroutine-vc141.1.76.0.0\build\boost_coroutine-vc141.targets" Condition="Exists('..\packages\boost_coroutine-vc141.1.76.0.0\build\boost_coroutine-vc141.targets')" />
+    <Import Project="..\packages\boost_date_time-vc141.1.76.0.0\build\boost_date_time-vc141.targets" Condition="Exists('..\packages\boost_date_time-vc141.1.76.0.0\build\boost_date_time-vc141.targets')" />
+    <Import Project="..\packages\boost_filesystem-vc141.1.76.0.0\build\boost_filesystem-vc141.targets" Condition="Exists('..\packages\boost_filesystem-vc141.1.76.0.0\build\boost_filesystem-vc141.targets')" />
+    <Import Project="..\packages\boost_program_options-vc141.1.76.0.0\build\boost_program_options-vc141.targets" Condition="Exists('..\packages\boost_program_options-vc141.1.76.0.0\build\boost_program_options-vc141.targets')" />
+    <Import Project="..\packages\boost_regex-vc141.1.76.0.0\build\boost_regex-vc141.targets" Condition="Exists('..\packages\boost_regex-vc141.1.76.0.0\build\boost_regex-vc141.targets')" />
+    <Import Project="..\packages\boost_system-vc140.1.76.0.0\build\boost_system-vc140.targets" Condition="Exists('..\packages\boost_system-vc140.1.76.0.0\build\boost_system-vc140.targets')" />
+    <Import Project="..\packages\boost_thread-vc141.1.76.0.0\build\boost_thread-vc141.targets" Condition="Exists('..\packages\boost_thread-vc141.1.76.0.0\build\boost_thread-vc141.targets')" />
   </ImportGroup>
   <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
     <PropertyGroup>
       <ErrorText>这台计算机上缺少此项目引用的 NuGet 程序包。使用“NuGet 程序包还原”可下载这些程序包。有关更多信息，请参见 http://go.microsoft.com/fwlink/?LinkID=322105。缺少的文件是 {0}。</ErrorText>
     </PropertyGroup>
-    <Error Condition="!Exists('..\packages\boost.1.72.0.0\build\boost.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\boost.1.72.0.0\build\boost.targets'))" />
-    <Error Condition="!Exists('..\packages\boost_chrono-vc141.1.72.0.0\build\boost_chrono-vc141.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\boost_chrono-vc141.1.72.0.0\build\boost_chrono-vc141.targets'))" />
-    <Error Condition="!Exists('..\packages\boost_context-vc141.1.72.0.0\build\boost_context-vc141.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\boost_context-vc141.1.72.0.0\build\boost_context-vc141.targets'))" />
-    <Error Condition="!Exists('..\packages\boost_coroutine-vc141.1.72.0.0\build\boost_coroutine-vc141.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\boost_coroutine-vc141.1.72.0.0\build\boost_coroutine-vc141.targets'))" />
-    <Error Condition="!Exists('..\packages\boost_date_time-vc141.1.72.0.0\build\boost_date_time-vc141.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\boost_date_time-vc141.1.72.0.0\build\boost_date_time-vc141.targets'))" />
-    <Error Condition="!Exists('..\packages\boost_filesystem-vc141.1.72.0.0\build\boost_filesystem-vc141.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\boost_filesystem-vc141.1.72.0.0\build\boost_filesystem-vc141.targets'))" />
-    <Error Condition="!Exists('..\packages\boost_regex-vc141.1.72.0.0\build\boost_regex-vc141.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\boost_regex-vc141.1.72.0.0\build\boost_regex-vc141.targets'))" />
-    <Error Condition="!Exists('..\packages\boost_system-vc140.1.72.0.0\build\boost_system-vc140.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\boost_system-vc140.1.72.0.0\build\boost_system-vc140.targets'))" />
-    <Error Condition="!Exists('..\packages\boost_thread-vc141.1.72.0.0\build\boost_thread-vc141.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\boost_thread-vc141.1.72.0.0\build\boost_thread-vc141.targets'))" />
-    <Error Condition="!Exists('..\packages\boost_program_options-vc141.1.72.0.0\build\boost_program_options-vc141.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\boost_program_options-vc141.1.72.0.0\build\boost_program_options-vc141.targets'))" />
+    <Error Condition="!Exists('..\packages\boost.1.76.0.0\build\boost.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\boost.1.76.0.0\build\boost.targets'))" />
+    <Error Condition="!Exists('..\packages\boost_chrono-vc141.1.76.0.0\build\boost_chrono-vc141.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\boost_chrono-vc141.1.76.0.0\build\boost_chrono-vc141.targets'))" />
+    <Error Condition="!Exists('..\packages\boost_context-vc141.1.76.0.0\build\boost_context-vc141.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\boost_context-vc141.1.76.0.0\build\boost_context-vc141.targets'))" />
+    <Error Condition="!Exists('..\packages\boost_coroutine-vc141.1.76.0.0\build\boost_coroutine-vc141.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\boost_coroutine-vc141.1.76.0.0\build\boost_coroutine-vc141.targets'))" />
+    <Error Condition="!Exists('..\packages\boost_date_time-vc141.1.76.0.0\build\boost_date_time-vc141.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\boost_date_time-vc141.1.76.0.0\build\boost_date_time-vc141.targets'))" />
+    <Error Condition="!Exists('..\packages\boost_filesystem-vc141.1.76.0.0\build\boost_filesystem-vc141.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\boost_filesystem-vc141.1.76.0.0\build\boost_filesystem-vc141.targets'))" />
+    <Error Condition="!Exists('..\packages\boost_program_options-vc141.1.76.0.0\build\boost_program_options-vc141.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\boost_program_options-vc141.1.76.0.0\build\boost_program_options-vc141.targets'))" />
+    <Error Condition="!Exists('..\packages\boost_regex-vc141.1.76.0.0\build\boost_regex-vc141.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\boost_regex-vc141.1.76.0.0\build\boost_regex-vc141.targets'))" />
+    <Error Condition="!Exists('..\packages\boost_system-vc140.1.76.0.0\build\boost_system-vc140.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\boost_system-vc140.1.76.0.0\build\boost_system-vc140.targets'))" />
+    <Error Condition="!Exists('..\packages\boost_thread-vc141.1.76.0.0\build\boost_thread-vc141.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\boost_thread-vc141.1.76.0.0\build\boost_thread-vc141.targets'))" />
   </Target>
 </Project>

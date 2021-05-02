@@ -4,6 +4,7 @@
 #include "LibLsp/JsonRpc/NotificationInMessage.h"
 
 #include "LibLsp/lsp/lsDocumentUri.h"
+#include "LibLsp/lsp/lsCommand.h"
 #include <ppltasks.h>
 
 struct  StatusReport {

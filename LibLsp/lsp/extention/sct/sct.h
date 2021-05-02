@@ -3,7 +3,7 @@
 #include <LibLsp/JsonRpc/RemoteEndPoint.h>
 #include <LibLsp/JsonRpc/EndPoint.h>
 #include <LibLsp/lsp/ProtocolJsonHandler.h>
-#include <sct/DownLoadCapFile.h>
+#include "protocol.h"
 enum class lsMessageType;
 enum CardInfoType : unsigned;
 enum class SctProtocol : unsigned char;

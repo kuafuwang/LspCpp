@@ -61,9 +61,6 @@
     <ClCompile Include="network\uri\uri_errors.cpp">
       <Filter>network\uri</Filter>
     </ClCompile>
-    <ClCompile Include="sct\sct.cpp">
-      <Filter>sct</Filter>
-    </ClCompile>
     <ClCompile Include="LibLsp\JsonRpc\TcpServer.cpp">
       <Filter>JsonRpc</Filter>
     </ClCompile>
@@ -81,6 +78,9 @@
     </ClCompile>
     <ClCompile Include="example\WebsocketExample.cpp">
       <Filter>example</Filter>
+    </ClCompile>
+    <ClCompile Include="LibLsp\lsp\extention\sct\sct.cpp">
+      <Filter>lsp\extention\sct</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -267,24 +267,6 @@
     <ClInclude Include="LibLsp\lsp\lsCodeAction.h">
       <Filter>lsp</Filter>
     </ClInclude>
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\WorkspaceSymbolParams.h">
-      <Filter>lsp\JavaExtentions</Filter>
-    </ClInclude>
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\searchSymbols.h">
-      <Filter>lsp\JavaExtentions</Filter>
-    </ClInclude>
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\getRefactorEdit.h">
-      <Filter>lsp\JavaExtentions</Filter>
-    </ClInclude>
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\buildWorkspace.h">
-      <Filter>lsp\JavaExtentions</Filter>
-    </ClInclude>
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\codeActionResult.h">
-      <Filter>lsp\JavaExtentions</Filter>
-    </ClInclude>
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\executeCommand.h">
-      <Filter>lsp\JavaExtentions</Filter>
-    </ClInclude>
     <ClInclude Include="LibLsp\lsp\workspace\workspaceFolders.h">
       <Filter>lsp\workspace</Filter>
     </ClInclude>
@@ -312,65 +294,8 @@
     <ClInclude Include="LibLsp\lsp\lsAny.h">
       <Filter>lsp</Filter>
     </ClInclude>
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\classFileContents.h">
-      <Filter>lsp\JavaExtentions</Filter>
-    </ClInclude>
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\projectConfigurationUpdate.h">
-      <Filter>lsp\JavaExtentions</Filter>
-    </ClInclude>
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\listOverridableMethods.h">
-      <Filter>lsp\JavaExtentions</Filter>
-    </ClInclude>
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\addOverridableMethods.h">
-      <Filter>lsp\JavaExtentions</Filter>
-    </ClInclude>
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\OverridableMethod.h">
-      <Filter>lsp\JavaExtentions</Filter>
-    </ClInclude>
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\checkHashCodeEqualsStatus.h">
-      <Filter>lsp\JavaExtentions</Filter>
-    </ClInclude>
     <ClInclude Include="LibLsp\lsp\CodeActionParams.h">
       <Filter>lsp</Filter>
-    </ClInclude>
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\generateHashCodeEquals.h">
-      <Filter>lsp\JavaExtentions</Filter>
-    </ClInclude>
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\organizeImports.h">
-      <Filter>lsp\JavaExtentions</Filter>
-    </ClInclude>
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\checkToStringStatus.h">
-      <Filter>lsp\JavaExtentions</Filter>
-    </ClInclude>
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\generateToString.h">
-      <Filter>lsp\JavaExtentions</Filter>
-    </ClInclude>
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\resolveUnimplementedAccessors.h">
-      <Filter>lsp\JavaExtentions</Filter>
-    </ClInclude>
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\generateAccessors.h">
-      <Filter>lsp\JavaExtentions</Filter>
-    </ClInclude>
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\checkConstructorsStatus.h">
-      <Filter>lsp\JavaExtentions</Filter>
-    </ClInclude>
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\generateConstructors.h">
-      <Filter>lsp\JavaExtentions</Filter>
-    </ClInclude>
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\checkDelegateMethodsStatus.h">
-      <Filter>lsp\JavaExtentions</Filter>
-    </ClInclude>
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\generateDelegateMethods.h">
-      <Filter>lsp\JavaExtentions</Filter>
-    </ClInclude>
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\getMoveDestinations.h">
-      <Filter>lsp\JavaExtentions</Filter>
-    </ClInclude>
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\Move.h">
-      <Filter>lsp\JavaExtentions</Filter>
-    </ClInclude>
-    <ClInclude Include="LibLsp\lsp\JavaExtentions\findLinks.h">
-      <Filter>lsp\JavaExtentions</Filter>
     </ClInclude>
     <ClInclude Include="LibLsp\lsp\general\InitializeParams.h">
       <Filter>lsp\general</Filter>
@@ -519,15 +444,6 @@
     <ClInclude Include="LibLsp\lsp\client\unregisterCapability.h">
       <Filter>lsp\client</Filter>
     </ClInclude>
-    <ClInclude Include="sct\SCTConfig.h">
-      <Filter>sct</Filter>
-    </ClInclude>
-    <ClInclude Include="sct\DownLoadCapFile.h">
-      <Filter>sct</Filter>
-    </ClInclude>
-    <ClInclude Include="sct\sct.h">
-      <Filter>sct</Filter>
-    </ClInclude>
     <ClInclude Include="LibLsp\JsonRpc\TcpServer.h">
       <Filter>JsonRpc</Filter>
     </ClInclude>
@@ -539,6 +455,93 @@
     </ClInclude>
     <ClInclude Include="LibLsp\JsonRpc\WebSocketServer.h">
       <Filter>JsonRpc</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\addOverridableMethods.h">
+      <Filter>lsp\extention\jdtls</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\buildWorkspace.h">
+      <Filter>lsp\extention\jdtls</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\checkConstructorsStatus.h">
+      <Filter>lsp\extention\jdtls</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\checkDelegateMethodsStatus.h">
+      <Filter>lsp\extention\jdtls</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\checkHashCodeEqualsStatus.h">
+      <Filter>lsp\extention\jdtls</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\checkToStringStatus.h">
+      <Filter>lsp\extention\jdtls</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\classFileContents.h">
+      <Filter>lsp\extention\jdtls</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\codeActionResult.h">
+      <Filter>lsp\extention\jdtls</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\executeCommand.h">
+      <Filter>lsp\extention\jdtls</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\findLinks.h">
+      <Filter>lsp\extention\jdtls</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\generateAccessors.h">
+      <Filter>lsp\extention\jdtls</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\generateConstructors.h">
+      <Filter>lsp\extention\jdtls</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\generateDelegateMethods.h">
+      <Filter>lsp\extention\jdtls</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\generateHashCodeEquals.h">
+      <Filter>lsp\extention\jdtls</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\generateToString.h">
+      <Filter>lsp\extention\jdtls</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\getMoveDestinations.h">
+      <Filter>lsp\extention\jdtls</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\getRefactorEdit.h">
+      <Filter>lsp\extention\jdtls</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\listOverridableMethods.h">
+      <Filter>lsp\extention\jdtls</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\Move.h">
+      <Filter>lsp\extention\jdtls</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\organizeImports.h">
+      <Filter>lsp\extention\jdtls</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\OverridableMethod.h">
+      <Filter>lsp\extention\jdtls</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\projectConfigurationUpdate.h">
+      <Filter>lsp\extention\jdtls</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\resolveUnimplementedAccessors.h">
+      <Filter>lsp\extention\jdtls</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\searchSymbols.h">
+      <Filter>lsp\extention\jdtls</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\extention\jdtls\WorkspaceSymbolParams.h">
+      <Filter>lsp\extention\jdtls</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\extention\sct\sct.h">
+      <Filter>lsp\extention\sct</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\extention\sct\SCTConfig.h">
+      <Filter>lsp\extention\sct</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\extention\sct\protocol.h">
+      <Filter>lsp\extention\sct</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\extention\sonarlint\protocol.h">
+      <Filter>lsp\extention\sonarlint</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -560,9 +563,6 @@
     <Filter Include="lsp\general">
       <UniqueIdentifier>{09427494-f677-443b-b1f9-20cf6e6976f5}</UniqueIdentifier>
     </Filter>
-    <Filter Include="lsp\JavaExtentions">
-      <UniqueIdentifier>{c8a3cc81-db5b-43c2-b31a-eeb4854e4f73}</UniqueIdentifier>
-    </Filter>
     <Filter Include="network">
       <UniqueIdentifier>{43293649-591a-46e4-ae6d-93de432e5202}</UniqueIdentifier>
     </Filter>
@@ -578,11 +578,20 @@
     <Filter Include="lsp\client">
       <UniqueIdentifier>{7dc366bb-0edc-4d01-b61b-b9a25911ab44}</UniqueIdentifier>
     </Filter>
-    <Filter Include="sct">
-      <UniqueIdentifier>{c341806a-8b37-418c-b310-00bce4db084d}</UniqueIdentifier>
-    </Filter>
     <Filter Include="example">
       <UniqueIdentifier>{50042bb3-ac58-43e1-8cbe-0af2d1c58599}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="lsp\extention">
+      <UniqueIdentifier>{0091cb64-52d3-4c82-a25a-0a9b976182fe}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="lsp\extention\sct">
+      <UniqueIdentifier>{9a310695-9678-42c9-9085-412e178574d4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="lsp\extention\jdtls">
+      <UniqueIdentifier>{b2e6e5b5-343f-4098-8105-4f054b3e9b38}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="lsp\extention\sonarlint">
+      <UniqueIdentifier>{11198774-b392-4339-b654-17aee0eeaa21}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>

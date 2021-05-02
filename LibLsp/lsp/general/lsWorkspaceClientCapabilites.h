@@ -7,7 +7,7 @@
 #include "LibLsp/JsonRpc/message.h"
 #include "LibLsp/lsp/lsDocumentUri.h"
 #include "LibLsp/lsp/lsAny.h"
-#include "LibLsp/lsp/JavaExtentions/searchSymbols.h"
+#include "LibLsp/lsp/extention/jdtls/searchSymbols.h"
 
 /**
  * Capabilities specific to `WorkspaceEdit`s
