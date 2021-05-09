@@ -5,7 +5,10 @@
 
 #include "LibLsp/lsp/lsDocumentUri.h"
 #include "LibLsp/lsp/lsCommand.h"
+
+#ifdef _WIN32
 #include <ppltasks.h>
+#endif
 
 struct  StatusReport {
 	
