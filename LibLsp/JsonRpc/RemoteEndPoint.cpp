@@ -150,7 +150,7 @@ bool RemoteEndPoint::dispatch(const std::string& content)
 		}
 		else if (isResponseMessage(visitor))
 		{
-			// ÕÒµ½¶ÔÓ¦µÄrequest ,È»ºóÖ´ÐÐhandler
+			// ï¿½Òµï¿½ï¿½ï¿½Ó¦ï¿½ï¿½request ,È»ï¿½ï¿½Ö´ï¿½ï¿½handler
 			
 			try
 			{
@@ -205,7 +205,7 @@ bool RemoteEndPoint::dispatch(const std::string& content)
 		}
 		else if (isNotificationMessage(visitor))
 		{
-			// µ÷ÓÃnotification handlerÀ´´¦Àí
+			// ï¿½ï¿½ï¿½ï¿½notification handlerï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 			try
 			{
 				auto msg = jsonHandler->parseNotificationMessage(visitor["method"]->GetString(), visitor);
@@ -274,7 +274,7 @@ void RemoteEndPoint::internalSendRequest( RequestInMessage& info, GenericRespons
 		
 		info.id.set(d_ptr->m_id);
 		std::lock_guard<std::mutex> lock2(m_requsetInfo);
-		_client_request_futures[info.id.value] = PendingRequestInfo(info.method, handler);
+		_client_request_futures[info.id.value] = std::make_shared<PendingRequestInfo>(info.method, handler);
 		const auto s = info.ToJson();
 		
 		output->write("Content-Length: ").write(s.size()) .write("\r\n\r\n").write(s) ;
@@ -306,13 +306,13 @@ void RemoteEndPoint::sendResponse( lsResponseMessage& msg)
 	sendMsg(msg);
 }
 
-const PendingRequestInfo* const  RemoteEndPoint::GetRequestInfo(int _id)
+const std::shared_ptr<const PendingRequestInfo> RemoteEndPoint::GetRequestInfo(int _id)
 {
 	std::lock_guard<std::mutex> lock(m_requsetInfo);
 	auto findIt = _client_request_futures.find(_id);
 	if (findIt != _client_request_futures.end())
 	{
-		return &(findIt->second);
+		return findIt->second;
 	}
 	return  nullptr;
 }
@@ -346,7 +346,7 @@ void RemoteEndPoint::mainLoop(std::unique_ptr<LspMessage>msg)
 
 		else if (_kind == LspMessage::RESPONCE_MESSAGE)
 		{
-			// ÕÒµ½¶ÔÓ¦µÄrequest ,È»ºóÖ´ÐÐhandler
+			// ï¿½Òµï¿½ï¿½ï¿½Ó¦ï¿½ï¿½request ,È»ï¿½ï¿½Ö´ï¿½ï¿½handler
 			auto response = dynamic_cast<lsResponseMessage*>(msg.get());
 			try
 			{
@@ -390,7 +390,7 @@ void RemoteEndPoint::mainLoop(std::unique_ptr<LspMessage>msg)
 		}
 		else if (_kind == LspMessage::NOTIFICATION_MESSAGE)
 		{
-			// µ÷ÓÃnotification handlerÀ´´¦Àí
+			// ï¿½ï¿½ï¿½ï¿½notification handlerï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 			try
 			{
 				local_endpoint->notify(std::move(msg));

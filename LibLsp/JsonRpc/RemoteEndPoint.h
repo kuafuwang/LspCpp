@@ -312,9 +312,9 @@ private:
 	
 	std::shared_ptr < Endpoint> local_endpoint;
 
-	std::unordered_map <int, PendingRequestInfo >  _client_request_futures;
+	std::unordered_map <int, std::shared_ptr<PendingRequestInfo>>  _client_request_futures;
 	std::unordered_map <int, LspMessage* >  receivedRequestMap;
-	const PendingRequestInfo* const GetRequestInfo(int _id);
+	const std::shared_ptr<const PendingRequestInfo> GetRequestInfo(int _id);
 	std::atomic<bool> quit{};
 	std::shared_ptr<lsp::istream>  input;
 	std::shared_ptr<lsp::ostream>  output;
