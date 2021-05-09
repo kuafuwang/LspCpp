@@ -24,7 +24,13 @@
 #include "textDocument/selectionRange.h"
 #include "AbsolutePath.h"
 
+#ifdef _WIN32
 #include <Windows.h>
+#else
+#include <climits>
+#include <cstdlib>
+#endif
+
 #include "LibLsp/JsonRpc/json.h"
 #include "language/language.h"
 #include "network/uri/uri_builder.hpp"
@@ -582,6 +588,7 @@ bool lsDocumentUri::operator==(const std::string& other) const
 
 namespace
 {
+#ifdef _WIN32
 	std::wstring Utf8ToUnicode(const std::string& strUtf8)
 	{
 		int iLen = 0;
@@ -608,12 +615,14 @@ namespace
 		delete[] pChar;
 		return strResult;
 	}
+#endif
 }
 
 
 AbsolutePath NormalizePath(const std::string& path0,
 	bool ensure_exists = true,
 	bool force_lower_on_windows = true) {
+#ifdef _WIN32
 	// Requires Windows 8
 	/*
 	if (!PathCanonicalize(buffer, path.c_str()))
@@ -666,6 +675,13 @@ AbsolutePath NormalizePath(const std::string& path0,
 
 	
 	return AbsolutePath(UnicodeToUtf8(path), false /*validate*/);
+#else
+	char normPathArr[MAX_INPUT];
+	realpath(path0.c_str(), normPathArr);
+	std::string path(normPathArr);
+
+	return AbsolutePath(path, false);
+#endif
 }
 AbsolutePath lsDocumentUri::GetAbsolutePath() const {
 	
