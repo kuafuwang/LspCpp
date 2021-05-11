@@ -16,7 +16,7 @@ MAKE_REFLECT_STRUCT(TCP_option,host,port)
 
 struct SCTConfig
 {
-	static SCTConfig* newInstance(const wstring& file_path,string& error);
+	static SCTConfig* newInstance(const string& file_path,string& error);
 	std::string version;
 	std::string file_name;
 	
