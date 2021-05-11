@@ -535,3 +535,5 @@ FodyWeavers.xsd
 *.tlog
 
 # End of https://www.toptal.com/developers/gitignore/api/clion+all,c++,linux,visualstudio,windows
+
+*.tar.gz
