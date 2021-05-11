@@ -21,7 +21,7 @@ default: liblspcpp.a headers.tar.gz
 liblspcpp.a: $(OFILES)
 	ar -ruv $@ $^
 
-headers.tar.gz: $(HEADERS)
+headers.tar.gz: $(HEADERS) macro_map.h optional.h optional.hpp
 	tar -czf $@ $^
 
 %.o: %.cpp
