@@ -3,6 +3,7 @@
 #include <functional>
 #include "MessageProducer.h"
 #include <iostream>
+#include <memory>
 #include "MessageIssue.h"
 
 namespace lsp {

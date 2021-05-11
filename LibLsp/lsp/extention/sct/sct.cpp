@@ -55,7 +55,7 @@ using lsp::Log;
 //MethodType sct_initialize::request::kMethodInfo = "sct/initialize";
 
 
- SCTConfig* SCTConfig::newInstance(const wstring& file_path, string& error)
+ SCTConfig* SCTConfig::newInstance(const string& file_path, string& error)
 {
  	 if(!boost::filesystem::exists(file_path))
  	 {
