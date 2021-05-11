@@ -10,20 +10,11 @@
     <ClCompile Include="LibLsp\JsonRpc\Endpoint.cpp">
       <Filter>JsonRpc</Filter>
     </ClCompile>
-    <ClCompile Include="LibLsp\JsonRpc\serializer.cc">
-      <Filter>JsonRpc</Filter>
-    </ClCompile>
     <ClCompile Include="LibLsp\JsonRpc\message.cpp">
       <Filter>JsonRpc</Filter>
     </ClCompile>
     <ClCompile Include="LibLsp\JsonRpc\RemoteEndPoint.cpp">
       <Filter>JsonRpc</Filter>
-    </ClCompile>
-    <ClCompile Include="LibLsp\lsp\lsp.cc">
-      <Filter>lsp</Filter>
-    </ClCompile>
-    <ClCompile Include="LibLsp\lsp\lsp_diagnostic.cc">
-      <Filter>lsp</Filter>
     </ClCompile>
     <ClCompile Include="LibLsp\lsp\ProtocolJsonHandler.cpp">
       <Filter>lsp</Filter>
@@ -33,9 +24,6 @@
     </ClCompile>
     <ClCompile Include="LibLsp\lsp\textDocument\textDocument.cpp">
       <Filter>lsp\textDocument</Filter>
-    </ClCompile>
-    <ClCompile Include="LibLsp\JsonRpc\threaded_queue.cc">
-      <Filter>JsonRpc</Filter>
     </ClCompile>
     <ClCompile Include="network\uri\detail\uri_advance_parts.cpp">
       <Filter>network\uri\detail</Filter>
@@ -81,6 +69,18 @@
     </ClCompile>
     <ClCompile Include="LibLsp\lsp\extention\sct\sct.cpp">
       <Filter>lsp\extention\sct</Filter>
+    </ClCompile>
+    <ClCompile Include="LibLsp\JsonRpc\serializer.cpp">
+      <Filter>JsonRpc</Filter>
+    </ClCompile>
+    <ClCompile Include="LibLsp\JsonRpc\threaded_queue.cpp">
+      <Filter>JsonRpc</Filter>
+    </ClCompile>
+    <ClCompile Include="LibLsp\lsp\lsp.cpp">
+      <Filter>lsp</Filter>
+    </ClCompile>
+    <ClCompile Include="LibLsp\lsp\lsp_diagnostic.cpp">
+      <Filter>lsp</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
