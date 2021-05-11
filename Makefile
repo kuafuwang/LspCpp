@@ -5,11 +5,11 @@ CXXFLAGS = -Wall $(OPTFLAGS) $(INCLUDES)
 
 NETWORKS_DETAIL = $(addprefix detail/, uri_advance_parts.o \
 	uri_normalize.o uri_parse.o uri_parse_authority.o uri_resolve.o)
-
-LSP_FILES = general/initialize.o lsp.o lsp_diagnostic.o ProtocolJsonHandler.o textDocument/textDocument.o
 NETWORK_FILES = $(addprefix uri/, uri.o uri_builder.o uri_errors.o $(NETWORKS_DETAIL))
-JSONRPC_FILES = threaded_queue.o WebSocketServer.o RemoteEndPoint.o \
-	Endpoint.o message.o MessageJsonHandler.o serializer.o StreamMessageProducer.o
+LSP_FILES = extention/sct/sct.o general/initialize.o lsp.o lsp_diagnostic.o \
+	ProtocolJsonHandler.o textDocument/textDocument.o
+JSONRPC_FILES = TcpServer.o threaded_queue.o WebSocketServer.o RemoteEndPoint.o \
+	Endpoint.o message.o MessageJsonHandler.o serializer.o StreamMessageProducer.o \
 
 OFILES = $(addprefix ./network/,$(NETWORK_FILES)) \
 	$(addprefix ./LibLsp/lsp/, $(LSP_FILES)) $(addprefix ./LibLsp/JsonRpc/, $(JSONRPC_FILES))
