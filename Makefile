@@ -12,14 +12,15 @@ JSONRPC_FILES = TcpServer.o threaded_queue.o WebSocketServer.o RemoteEndPoint.o 
 	Endpoint.o message.o MessageJsonHandler.o serializer.o StreamMessageProducer.o \
 
 OFILES = $(addprefix ./network/,$(NETWORK_FILES)) \
-	$(addprefix ./LibLsp/lsp/, $(LSP_FILES)) $(addprefix ./LibLsp/JsonRpc/, $(JSONRPC_FILES))
+	$(addprefix ./LibLsp/lsp/, $(LSP_FILES)) \
+	$(addprefix ./LibLsp/JsonRpc/, $(JSONRPC_FILES))
 
 HEADERS = $(shell find ./LibLsp ./network -regex ".*\.\(h\|hpp\)")
 
 default: liblspcpp.a headers.tar.gz
 
 liblspcpp.a: $(OFILES)
-	ar -ruv $@ $^
+	ar -r $@ $^
 
 headers.tar.gz: $(HEADERS) macro_map.h optional.h optional.hpp
 	tar -czf $@ $^
