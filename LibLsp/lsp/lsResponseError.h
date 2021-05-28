@@ -31,7 +31,7 @@ struct lsResponseError {
 		message.swap(arg.message);
 		std::swap(code, arg.code);
 	}
-	optional<lsp::Any> data;
+	boost::optional<lsp::Any> data;
 	std::string ToString();
 	void Write(Writer& visitor);
 };

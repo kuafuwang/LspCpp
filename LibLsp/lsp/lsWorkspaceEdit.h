@@ -15,10 +15,10 @@ struct lsWorkspaceEdit {
 	// version of a text document. Whether a client supports versioned document
 	// edits is expressed via `WorkspaceClientCapabilites.versionedWorkspaceEdit`.
 	//
-	optional< std::map<std::string, std::vector<lsTextEdit> > >  changes;
-	typedef std::pair < optional<lsTextDocumentEdit>, optional<lsp::Any> > Either;
+	boost::optional< std::map<std::string, std::vector<lsTextEdit> > >  changes;
+	typedef std::pair < boost::optional<lsTextDocumentEdit>, boost::optional<lsp::Any> > Either;
 
-	optional <  std::vector< Either > > documentChanges;
+	boost::optional <  std::vector< Either > > documentChanges;
 	~lsWorkspaceEdit();
 	
 	MAKE_SWAP_METHOD(lsWorkspaceEdit, changes, documentChanges);

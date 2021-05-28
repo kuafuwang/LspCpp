@@ -7,7 +7,7 @@
 
 struct ClientInfo {
 	std::string name;
-	optional<std::string> version;
+	boost::optional<std::string> version;
 	
 	MAKE_SWAP_METHOD(ClientInfo,name,version);
 };
@@ -18,34 +18,34 @@ struct lsInitializeParams {
   // the server. Is null if the process has not been started by another process.
   // If the parent process is not alive then the server should exit (see exit
   // notification) its process.
-  optional<int> processId;
+  boost::optional<int> processId;
 
   // The rootPath of the workspace. Is null
   // if no folder is open.
   //
   // @deprecated in favour of rootUri.
-  optional<std::string> rootPath;
+  boost::optional<std::string> rootPath;
 
   // The rootUri of the workspace. Is null if no
   // folder is open. If both `rootPath` and `rootUri` are set
   // `rootUri` wins.
-  optional<lsDocumentUri> rootUri;
+  boost::optional<lsDocumentUri> rootUri;
 
   // User provided initialization options.
-  optional<lsp::Any> initializationOptions;
+  boost::optional<lsp::Any> initializationOptions;
 
   // The capabilities provided by the client (editor or tool)
   lsClientCapabilities capabilities;
 
 
   /**
- * An optional extension to the protocol.
+ * An boost::optional extension to the protocol.
  * To tell the server what client (editor) is talking to it.
  */
  // @Deprecated
-  optional< std::string >clientName;
+  boost::optional< std::string >clientName;
 
-  optional<ClientInfo> clientInfo;
+  boost::optional<ClientInfo> clientInfo;
 	
   enum class lsTrace {
     // NOTE: serialized as a string, one of 'off' | 'messages' | 'verbose';
@@ -67,7 +67,7 @@ struct lsInitializeParams {
  *
  * Since 3.6.0
  */
-  optional< std::vector<WorkspaceFolder> >  workspaceFolders;
+  boost::optional< std::vector<WorkspaceFolder> >  workspaceFolders;
 
   MAKE_SWAP_METHOD(lsInitializeParams,
       processId,

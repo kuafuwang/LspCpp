@@ -40,7 +40,7 @@ namespace WillSaveTextDocumentParams {
    * A reason why a text document is saved.
    */
 
-		optional<TextDocumentSaveReason>  reason;
+	  boost::optional<TextDocumentSaveReason>  reason;
 
 		MAKE_SWAP_METHOD(Params, textDocument, reason);
   };

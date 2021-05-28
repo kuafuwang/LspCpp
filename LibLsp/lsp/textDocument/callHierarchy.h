@@ -36,7 +36,7 @@ MAKE_REFLECT_STRUCT(CallHierarchyParams, textDocument, position, direction);
 	/**
 	 * More detail for this symbol, e.g the signature of a function.
 	 */
- 	optional<std::string>
+		boost::optional<std::string>
 	 detail;
 
 	/**

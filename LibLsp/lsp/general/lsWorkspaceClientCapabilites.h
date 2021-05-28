@@ -17,7 +17,7 @@ struct WorkspaceEditCapabilities {
 	/**
 	 * The client supports versioned document changes in `WorkspaceEdit`s
 	 */
-	optional<bool>  documentChanges;
+	boost::optional<bool>  documentChanges;
 
 	/**
 	 * The client supports resource changes
@@ -26,7 +26,7 @@ struct WorkspaceEditCapabilities {
 	 * @deprecated Since LSP introduces resource operations, use {link #resourceOperations}
 	 */
 
-	optional<bool> resourceChanges;
+	boost::optional<bool> resourceChanges;
 
 	/**
 	 * The resource operations the client supports. Clients should at least
@@ -34,7 +34,7 @@ struct WorkspaceEditCapabilities {
 	 *
 	 * See {@link ResourceOperationKind} for allowed values.
 	 */
-	optional< std::vector<std::string> > resourceOperations;
+	boost::optional< std::vector<std::string> > resourceOperations;
 
 	/**
 	 * The failure handling strategy of a client if applying the workspace edit
@@ -42,7 +42,7 @@ struct WorkspaceEditCapabilities {
 	 *
 	 * See {@link FailureHandlingKind} for allowed values.
 	 */
-	optional<std::string > failureHandling;
+	boost::optional<std::string > failureHandling;
 
 	MAKE_SWAP_METHOD(WorkspaceEditCapabilities, documentChanges, resourceChanges, resourceOperations, failureHandling)
 
@@ -52,7 +52,7 @@ MAKE_REFLECT_STRUCT(WorkspaceEditCapabilities,documentChanges, resourceChanges, 
 
 struct DynamicRegistrationCapabilities {
 	// Did foo notification supports dynamic registration.
-	optional<bool> dynamicRegistration;
+	boost::optional<bool> dynamicRegistration;
 
 	MAKE_SWAP_METHOD(DynamicRegistrationCapabilities,
 		dynamicRegistration);
@@ -66,7 +66,7 @@ MAKE_REFLECT_STRUCT(DynamicRegistrationCapabilities,
 // Workspace specific client capabilities.
 struct SymbolKindCapabilities
 {
-	optional< std::vector<lsSymbolKind> >  valueSet;
+	boost::optional< std::vector<lsSymbolKind> >  valueSet;
 
 	MAKE_SWAP_METHOD(SymbolKindCapabilities, valueSet)
 
@@ -81,7 +81,7 @@ struct SymbolCapabilities :public DynamicRegistrationCapabilities {
 	/**
 	 * Specific capabilities for the `SymbolKind` in the `workspace/symbol` request.
 	 */
-	optional<SymbolKindCapabilities>  symbolKind;
+	boost::optional<SymbolKindCapabilities>  symbolKind;
 
 	MAKE_SWAP_METHOD(SymbolCapabilities,
 		symbolKind, dynamicRegistration);
@@ -94,28 +94,28 @@ MAKE_REFLECT_STRUCT(SymbolCapabilities,
 
 struct lsWorkspaceClientCapabilites {
   // The client supports applying batch edits to the workspace.
-  optional<bool> applyEdit;
+  boost::optional<bool> applyEdit;
 
  
 
   // Capabilities specific to `WorkspaceEdit`s
-  optional<WorkspaceEditCapabilities> workspaceEdit;
+  boost::optional<WorkspaceEditCapabilities> workspaceEdit;
 
 
 
   // Capabilities specific to the `workspace/didChangeConfiguration`
   // notification.
-  optional<DynamicRegistrationCapabilities> didChangeConfiguration;
+  boost::optional<DynamicRegistrationCapabilities> didChangeConfiguration;
 
   // Capabilities specific to the `workspace/didChangeWatchedFiles`
   // notification.
-  optional<DynamicRegistrationCapabilities> didChangeWatchedFiles;
+  boost::optional<DynamicRegistrationCapabilities> didChangeWatchedFiles;
 
   // Capabilities specific to the `workspace/symbol` request.
-  optional<SymbolCapabilities> symbol;
+  boost::optional<SymbolCapabilities> symbol;
 
   // Capabilities specific to the `workspace/executeCommand` request.
-  optional<DynamicRegistrationCapabilities> executeCommand;
+  boost::optional<DynamicRegistrationCapabilities> executeCommand;
 
 
   /**
@@ -123,14 +123,14 @@ struct lsWorkspaceClientCapabilites {
  *
  * Since 3.6.0
  */
-  optional<bool> workspaceFolders;
+  boost::optional<bool> workspaceFolders;
 
   /**
    * The client supports `workspace/configuration` requests.
    *
    * Since 3.6.0
    */
-  optional<bool> configuration;
+  boost::optional<bool> configuration;
 
   MAKE_SWAP_METHOD(lsWorkspaceClientCapabilites,
 	  applyEdit,

@@ -391,7 +391,7 @@ lsRenameFile::lsRenameFile()
 }
 
 
-void Reflect(Reader& visitor, optional< SelectionRange* >& value)
+void Reflect(Reader& visitor, boost::optional< SelectionRange* >& value)
 {
 	if (visitor.IsNull()) {
 		visitor.GetNull();

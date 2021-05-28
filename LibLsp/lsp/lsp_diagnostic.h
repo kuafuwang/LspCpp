@@ -77,15 +77,15 @@ struct lsDiagnostic {
 
   // The diagnostic's severity. Can be omitted. If omitted it is up to the
   // client to interpret diagnostics as error, warning, info or hint.
-  optional<lsDiagnosticSeverity> severity;
+  boost::optional<lsDiagnosticSeverity> severity;
 
   // The diagnostic's code. Can be omitted.
-  optional<  std::pair<optional<std::string>, optional<int>> >  code;
+  boost::optional<  std::pair<boost::optional<std::string>, boost::optional<int>> >  code;
 
-  optional<DiagnosticCodeDescription> codeDescription;
+  boost::optional<DiagnosticCodeDescription> codeDescription;
   // A human-readable string describing the source of this
   // diagnostic, e.g. 'typescript' or 'super lint'.
-  optional < std::string >source ;
+  boost::optional < std::string >source ;
 
   // The diagnostic's message.
   std::string message;
@@ -94,7 +94,7 @@ struct lsDiagnostic {
   std::vector<lsTextEdit> fixits_;
 
 
-  optional<std::vector<DiagnosticTag>> tags;
+  boost::optional<std::vector<DiagnosticTag>> tags;
 	
 
   /**
@@ -103,7 +103,7 @@ struct lsDiagnostic {
  *
  * Since 3.7.0
  */
-  optional<std::vector<DiagnosticRelatedInformation>> relatedInformation;
+  boost::optional<std::vector<DiagnosticRelatedInformation>> relatedInformation;
 
 	
   bool operator==(const lsDiagnostic& rhs) const;

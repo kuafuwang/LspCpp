@@ -20,10 +20,10 @@ struct SCTConfig
 	std::string version;
 	std::string file_name;
 	
-	optional<bool> start_by_jcide;
+	boost::optional<bool> start_by_jcide;
 	
-	optional<TCP_option> tcp;
-	optional<vector<string>> args;
+	boost::optional<TCP_option> tcp;
+	boost::optional<vector<string>> args;
 	
 	// internal using
 	bool broken = false;

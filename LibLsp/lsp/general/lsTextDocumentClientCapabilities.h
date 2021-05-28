@@ -14,7 +14,7 @@
 
 struct  WorkDoneProgressOptions
 {
-	optional<bool>workDoneProgress;
+	boost::optional<bool>workDoneProgress;
 	MAKE_SWAP_METHOD(WorkDoneProgressOptions, workDoneProgress);
 };
 MAKE_REFLECT_STRUCT(WorkDoneProgressOptions, workDoneProgress);
@@ -24,7 +24,7 @@ struct lsCompletionOptions:WorkDoneProgressOptions
 {
   // The server provides support to resolve additional
   // information for a completion item.
-  optional<bool>  resolveProvider = false;
+  boost::optional<bool>  resolveProvider = false;
 
   /**
    * Most tools trigger completion request automatically without explicitly requesting
@@ -37,14 +37,14 @@ struct lsCompletionOptions:WorkDoneProgressOptions
    * an identifier (for example `.` in JavaScript) list them in `triggerCharacters`.
    */
   // https://github.com/Microsoft/language-server-protocol/issues/138.
-  optional< std::vector<std::string> > triggerCharacters ;
+  boost::optional< std::vector<std::string> > triggerCharacters ;
 
   /**
    * The list of all possible characters that commit a completion. This field can be used
    * if clients don't support individual commmit characters per completion item. See
    * `ClientCapabilities.textDocument.completion.completionItem.commitCharactersSupport`
    */
-  optional< std::vector<std::string> > allCommitCharacters;
+  boost::optional< std::vector<std::string> > allCommitCharacters;
 
   MAKE_SWAP_METHOD(lsCompletionOptions, workDoneProgress, resolveProvider, triggerCharacters, allCommitCharacters);
 };
@@ -102,16 +102,16 @@ MAKE_REFLECT_TYPE_PROXY(lsTextDocumentSyncKind)
 
 struct lsTextDocumentSyncOptions {
   // Open and close notifications are sent to the server.
-  optional<bool>  openClose ;
+  boost::optional<bool>  openClose ;
   // Change notificatins are sent to the server. See TextDocumentSyncKind.None,
   // TextDocumentSyncKind.Full and TextDocumentSyncKindIncremental.
-  optional< lsTextDocumentSyncKind> change ;
+  boost::optional< lsTextDocumentSyncKind> change ;
   // Will save notifications are sent to the server.
-  optional<bool> willSave;
+  boost::optional<bool> willSave;
   // Will save wait until requests are sent to the server.
-  optional<bool> willSaveWaitUntil;
+  boost::optional<bool> willSaveWaitUntil;
   // Save notifications are sent to the server.
-  optional<lsSaveOptions> save;
+  boost::optional<lsSaveOptions> save;
 
   MAKE_SWAP_METHOD(lsTextDocumentSyncOptions,
 	  openClose,
@@ -129,18 +129,18 @@ MAKE_REFLECT_STRUCT(lsTextDocumentSyncOptions,
 
 struct SynchronizationCapabilities {
 	// Whether text document synchronization supports dynamic registration.
-	optional<bool> dynamicRegistration;
+	boost::optional<bool> dynamicRegistration;
 
 	// The client supports sending will save notifications.
-	optional<bool> willSave;
+	boost::optional<bool> willSave;
 
 	// The client supports sending a will save request and
 	// waits for a response providing text edits which will
 	// be applied to the document before it is saved.
-	optional<bool> willSaveWaitUntil;
+	boost::optional<bool> willSaveWaitUntil;
 
 	// The client supports did save notifications.
-	optional<bool> didSave;
+	boost::optional<bool> didSave;
 	
 	MAKE_SWAP_METHOD(SynchronizationCapabilities,
 		dynamicRegistration,
@@ -156,7 +156,7 @@ MAKE_REFLECT_STRUCT(SynchronizationCapabilities,
 
 struct CompletionItemKindCapabilities
 {
-	optional<std::vector<lsCompletionItemKind> >valueSet;
+	boost::optional<std::vector<lsCompletionItemKind> >valueSet;
 	MAKE_SWAP_METHOD(CompletionItemKindCapabilities, valueSet);
 };
 MAKE_REFLECT_STRUCT(CompletionItemKindCapabilities, valueSet);
@@ -168,28 +168,28 @@ struct CompletionItemCapabilities {
 	// and `${3:foo}`. `$0` defines the final tab stop, it defaults to
 	// the end of the snippet. Placeholders with equal identifiers are linked,
 	// that is typing in one will update others too.
-	optional<bool> snippetSupport;
+	boost::optional<bool> snippetSupport;
 
 	/**
 	  * Client supports commit characters on a completion item.
    */
-	optional<bool> commitCharactersSupport;
+	boost::optional<bool> commitCharactersSupport;
 
 	/**
 	   * Client supports the following content formats for the documentation
 	   * property. The order describes the preferred format of the client.
 	   */
-	optional< std::vector<std::string> > documentationFormat;
+	boost::optional< std::vector<std::string> > documentationFormat;
 
 	/**
 	 * Client supports the deprecated property on a completion item.
 	 */
-	optional<bool> deprecatedSupport;
+	boost::optional<bool> deprecatedSupport;
 
 	/**
 	 * Client supports the preselect property on a completion item.
 	 */
-	optional<bool> preselectSupport;
+	boost::optional<bool> preselectSupport;
 
 	MAKE_SWAP_METHOD(CompletionItemCapabilities,
 		snippetSupport,
@@ -209,25 +209,25 @@ MAKE_REFLECT_STRUCT(CompletionItemCapabilities,
  */
 struct CompletionCapabilities {
 	// Whether completion supports dynamic registration.
-	optional<bool> dynamicRegistration;
+	boost::optional<bool> dynamicRegistration;
 
 	
 
 	// The client supports the following `CompletionItem` specific
 	// capabilities.
-	optional<CompletionItemCapabilities> completionItem;
+	boost::optional<CompletionItemCapabilities> completionItem;
 
 	/**
 	 * The client supports the following `CompletionItemKind` specific
 	 * capabilities.
 	 */
-	optional<CompletionItemKindCapabilities> completionItemKind;
+	boost::optional<CompletionItemKindCapabilities> completionItemKind;
 
 	/**
 	 * The client supports sending additional context information for a
 	 * `textDocument/completion` request.
 	 */
-	optional<bool> contextSupport;
+	boost::optional<bool> contextSupport;
 
 
 	MAKE_SWAP_METHOD(CompletionCapabilities,
@@ -248,7 +248,7 @@ struct HoverCapabilities:public DynamicRegistrationCapabilities
  *
  * See {@link MarkupKind} for allowed values.
  */
-	optional<std::vector<std::string>> contentFormat;
+	boost::optional<std::vector<std::string>> contentFormat;
 
 	MAKE_SWAP_METHOD(HoverCapabilities, dynamicRegistration, contentFormat);
 };
@@ -264,7 +264,7 @@ struct	ParameterInformationCapabilities {
 	 *
 	 * Since 3.14.0
 	 */
-	optional<bool> labelOffsetSupport;
+	boost::optional<bool> labelOffsetSupport;
 	
 	MAKE_SWAP_METHOD(ParameterInformationCapabilities, labelOffsetSupport);
 };
@@ -295,7 +295,7 @@ struct SignatureHelpCapabilities :public DynamicRegistrationCapabilities
 	 * The client supports the following `SignatureInformation`
 	 * specific properties.
 	 */
-	optional< SignatureInformationCapabilities  > signatureInformation;
+	boost::optional< SignatureInformationCapabilities  > signatureInformation;
 
 	MAKE_SWAP_METHOD(SignatureHelpCapabilities, dynamicRegistration, signatureInformation)
 };
@@ -305,12 +305,12 @@ struct DocumentSymbolCapabilities :public DynamicRegistrationCapabilities {
 	/**
 	 * Specific capabilities for the `SymbolKind`.
 	 */
-	optional<SymbolKindCapabilities>  symbolKind;
+	boost::optional<SymbolKindCapabilities>  symbolKind;
 
 	/**
 	 * The client support hierarchical document symbols.
 	 */
-	 optional<bool> hierarchicalDocumentSymbolSupport;
+	 boost::optional<bool> hierarchicalDocumentSymbolSupport;
 
 	 MAKE_SWAP_METHOD(DocumentSymbolCapabilities, dynamicRegistration, symbolKind, hierarchicalDocumentSymbolSupport)
 };
@@ -320,7 +320,7 @@ struct DeclarationCapabilities:public DynamicRegistrationCapabilities{
 	/**
 	 * The client supports additional metadata in the form of declaration links.
 	 */
-	optional<bool>linkSupport;
+	boost::optional<bool>linkSupport;
 
 	MAKE_SWAP_METHOD(DeclarationCapabilities, dynamicRegistration, linkSupport);
 };
@@ -337,7 +337,7 @@ struct CodeActionKindCapabilities
 	 *
 	 * See {@link CodeActionKind} for allowed values.
 	 */
-	optional< std::vector< std::string> >valueSet;
+	boost::optional< std::vector< std::string> >valueSet;
 
 	MAKE_SWAP_METHOD(CodeActionKindCapabilities, valueSet)
 };
@@ -345,7 +345,7 @@ MAKE_REFLECT_STRUCT(CodeActionKindCapabilities,valueSet)
 
 struct CodeActionLiteralSupportCapabilities
 {
-	optional<CodeActionKindCapabilities> codeActionKind;
+	boost::optional<CodeActionKindCapabilities> codeActionKind;
 
 	MAKE_SWAP_METHOD(CodeActionLiteralSupportCapabilities, codeActionKind)
 };
@@ -356,7 +356,7 @@ struct CodeActionCapabilities:public DynamicRegistrationCapabilities{
  * The client support code action literals as a valid
  * response of the `textDocument/codeAction` request.
  */
-	optional<CodeActionLiteralSupportCapabilities> codeActionLiteralSupport;
+	boost::optional<CodeActionLiteralSupportCapabilities> codeActionLiteralSupport;
 
 	MAKE_SWAP_METHOD(CodeActionCapabilities, dynamicRegistration, codeActionLiteralSupport)
 };
@@ -367,7 +367,7 @@ struct RenameCapabilities :public DynamicRegistrationCapabilities {
  * The client support code action literals as a valid
  * response of the `textDocument/codeAction` request.
  */
-	optional<bool> prepareSupport;
+	boost::optional<bool> prepareSupport;
 
 	MAKE_SWAP_METHOD(RenameCapabilities, dynamicRegistration, prepareSupport)
 };
@@ -378,7 +378,7 @@ struct PublishDiagnosticsCapabilities :public DynamicRegistrationCapabilities {
  * The client support code action literals as a valid
  * response of the `textDocument/codeAction` request.
  */
-	optional<bool> relatedInformation;
+	boost::optional<bool> relatedInformation;
 
 	MAKE_SWAP_METHOD(PublishDiagnosticsCapabilities, dynamicRegistration, relatedInformation)
 };
@@ -390,13 +390,13 @@ struct FoldingRangeCapabilities :public DynamicRegistrationCapabilities {
 	 * The maximum number of folding ranges that the client prefers to receive per document. The value serves as a
 	 * hint, servers are free to follow the limit.
 	 */
-	optional<int> rangeLimit;
+	boost::optional<int> rangeLimit;
 
 	/**
 	 * If set, the client signals that it only supports folding complete lines. If set, client will
 	 * ignore specified `startCharacter` and `endCharacter` properties in a FoldingRange.
 	 */
-	optional<bool> lineFoldingOnly;
+	boost::optional<bool> lineFoldingOnly;
 	MAKE_SWAP_METHOD(FoldingRangeCapabilities, dynamicRegistration, rangeLimit, lineFoldingOnly)
 };
 MAKE_REFLECT_STRUCT(FoldingRangeCapabilities, dynamicRegistration, rangeLimit,lineFoldingOnly)
@@ -407,7 +407,7 @@ struct SemanticHighlightingCapabilities :public DynamicRegistrationCapabilities 
  * The client support code action literals as a valid
  * response of the `textDocument/codeAction` request.
  */
-	optional<bool> semanticHighlighting;
+	boost::optional<bool> semanticHighlighting;
 
 	MAKE_SWAP_METHOD(SemanticHighlightingCapabilities, dynamicRegistration, semanticHighlighting)
 };
@@ -420,37 +420,37 @@ struct lsTextDocumentClientCapabilities {
 
 
   // Capabilities specific to the `textDocument/completion`
-  optional<CompletionCapabilities> completion;
+  boost::optional<CompletionCapabilities> completion;
 
 
 
   // Capabilities specific to the `textDocument/hover`
-  optional<HoverCapabilities> hover;
+  boost::optional<HoverCapabilities> hover;
 
   // Capabilities specific to the `textDocument/signatureHelp`
-  optional<SignatureHelpCapabilities> signatureHelp;
+  boost::optional<SignatureHelpCapabilities> signatureHelp;
 
   // Capabilities specific to the `textDocument/references`
-  optional<DynamicRegistrationCapabilities> references;
+  boost::optional<DynamicRegistrationCapabilities> references;
 
 
 
 
 	
   // Capabilities specific to the `textDocument/documentHighlight`
-  optional<DynamicRegistrationCapabilities> documentHighlight;
+  boost::optional<DynamicRegistrationCapabilities> documentHighlight;
 
   // Capabilities specific to the `textDocument/documentSymbol`
-  optional<DocumentSymbolCapabilities> documentSymbol;
+  boost::optional<DocumentSymbolCapabilities> documentSymbol;
 
   // Capabilities specific to the `textDocument/formatting`
-  optional<DynamicRegistrationCapabilities> formatting;
+  boost::optional<DynamicRegistrationCapabilities> formatting;
 
   // Capabilities specific to the `textDocument/rangeFormatting`
-  optional<DynamicRegistrationCapabilities> rangeFormatting;
+  boost::optional<DynamicRegistrationCapabilities> rangeFormatting;
 
   // Capabilities specific to the `textDocument/onTypeFormatting`
-  optional<DynamicRegistrationCapabilities> onTypeFormatting;
+  boost::optional<DynamicRegistrationCapabilities> onTypeFormatting;
 
 
   /**
@@ -458,12 +458,12 @@ struct lsTextDocumentClientCapabilities {
  *
  * Since 3.14.0
  */
-  optional< DeclarationCapabilities> declaration;
+  boost::optional< DeclarationCapabilities> declaration;
 
 	
   typedef  DeclarationCapabilities DefinitionCapabilities;
   // Capabilities specific to the `textDocument/definition`
-  optional<DefinitionCapabilities> definition;
+  boost::optional<DefinitionCapabilities> definition;
 
 
 	
@@ -473,23 +473,23 @@ struct lsTextDocumentClientCapabilities {
 * Since 3.6.0
 */
   typedef  DeclarationCapabilities TypeDefinitionCapabilities;
-  optional<TypeDefinitionCapabilities>  typeDefinition;
+  boost::optional<TypeDefinitionCapabilities>  typeDefinition;
 
 	
   typedef  DeclarationCapabilities ImplementationCapabilities;
   // Capabilities specific to the `textDocument/implementation`
-  optional<ImplementationCapabilities> implementation;
+  boost::optional<ImplementationCapabilities> implementation;
 
 	
   // Capabilities specific to the `textDocument/codeAction`
-  optional<CodeActionCapabilities> codeAction;
+  boost::optional<CodeActionCapabilities> codeAction;
 
 
   // Capabilities specific to the `textDocument/codeLens`
-  optional<DynamicRegistrationCapabilities> codeLens;
+  boost::optional<DynamicRegistrationCapabilities> codeLens;
 
   // Capabilities specific to the `textDocument/documentLink`
-  optional<DynamicRegistrationCapabilities> documentLink;
+  boost::optional<DynamicRegistrationCapabilities> documentLink;
 
   /**
  * Capabilities specific to the `textDocument/documentColor` and the
@@ -497,15 +497,15 @@ struct lsTextDocumentClientCapabilities {
  *
  * Since 3.6.0
  */
-  optional<DynamicRegistrationCapabilities> colorProvider;
+  boost::optional<DynamicRegistrationCapabilities> colorProvider;
 	
   // Capabilities specific to the `textDocument/rename`
-  optional<RenameCapabilities> rename;
+  boost::optional<RenameCapabilities> rename;
 
 /**
 * Capabilities specific to `textDocument/publishDiagnostics`.
 */
-  optional<PublishDiagnosticsCapabilities> publishDiagnostics;
+  boost::optional<PublishDiagnosticsCapabilities> publishDiagnostics;
 
 
 
@@ -514,30 +514,30 @@ struct lsTextDocumentClientCapabilities {
 *
 * Since 3.10.0
 */
-  optional< FoldingRangeCapabilities > foldingRange;
+  boost::optional< FoldingRangeCapabilities > foldingRange;
 
 	
   /**
    * Capabilities specific to {@code textDocument/semanticHighlighting}.
    */
-  optional< SemanticHighlightingCapabilities >  semanticHighlightingCapabilities;
+  boost::optional< SemanticHighlightingCapabilities >  semanticHighlightingCapabilities;
 
   /**
    * Capabilities specific to {@code textDocument/typeHierarchy}.
    */
-  optional< DynamicRegistrationCapabilities >  typeHierarchyCapabilities;
+  boost::optional< DynamicRegistrationCapabilities >  typeHierarchyCapabilities;
 
   /**
    * Capabilities specific to {@code textDocument/callHierarchy}.
    */
  
-  optional< DynamicRegistrationCapabilities > callHierarchy;
+  boost::optional< DynamicRegistrationCapabilities > callHierarchy;
 
   /**
 * Capabilities specific to `textDocument/selectionRange` requests
 */
  
-  optional< DynamicRegistrationCapabilities > selectionRange;
+  boost::optional< DynamicRegistrationCapabilities > selectionRange;
 
 
 

@@ -14,8 +14,8 @@ MAKE_REFLECT_STRUCT(DownLoadCapFileParams, uri);
 struct NormalActionResult
 {
 	bool state = false;
-	optional<std::vector<uint8_t>> data;
-	optional<std::string> info;
+	boost::optional<std::vector<uint8_t>> data;
+	boost::optional<std::string> info;
 	MAKE_SWAP_METHOD(NormalActionResult, state, data, info);
 };
 MAKE_REFLECT_STRUCT(NormalActionResult, data, state, info)
@@ -35,8 +35,8 @@ struct ConnectParams
 {
 	
 	SctProtocol protocol= SctProtocol::T01;
-	optional<std::string> reader;
-	optional<lsp::Any> data;
+	boost::optional<std::string> reader;
+	boost::optional<lsp::Any> data;
 	MAKE_SWAP_METHOD(ConnectParams, reader, protocol,data);
 };
 MAKE_REFLECT_STRUCT(ConnectParams, reader, protocol, data);
@@ -56,9 +56,9 @@ DEFINE_REQUEST_RESPONSE_TYPE(sct_SetProtocol, SetProtocolParams, NormalActionRes
 
 struct GPAuthParams
 {
-	optional < std::string>  scp;
-	optional < std::string > key;
-	optional < lsp::Any >   option;
+	boost::optional < std::string>  scp;
+	boost::optional < std::string > key;
+	boost::optional < lsp::Any >   option;
 	MAKE_SWAP_METHOD(GPAuthParams, key, scp, option);
 };
 MAKE_REFLECT_STRUCT(GPAuthParams, key, scp, option);
@@ -70,9 +70,9 @@ struct InstallAppletParams
 {
 	std::vector<uint8_t> package_aid;
 	std::vector<uint8_t> applet_aid;
-	optional < std::vector<uint8_t>> instance_aid;
-	optional<std::vector<uint8_t>>  authority;
-	optional<std::vector<uint8_t>>  parameters;
+	boost::optional < std::vector<uint8_t>> instance_aid;
+	boost::optional<std::vector<uint8_t>>  authority;
+	boost::optional<std::vector<uint8_t>>  parameters;
 	MAKE_SWAP_METHOD(InstallAppletParams, package_aid, applet_aid, instance_aid, authority, parameters);
 };
 MAKE_REFLECT_STRUCT(InstallAppletParams, package_aid, applet_aid, instance_aid, authority, parameters);
@@ -145,8 +145,8 @@ MAKE_REFLECT_STRUCT(JdwpInfo, host, jdwp_port);
 struct  LaunchResult
 {
 	bool state;
-	optional<JdwpInfo> info;
-	optional<std::string> error;
+	boost::optional<JdwpInfo> info;
+	boost::optional<std::string> error;
 	MAKE_SWAP_METHOD(LaunchResult, state, info, error);
 };
 MAKE_REFLECT_STRUCT(LaunchResult, state, info, error);
@@ -169,7 +169,7 @@ struct LaunchParam
 		LAUNCH_FOR_DEBUG = 0,
 		LAUNCH_FOR_RUN = 1
 	};
-	optional<uint32_t> launch_for_what;
+	boost::optional<uint32_t> launch_for_what;
 	
 };
 MAKE_REFLECT_STRUCT(LaunchParam, launch_for_what);
@@ -195,11 +195,11 @@ struct sctInitializeParams {
 	// the server. Is null if the process has not been started by another process.
 	// If the parent process is not alive then the server should exit (see exit
 	// notification) its process.
-	optional<int> processId;
+	boost::optional<int> processId;
 
 	// User provided initialization options.
-	optional<lsp::Any> initializationOptions;
-	optional<int> version;
+	boost::optional<lsp::Any> initializationOptions;
+	boost::optional<int> version;
 
 };
 MAKE_REFLECT_STRUCT(sctInitializeParams,processId,initializationOptions, version);
@@ -207,7 +207,7 @@ MAKE_REFLECT_STRUCT(sctInitializeParams,processId,initializationOptions, version
 struct sctServerCapabilities {
 	bool gp_auth = false;
 	bool gp_key = false;
-	optional<int> version;
+	boost::optional<int> version;
 	MAKE_SWAP_METHOD(sctServerCapabilities, gp_auth, gp_key, version);
 };
 MAKE_REFLECT_STRUCT(sctServerCapabilities, gp_auth, gp_key, version);
