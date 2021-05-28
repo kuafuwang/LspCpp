@@ -18,8 +18,8 @@ struct LintRule
 		return name + " (" + key + ")";
 	}
 	bool activeByDefault = true;
-	boost::boost::optional<std::string> severity;
-	boost::boost::optional<std::string> type;
+	boost::optional<std::string> severity;
+	boost::optional<std::string> type;
 	int icon_index = -1;
 	MAKE_SWAP_METHOD(LintRule, key, name, activeByDefault, severity, type);
 
