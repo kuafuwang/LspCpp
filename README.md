@@ -13,6 +13,7 @@
 
 ## Projects using LspCpp:
 * [JCIDE](https://www.javacardos.com/tools)
+* [LPG-language-server](https://github.com/kuafuwang/LPG-language-server)
 ## License
    MIT
    
