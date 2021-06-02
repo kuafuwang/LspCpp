@@ -1,7 +1,7 @@
 #pragma once
 
 
-#include "LibLsp/JsonRpc/RequestInMessage.h"
+#include "LibLsp/JsonRpc/NotificationInMessage.h"
 #include "LibLsp/JsonRpc/lsResponseMessage.h"
 
 #include "LibLsp/lsp/lsVersionedTextDocumentIdentifier.h"
