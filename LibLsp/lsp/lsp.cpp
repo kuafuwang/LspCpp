@@ -444,20 +444,24 @@ AbsolutePath AbsolutePath::BuildDoNotUse(const std::string& path) {
 
 AbsolutePath::AbsolutePath() {}
 
-bool IsUnixAbsolutePath(const std::string& path) {
-	return !path.empty() && path[0] == '/';
-}
-bool IsWindowsAbsolutePath(const std::string& path) {
-	auto is_drive_letter = [](char c) {
-		return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
-	};
+namespace 
+{
+	bool IsUnixAbsolutePath(const std::string& path) {
+		return !path.empty() && path[0] == '/';
+	}
+	bool IsWindowsAbsolutePath(const std::string& path) {
+		auto is_drive_letter = [](char c) {
+			return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
+		};
 
-	return path.size() > 3 && path[1] == ':' &&
-		(path[2] == '/' || path[2] == '\\') && is_drive_letter(path[0]);
-}
+		return path.size() > 3 && path[1] == ':' &&
+			(path[2] == '/' || path[2] == '\\') && is_drive_letter(path[0]);
+	}
 
-bool IsAbsolutePath(const std::string& path) {
-	return IsUnixAbsolutePath(path) || IsWindowsAbsolutePath(path);
+	bool IsAbsolutePath(const std::string& path) {
+		return IsUnixAbsolutePath(path) || IsWindowsAbsolutePath(path);
+	}
+
 }
 
 
@@ -588,6 +592,7 @@ bool lsDocumentUri::operator==(const std::string& other) const
 
 namespace
 {
+
 #ifdef _WIN32
 	std::wstring Utf8ToUnicode(const std::string& strUtf8)
 	{
@@ -615,74 +620,129 @@ namespace
 		delete[] pChar;
 		return strResult;
 	}
+#else
+	// Returns the canonicalized absolute pathname, without expanding symbolic
+// links. This is a variant of realpath(2), C++ rewrite of
+// https://github.com/freebsd/freebsd/blob/master/lib/libc/stdlib/realpath.c
+	AbsolutePath RealPathNotExpandSymlink(std::string path,
+		bool ensure_exists) {
+		if (path.empty()) {
+			errno = EINVAL;
+			return nullopt;
+		}
+		if (path[0] == '\0') {
+			errno = ENOENT;
+			return {};
+		}
+
+		// Do not use PATH_MAX because it is tricky on Linux.
+		// See https://eklitzke.org/path-max-is-tricky
+		char tmp[1024];
+		std::string resolved;
+		size_t i = 0;
+		struct stat sb;
+		if (path[0] == '/') {
+			resolved = "/";
+			i = 1;
+		}
+		else {
+			if (!getcwd(tmp, sizeof tmp) && ensure_exists)
+				return {};
+			resolved = tmp;
+		}
+
+		while (i < path.size()) {
+			auto j = path.find('/', i);
+			if (j == std::string::npos)
+				j = path.size();
+			auto next_token = path.substr(i, j - i);
+			i = j + 1;
+			if (resolved.back() != '/')
+				resolved += '/';
+			if (next_token.empty() || next_token == ".") {
+				// Handle consequential slashes and "."
+				continue;
+			}
+			else if (next_token == "..") {
+				// Strip the last path component except when it is single "/"
+				if (resolved.size() > 1)
+					resolved.resize(resolved.rfind('/', resolved.size() - 2) + 1);
+				continue;
+			}
+			// Append the next path component.
+			// Here we differ from realpath(3), we use stat(2) instead of
+			// lstat(2) because we do not want to resolve symlinks.
+			resolved += next_token;
+			if (stat(resolved.c_str(), &sb) != 0 && ensure_exists)
+				return {};
+			if (!S_ISDIR(sb.st_mode) && j < path.size() && ensure_exists) {
+				errno = ENOTDIR;
+				return {};
+			}
+		}
+
+		// Remove trailing slash except when a single "/".
+		if (resolved.size() > 1 && resolved.back() == '/')
+			resolved.pop_back();
+		return AbsolutePath(resolved, true /*validate*/);
+	}
 #endif
-}
 
 
-AbsolutePath NormalizePath(const std::string& path0,
-	bool ensure_exists = true,
-	bool force_lower_on_windows = true) {
+	AbsolutePath NormalizePath(const std::string& path0,
+		bool ensure_exists = true,
+		bool force_lower_on_windows = true) {
 #ifdef _WIN32
-	// Requires Windows 8
-	/*
-	if (!PathCanonicalize(buffer, path.c_str()))
-	  return nullopt;
-	*/
 
-	// Returns the volume name, ie, c:/
-	/*
-	if (!GetVolumePathName(path.c_str(), buffer, MAX_PATH))
-	  return nullopt;
-	*/
-	std::wstring path= Utf8ToUnicode(path0);
-	//std::string path = path0;
+		std::wstring path = Utf8ToUnicode(path0);
 
-	wchar_t buffer[MAX_PATH] = (L"");
+		wchar_t buffer[MAX_PATH] = (L"");
 
-	// Normalize the path name, ie, resolve `..`.
-	unsigned long len = GetFullPathName(path.c_str(), MAX_PATH, buffer, nullptr);
-	if (!len)
-		return {};
-	path = std::wstring(buffer, len);
-
-	// Get the actual casing of the path, ie, if the file on disk is `C:\FooBar`
-	// and this function is called with `c:\fooBar` this will return `c:\FooBar`.
-	// (drive casing is lowercase).
-	if (ensure_exists) {
-		len = GetLongPathName(path.c_str(), buffer, MAX_PATH);
+		// Normalize the path name, ie, resolve `..`.
+		unsigned long len = GetFullPathNameW(path.c_str(), MAX_PATH, buffer, nullptr);
 		if (!len)
 			return {};
 		path = std::wstring(buffer, len);
-	}
 
-	// Empty paths have no meaning.
-	if (path.empty())
-		return {};
+		// Get the actual casing of the path, ie, if the file on disk is `C:\FooBar`
+		// and this function is called with `c:\fooBar` this will return `c:\FooBar`.
+		// (drive casing is lowercase).
+		if (ensure_exists) {
+			len = GetLongPathNameW(path.c_str(), buffer, MAX_PATH);
+			if (!len)
+				return {};
+			path = std::wstring(buffer, len);
+		}
 
-	// We may need to normalize the drive name to upper-case; at the moment
-	// vscode sends lower-case path names.
-	/*
-	path[0] = toupper(path[0]);
-	*/
-	// Make the path all lower-case, since windows is case-insensitive.
-	if (force_lower_on_windows) {
-		for (size_t i = 0; i < path.size(); ++i)
-			path[i] = (wchar_t)tolower(path[i]);
-	}
+		// Empty paths have no meaning.
+		if (path.empty())
+			return {};
 
-	// cquery assumes forward-slashes.
-	std::replace(path.begin(), path.end(), '\\', '/');
+		// We may need to normalize the drive name to upper-case; at the moment
+		// vscode sends lower-case path names.
+		/*
+		path[0] = toupper(path[0]);
+		*/
+		// Make the path all lower-case, since windows is case-insensitive.
+		if (force_lower_on_windows) {
+			for (size_t i = 0; i < path.size(); ++i)
+				path[i] = (wchar_t)tolower(path[i]);
+		}
 
-	
-	return AbsolutePath(UnicodeToUtf8(path), false /*validate*/);
+		// cquery assumes forward-slashes.
+		std::replace(path.begin(), path.end(), '\\', '/');
+
+
+		return AbsolutePath(UnicodeToUtf8(path), false /*validate*/);
 #else
-	char normPathArr[MAX_INPUT];
-	realpath(path0.c_str(), normPathArr);
-	std::string path(normPathArr);
 
-	return AbsolutePath(path, false);
+		return RealPathNotExpandSymlink(path0, ensure_exists);
+
 #endif
+	}
 }
+
+
 AbsolutePath lsDocumentUri::GetAbsolutePath() const {
 	
 
@@ -707,7 +767,7 @@ AbsolutePath::AbsolutePath(const std::string& path, bool validate)
 	if (validate && !IsAbsolutePath(path)) {
 		qualify = false;
 		auto temp = NormalizePath(path,false);
-		if(temp.path.size())// try to fix
+		if(!temp.path.empty())
 		{
 			this->path = temp.path;
 		}
