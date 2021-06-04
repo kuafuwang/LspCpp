@@ -176,31 +176,31 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>.\;.\third_party\threadpool;$(IncludePath)</IncludePath>
+    <IncludePath>.\third_party\rapidjson\include;.\third_party\utfcpp\source;.\;.\third_party\threadpool;$(IncludePath)</IncludePath>
     <OutDir>..\Our_lib_V3</OutDir>
     <TargetName>LspCppMDD</TargetName>
     <TargetExt>.lib</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='TCP_SERVER_EXAMPLE|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>.\;.\third_party\threadpool;$(IncludePath)</IncludePath>
+    <IncludePath>.\third_party\rapidjson\include;.\third_party\utfcpp\source;.\;.\third_party\threadpool;$(IncludePath)</IncludePath>
     <TargetName>TCP_SERVER_EXAMPLE</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='STDIO_SERVER_EXAMPLE|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>.\;.\third_party\threadpool;$(IncludePath)</IncludePath>
+    <IncludePath>.\third_party\rapidjson\include;.\third_party\utfcpp\source;.\;.\third_party\threadpool;$(IncludePath)</IncludePath>
     <TargetName>STDIO_SERVER_EXAMPLE</TargetName>
     <OutDir>.\bin</OutDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='STDIO_CLIENT_EXAMPLE|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>.\;.\third_party\threadpool;$(IncludePath)</IncludePath>
+    <IncludePath>.\third_party\rapidjson\include;.\third_party\utfcpp\source;.\;.\third_party\threadpool;$(IncludePath)</IncludePath>
     <TargetName>STDIO_CLIENT_EXAMPLE</TargetName>
     <OutDir>.\bin</OutDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='WEBSOCKET_SERVER_EXAMPLE|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>.\;.\third_party\threadpool;$(IncludePath)</IncludePath>
+    <IncludePath>.\third_party\rapidjson\include;.\third_party\utfcpp\source;.\;.\third_party\threadpool;$(IncludePath)</IncludePath>
     <TargetName>WEBSOCKET_SERVER_EXAMPLE</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -222,7 +222,7 @@
     <LinkIncremental>false</LinkIncremental>
     <OutDir>..\Our_lib_V3</OutDir>
     <TargetName>LspCppMD</TargetName>
-    <IncludePath>.\;.\third_party\threadpool;$(IncludePath)</IncludePath>
+    <IncludePath>.\third_party\rapidjson\include;.\third_party\utfcpp\source;.\;.\third_party\threadpool;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
@@ -623,7 +623,6 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
     <Import Project="packages\tencent.rapidjson.1.1.1\build\tencent.rapidjson.targets" Condition="Exists('packages\tencent.rapidjson.1.1.1\build\tencent.rapidjson.targets')" />
-    <Import Project="..\packages\tencent.rapidjson.1.1.1\build\tencent.rapidjson.targets" Condition="Exists('..\packages\tencent.rapidjson.1.1.1\build\tencent.rapidjson.targets')" />
     <Import Project="..\packages\boost.1.76.0.0\build\boost.targets" Condition="Exists('..\packages\boost.1.76.0.0\build\boost.targets')" />
     <Import Project="..\packages\boost_chrono-vc141.1.76.0.0\build\boost_chrono-vc141.targets" Condition="Exists('..\packages\boost_chrono-vc141.1.76.0.0\build\boost_chrono-vc141.targets')" />
     <Import Project="..\packages\boost_context-vc141.1.76.0.0\build\boost_context-vc141.targets" Condition="Exists('..\packages\boost_context-vc141.1.76.0.0\build\boost_context-vc141.targets')" />

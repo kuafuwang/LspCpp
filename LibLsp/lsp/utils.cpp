@@ -12,7 +12,7 @@
 #include <string>
 #include <unordered_map>
 #include <sys/stat.h>
-
+#include "utf8.h"
 #ifdef  WIN32
 #include <Windows.h>
 #endif
@@ -288,49 +288,18 @@ bool IsDirectory(const std::string& path) {
   return path_stat.st_mode & S_IFDIR;
 }
 
-#ifdef  WIN32
-std::wstring Utf8ToUnicode(const std::string& strUtf8)
-{
-	int iLen = MultiByteToWideChar(CP_UTF8, 0, strUtf8.c_str(), -1, NULL, 0);
-	std::wstring wstrResult(iLen,0);
-    MultiByteToWideChar(CP_UTF8, 0, strUtf8.c_str(), -1, &wstrResult[0], iLen);
-    
-    return wstrResult;
-}
 
-std::string UnicodeToUtf8(const std::wstring& strUnicode)
-{
-	int  iLen = WideCharToMultiByte(CP_UTF8, 0, strUnicode.c_str(), -1, NULL, 0, NULL, NULL);
-	std::string strResult(iLen,0);
-	
-    WideCharToMultiByte(CP_UTF8, 0, strUnicode.c_str(), -1,&strResult[0], iLen, NULL, NULL);
-    return strResult;
-}
 std::string ws2s(std::wstring const& wstr) {
 
-    return UnicodeToUtf8(wstr);
-
+	std::string narrow;
+	utf8::utf32to8(wstr.begin(), wstr.end(), std::back_inserter(narrow));
+	return narrow;
 }
 std::wstring s2ws(const std::string& str) {
-    return Utf8ToUnicode(str);
+	std::wstring wide;
+	utf8::utf8to32(str.begin(), str.end(), std::back_inserter(wide));
+	return wide;
 }
-#else
-std::string ws2s(std::wstring const& wstr) {
-
-    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
-    std::string narrow = converter.to_bytes(wstr);
-    return narrow;
-
-}
-std::wstring s2ws(const std::string& str) {
-
-    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
-    std::wstring wide = converter.from_bytes(str);
-    return wide;
-}
-#endif
-	
-
 
 
 #ifdef _WIN32
