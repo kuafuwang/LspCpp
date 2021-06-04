@@ -82,6 +82,12 @@
     <ClCompile Include="LibLsp\lsp\lsp_diagnostic.cpp">
       <Filter>lsp</Filter>
     </ClCompile>
+    <ClCompile Include="LibLsp\lsp\utils.cpp">
+      <Filter>lsp</Filter>
+    </ClCompile>
+    <ClCompile Include="LibLsp\lsp\working_files.cpp">
+      <Filter>lsp</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="LibLsp\JsonRpc\MessageIssue.h">
@@ -542,6 +548,18 @@
     </ClInclude>
     <ClInclude Include="LibLsp\lsp\extention\sonarlint\protocol.h">
       <Filter>lsp\extention\sonarlint</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\utils.h">
+      <Filter>lsp</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\working_files.h">
+      <Filter>lsp</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\Directory.h">
+      <Filter>lsp</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\SimpleTimer.h">
+      <Filter>lsp</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

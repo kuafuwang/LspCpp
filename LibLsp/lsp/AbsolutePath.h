@@ -15,7 +15,8 @@ struct AbsolutePath {
 
 	bool operator==(const AbsolutePath& rhs) const;
 	bool operator!=(const AbsolutePath& rhs) const;
-
+	bool operator<(const AbsolutePath& rhs) const;
+	bool operator>(const AbsolutePath& rhs) const;
 	std::string path;
 	bool qualify = true;
 };

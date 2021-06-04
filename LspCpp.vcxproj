@@ -447,6 +447,8 @@
     <ClCompile Include="LibLsp\lsp\lsp_diagnostic.cpp" />
     <ClCompile Include="LibLsp\lsp\ProtocolJsonHandler.cpp" />
     <ClCompile Include="LibLsp\lsp\textDocument\textDocument.cpp" />
+    <ClCompile Include="LibLsp\lsp\utils.cpp" />
+    <ClCompile Include="LibLsp\lsp\working_files.cpp" />
     <ClCompile Include="network\uri\detail\uri_advance_parts.cpp" />
     <ClCompile Include="network\uri\detail\uri_normalize.cpp" />
     <ClCompile Include="network\uri\detail\uri_parse.cpp" />
@@ -481,6 +483,7 @@
     <ClInclude Include="LibLsp\lsp\client\registerCapability.h" />
     <ClInclude Include="LibLsp\lsp\client\unregisterCapability.h" />
     <ClInclude Include="LibLsp\lsp\CodeActionParams.h" />
+    <ClInclude Include="LibLsp\lsp\Directory.h" />
     <ClInclude Include="LibLsp\lsp\ExecuteCommandParams.h" />
     <ClInclude Include="LibLsp\lsp\extention\jdtls\addOverridableMethods.h" />
     <ClInclude Include="LibLsp\lsp\extention\jdtls\buildWorkspace.h" />
@@ -546,6 +549,7 @@
     <ClInclude Include="LibLsp\lsp\out_list.h" />
     <ClInclude Include="LibLsp\lsp\ProtocolJsonHandler.h" />
     <ClInclude Include="LibLsp\lsp\ResourceOperation.h" />
+    <ClInclude Include="LibLsp\lsp\SimpleTimer.h" />
     <ClInclude Include="LibLsp\lsp\symbol.h" />
     <ClInclude Include="LibLsp\lsp\textDocument\callHierarchy.h" />
     <ClInclude Include="LibLsp\lsp\textDocument\code_action.h" />
@@ -581,7 +585,9 @@
     <ClInclude Include="LibLsp\lsp\textDocument\typeHierarchy.h" />
     <ClInclude Include="LibLsp\lsp\textDocument\type_definition.h" />
     <ClInclude Include="LibLsp\lsp\textDocument\willSave.h" />
+    <ClInclude Include="LibLsp\lsp\utils.h" />
     <ClInclude Include="LibLsp\lsp\windows\MessageNotify.h" />
+    <ClInclude Include="LibLsp\lsp\working_files.h" />
     <ClInclude Include="LibLsp\lsp\workspace\applyEdit.h" />
     <ClInclude Include="LibLsp\lsp\workspace\configuration.h" />
     <ClInclude Include="LibLsp\lsp\workspace\didChangeWorkspaceFolders.h" />
