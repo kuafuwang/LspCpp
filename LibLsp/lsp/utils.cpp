@@ -291,28 +291,19 @@ bool IsDirectory(const std::string& path) {
 #ifdef  WIN32
 std::wstring Utf8ToUnicode(const std::string& strUtf8)
 {
-    int iLen = 0;
-    wchar_t* pWchar = NULL;
-    iLen = MultiByteToWideChar(CP_UTF8, 0, strUtf8.c_str(), -1, NULL, 0);
-    pWchar = new wchar_t[iLen + 1];
-    memset(pWchar, 0x00, (iLen + 1) * sizeof(wchar_t));
-    MultiByteToWideChar(CP_UTF8, 0, strUtf8.c_str(), -1, pWchar, iLen);
-    std::wstring wstrResult(pWchar);
-    delete[] pWchar;
-
+	int iLen = MultiByteToWideChar(CP_UTF8, 0, strUtf8.c_str(), -1, NULL, 0);
+	std::wstring wstrResult(iLen,0);
+    MultiByteToWideChar(CP_UTF8, 0, strUtf8.c_str(), -1, &wstrResult[0], iLen);
+    
     return wstrResult;
 }
 
 std::string UnicodeToUtf8(const std::wstring& strUnicode)
 {
-    int iLen = 0;
-    char* pChar = NULL;
-    iLen = WideCharToMultiByte(CP_UTF8, 0, strUnicode.c_str(), -1, NULL, 0, NULL, NULL);
-    pChar = new char[iLen + 1];
-    memset(pChar, 0x00, iLen + 1);
-    WideCharToMultiByte(CP_UTF8, 0, strUnicode.c_str(), -1, pChar, iLen, NULL, NULL);
-    std::string strResult(pChar);
-    delete[] pChar;
+	int  iLen = WideCharToMultiByte(CP_UTF8, 0, strUnicode.c_str(), -1, NULL, 0, NULL, NULL);
+	std::string strResult(iLen,0);
+	
+    WideCharToMultiByte(CP_UTF8, 0, strUnicode.c_str(), -1,&strResult[0], iLen, NULL, NULL);
     return strResult;
 }
 std::string ws2s(std::wstring const& wstr) {
