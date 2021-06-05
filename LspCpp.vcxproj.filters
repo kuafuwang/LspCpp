@@ -561,6 +561,9 @@
     <ClInclude Include="LibLsp\lsp\SimpleTimer.h">
       <Filter>lsp</Filter>
     </ClInclude>
+    <ClInclude Include="LibLsp\lsp\general\progress.h">
+      <Filter>lsp\general</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="JsonRpc">

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "LibLsp/lsp/method_type.h"
 
 
@@ -68,16 +68,31 @@ struct DocumentFilter{
 	 */
 	boost::optional<std::string> language;
 	/**
-	 * A uri scheme, like `file` or `untitled`.
+	 * A Uri [scheme](#Uri.scheme), like `file` or `untitled`.
 	 */
 	boost::optional<std::string>scheme;
 	/**
 	 * A glob pattern, like `*.{ts,js}`.
+	 *
+	 * Glob patterns can have the following syntax:
+	 * - `*` to match one or more characters in a path segment
+	 * - `?` to match on one character in a path segment
+	 * - `**` to match any number of path segments, including none
+	 * - `{}` to group sub patterns into an OR expression. (e.g. `**​/*.{ts,js}`
+	 *   matches all TypeScript and JavaScript files)
+	 * - `[]` to declare a range of characters to match in a path segment
+	 *   (e.g., `example.[0-9]` to match on `example.0`, `example.1`, …)
+	 * - `[!...]` to negate a range of characters to match in a path segment
+	 *   (e.g., `example.[!0-9]` to match on `example.a`, `example.b`, but
+	 *   not `example.0`)
 	 */
 	boost::optional<std::string>pattern;
 	MAKE_SWAP_METHOD(DocumentFilter, language, scheme, pattern)
 };
-MAKE_REFLECT_STRUCT(DocumentFilter,language,scheme,pattern)
+MAKE_REFLECT_STRUCT(DocumentFilter, language, scheme, pattern)
+
+//A document selector is the combination of one or more document filters.
+using DocumentSelector = std::vector<DocumentFilter>;
 
 // Document link options
 struct lsDocumentLinkOptions :WorkDoneProgressOptions {
@@ -102,18 +117,25 @@ struct TextDocumentRegistrationOptions
  * A document selector to identify the scope of the registration. If set to null
  * the document selector provided on the client side will be used.
  */
-	std::vector<DocumentFilter>documentSelector;
+	boost::optional<DocumentSelector>  documentSelector;
 
 	MAKE_SWAP_METHOD(TextDocumentRegistrationOptions, documentSelector);
 };
 MAKE_REFLECT_STRUCT(TextDocumentRegistrationOptions, documentSelector);
 
+/**
+ * Static registration options to be returned in the initialize request.
+ */
 struct StaticRegistrationOptions :public TextDocumentRegistrationOptions
 {
+	/**
+	 * The id used to register the request. The id can be used to deregister
+	 * the request again. See also Registration#id.
+	 */
 	boost::optional<std::string> id;
-	MAKE_SWAP_METHOD(StaticRegistrationOptions, documentSelector, id);
+	MAKE_SWAP_METHOD(StaticRegistrationOptions, documentSelector, id)
 };
-MAKE_REFLECT_STRUCT(StaticRegistrationOptions, documentSelector,id);
+MAKE_REFLECT_STRUCT(StaticRegistrationOptions, documentSelector,id)
 
 /**
  * The server supports workspace folder.
@@ -175,12 +197,15 @@ struct SemanticHighlightingServerCapabilities {
 };
 MAKE_REFLECT_STRUCT(SemanticHighlightingServerCapabilities, scopes);
 
+using  DocumentColorOptions = WorkDoneProgressOptions;
+
 struct lsServerCapabilities {
 	// Defines how text documents are synced. Is either a detailed structure
 	// defining each notification or for backwards compatibility the
 	
 	// TextDocumentSyncKind number.
-	boost::optional< std::pair<boost::optional<lsTextDocumentSyncKind>, boost::optional<lsTextDocumentSyncOptions> >> textDocumentSync;
+	boost::optional< std::pair<boost::optional<lsTextDocumentSyncKind>,
+	boost::optional<lsTextDocumentSyncOptions> >> textDocumentSync;
 	
 	// The server provides hover support.
 	boost::optional<bool>  hoverProvider;
@@ -238,6 +263,15 @@ struct lsServerCapabilities {
 	
 	// The server provides document link support.
 	boost::optional<lsDocumentLinkOptions > documentLinkProvider;
+
+
+	/**
+	 * The server provides color provider support.
+	 *
+	 * @since 3.6.0
+	 */
+	boost::optional< std::pair< boost::optional<bool>, boost::optional<DocumentColorOptions> > >  colorProvider;
+
 	
 	// The server provides execute command support.
 	boost::optional < lsExecuteCommandOptions >executeCommandProvider;
@@ -309,7 +343,7 @@ struct lsServerCapabilities {
 		typeHierarchyProvider,
 		callHierarchyProvider,
 		selectionRangeProvider,
-		experimental)
+		experimental, colorProvider)
 	
 };
 MAKE_REFLECT_STRUCT(lsServerCapabilities,
@@ -337,5 +371,5 @@ MAKE_REFLECT_STRUCT(lsServerCapabilities,
 	typeHierarchyProvider,
 	callHierarchyProvider,
 	selectionRangeProvider,
-	experimental)
+	experimental, colorProvider)
 

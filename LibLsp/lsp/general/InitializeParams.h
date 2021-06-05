@@ -19,7 +19,25 @@ struct lsInitializeParams {
   // If the parent process is not alive then the server should exit (see exit
   // notification) its process.
   boost::optional<int> processId;
-
+	
+  /**
+   * Information about the client
+   *
+   * @since 3.15.0
+   */
+  boost::optional<ClientInfo> clientInfo;
+  /**
+   * The locale the client is currently showing the user interface
+   * in. This must not necessarily be the locale of the operating
+   * system.
+   *
+   * Uses IETF language tags as the value's syntax
+   * (See https://en.wikipedia.org/wiki/IETF_language_tag)
+   *
+   * @since 3.16.0
+   */
+  boost::optional<std::string> locale;
+	
   // The rootPath of the workspace. Is null
   // if no folder is open.
   //
@@ -45,7 +63,7 @@ struct lsInitializeParams {
  // @Deprecated
   boost::optional< std::string >clientName;
 
-  boost::optional<ClientInfo> clientInfo;
+
 	
   enum class lsTrace {
     // NOTE: serialized as a string, one of 'off' | 'messages' | 'verbose';
@@ -75,7 +93,7 @@ struct lsInitializeParams {
       rootUri,
       initializationOptions,
       capabilities, clientName, clientInfo,
-      trace, workspaceFolders);
+      trace, workspaceFolders, locale)
 };
 
 void Reflect(Reader& reader, lsInitializeParams::lsTrace& value);
@@ -90,7 +108,7 @@ MAKE_REFLECT_STRUCT(lsInitializeParams,
                     rootUri,
                     initializationOptions,
                     capabilities, clientName, clientInfo,
-                    trace, workspaceFolders);
+                    trace, workspaceFolders, locale)
 
 struct lsInitializeError {
   // Indicates whether the client should retry to send the

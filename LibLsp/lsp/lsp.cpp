@@ -162,10 +162,7 @@ void Reflect(Reader& visitor, lsMarkedString& value)
 	}
 }
 
-lsWorkspaceEdit::~lsWorkspaceEdit()
-{
-	
-}
+
 void Reflect(Reader& visitor, TextDocumentCodeAction::Either& value)
 {
 	

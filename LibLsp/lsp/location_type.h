@@ -2,7 +2,7 @@
 
 #include "lsDocumentUri.h"
 #include "lsRange.h"
-
+//Represents a location inside a resource, such as a line inside a text file.
 struct lsLocation {
 	lsLocation();
 	lsLocation(lsDocumentUri uri, lsRange range);
@@ -16,6 +16,8 @@ struct lsLocation {
 };
 MAKE_REFLECT_STRUCT(lsLocation, uri, range)
 
+
+
 struct LinkLocation :public lsLocation
 {
 	std::string displayName;
@@ -24,7 +26,7 @@ struct LinkLocation :public lsLocation
 };
 MAKE_REFLECT_STRUCT(LinkLocation, uri, range, displayName,kind)
 
-
+//Represents a link between a sourceand a target location.
 struct LocationLink
 {
 	/**

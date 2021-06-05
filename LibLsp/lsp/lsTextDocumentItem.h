@@ -5,7 +5,7 @@
 #include <vector>
 #include "lsDocumentUri.h"
 
-
+//An item to transfer a text document from the client to the server.
 struct lsTextDocumentItem {
 	// The text document's URI.
 	lsDocumentUri uri;
@@ -19,11 +19,8 @@ struct lsTextDocumentItem {
 
 	// The content of the opened text document.
 	std::string text;
-	void swap(lsTextDocumentItem& arg) noexcept
-	{
-		uri.swap(arg.uri);
-		text.swap(arg.text);
-	}
+
+	MAKE_SWAP_METHOD(lsTextDocumentItem, uri, languageId, version, text)
 };
 
-MAKE_REFLECT_STRUCT(lsTextDocumentItem, uri, languageId, version, text);
+MAKE_REFLECT_STRUCT(lsTextDocumentItem, uri, languageId, version, text)

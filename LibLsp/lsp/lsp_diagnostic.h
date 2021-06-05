@@ -20,6 +20,12 @@ enum class lsDiagnosticSeverity {
   Hint = 4
 };
 MAKE_REFLECT_TYPE_PROXY(lsDiagnosticSeverity);
+
+/**
+ * The diagnostic tags.
+ *
+ * @since 3.15.0
+ */
 enum class DiagnosticTag :uint8_t {
 
 	/**
@@ -65,12 +71,21 @@ struct DiagnosticRelatedInformation {
 	 MAKE_SWAP_METHOD(DiagnosticRelatedInformation, location, message)
 };
 MAKE_REFLECT_STRUCT(DiagnosticRelatedInformation, location, message)
-
+/**
+ * Structure to capture a description for an error code.
+ *
+ * @since 3.16.0
+ */
 struct DiagnosticCodeDescription {
+	/**
+	 * An URI to open with more information about the diagnostic error.
+	 */
 	std::string href;
 	MAKE_SWAP_METHOD(DiagnosticCodeDescription, href)
 };
 MAKE_REFLECT_STRUCT(DiagnosticCodeDescription, href)
+
+//Represents a diagnostic, such as a compiler error or warning.Diagnostic objects are only valid in the scope of a resource.
 struct lsDiagnostic {
   // The range at which the message applies.
   lsRange range;
@@ -93,7 +108,11 @@ struct lsDiagnostic {
   // Non-serialized set of fixits.
   std::vector<lsTextEdit> fixits_;
 
-
+  /**
+   * Additional metadata about the diagnostic.
+   *
+   * @since 3.15.0
+   */
   boost::optional<std::vector<DiagnosticTag>> tags;
 	
 
@@ -105,13 +124,20 @@ struct lsDiagnostic {
  */
   boost::optional<std::vector<DiagnosticRelatedInformation>> relatedInformation;
 
-	
+  /**
+   * A data entry field that is preserved between a
+   * `textDocument/publishDiagnostics` notification and
+   * `textDocument/codeAction` request.
+   *
+   * @since 3.16.0
+   */
+  boost::optional<lsp::Any> data;
   bool operator==(const lsDiagnostic& rhs) const;
   bool operator!=(const lsDiagnostic& rhs) const;
 
-  MAKE_SWAP_METHOD(lsDiagnostic, range, severity,  code, codeDescription, source, message, tags)
+  MAKE_SWAP_METHOD(lsDiagnostic, range, severity,  code, codeDescription, source, message, tags, data)
 };
-MAKE_REFLECT_STRUCT(lsDiagnostic, range, severity, code, codeDescription, source, message, tags)
+MAKE_REFLECT_STRUCT(lsDiagnostic, range, severity, code, codeDescription, source, message, tags, data)
 
 
 

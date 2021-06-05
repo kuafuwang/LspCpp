@@ -527,11 +527,7 @@ struct lsTextDocumentClientCapabilities {
    */
   boost::optional< DynamicRegistrationCapabilities >  typeHierarchyCapabilities;
 
-  /**
-   * Capabilities specific to {@code textDocument/callHierarchy}.
-   */
- 
-  boost::optional< DynamicRegistrationCapabilities > callHierarchy;
+
 
   /**
 * Capabilities specific to `textDocument/selectionRange` requests
@@ -539,7 +535,33 @@ struct lsTextDocumentClientCapabilities {
  
   boost::optional< DynamicRegistrationCapabilities > selectionRange;
 
+  /**
+	 * Capabilities specific to the `textDocument/linkedEditingRange` request.
+	 *
+	 * @since 3.16.0
+	 */
+  boost::optional< DynamicRegistrationCapabilities > linkedEditingRange;
 
+  /**
+   * Capabilities specific to the various call hierarchy requests.
+   *
+   * @since 3.16.0
+   */
+  boost::optional< DynamicRegistrationCapabilities > callHierarchy;
+
+  /**
+   * Capabilities specific to the various semantic token requests.
+   *
+   * @since 3.16.0
+   */
+  boost::optional< DynamicRegistrationCapabilities > semanticTokens;
+
+  /**
+   * Capabilities specific to the `textDocument/moniker` request.
+   *
+   * @since 3.16.0
+   */
+  boost::optional< DynamicRegistrationCapabilities >  moniker;
 
   MAKE_SWAP_METHOD(lsTextDocumentClientCapabilities,
 	  synchronization,
@@ -560,32 +582,31 @@ struct lsTextDocumentClientCapabilities {
 	  documentLink, colorProvider,
 	  rename, publishDiagnostics, foldingRange,
 	  semanticHighlightingCapabilities, typeHierarchyCapabilities,
-	  callHierarchy, selectionRange);
+	  callHierarchy, selectionRange , linkedEditingRange, semanticTokens, moniker)
 };
 
 
-
-
 MAKE_REFLECT_STRUCT(lsTextDocumentClientCapabilities,
-                    synchronization,
-                    completion,
-                    hover,
-                    signatureHelp,
-                    implementation,
-                    references,
-                    documentHighlight,
-                    documentSymbol,
-                    formatting,
-                    rangeFormatting,
-                    onTypeFormatting,
-					declaration,
-                    definition, typeDefinition, implementation,
-                    codeAction,
-                    codeLens,
-                    documentLink, colorProvider,
-                    rename , publishDiagnostics , foldingRange,
-					semanticHighlightingCapabilities, typeHierarchyCapabilities,
-					callHierarchy, selectionRange);
+	synchronization,
+	completion,
+	hover,
+	signatureHelp,
+	implementation,
+	references,
+	documentHighlight,
+	documentSymbol,
+	formatting,
+	rangeFormatting,
+	onTypeFormatting,
+	declaration,
+	definition, typeDefinition, implementation,
+	codeAction,
+	codeLens,
+	documentLink, colorProvider,
+	rename, publishDiagnostics, foldingRange,
+	semanticHighlightingCapabilities, typeHierarchyCapabilities,
+	callHierarchy, selectionRange, linkedEditingRange, semanticTokens, moniker)
+
 
 
 
