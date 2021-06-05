@@ -5,7 +5,7 @@
 
 #include "LibLsp/lsp/lsTextDocumentIdentifier.h"
 #include "LibLsp/lsp/lsRange.h"
-
+#include <vector>
 struct DocumentColorParams {
 	/**
 	 * The text document.
@@ -70,4 +70,4 @@ struct ColorInformation {
 };
 MAKE_REFLECT_STRUCT(ColorInformation,range,color)
 
-DEFINE_REQUEST_RESPONSE_TYPE(td_documentColor, DocumentColorParams, ColorInformation, "textDocument/documentColor");
+DEFINE_REQUEST_RESPONSE_TYPE(td_documentColor, DocumentColorParams,std::vector<ColorInformation>, "textDocument/documentColor");

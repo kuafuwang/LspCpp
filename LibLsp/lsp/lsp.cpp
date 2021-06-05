@@ -32,6 +32,7 @@
 #endif
 
 #include "Directory.h"
+#include "lsFormattingOptions.h"
 #include "LibLsp/JsonRpc/json.h"
 #include "language/language.h"
 #include "network/uri/uri_builder.hpp"
@@ -377,6 +378,37 @@ void Reflect(Reader& visitor, lsp::Any& value)
 	 json_writer.m_->RawValue( value.Data().data(),value.Data().size(),static_cast<rapidjson::Type>(value.GetType()));
 	
  }
+  void Reflect(Reader& visitor, lsFormattingOptions::KeyData& value)
+{
+	  if (visitor.IsBool())
+	  {
+		  Reflect(visitor, value._boolean);
+	  }
+	  else if (visitor.IsInt() || visitor.IsInt64() || visitor.IsUint64())
+	  {
+		  Reflect(visitor, value._integer);
+	  }
+	  else if(visitor.IsString())
+	  {
+		  Reflect(visitor, value._string);
+	  }
+}
+   void Reflect(Writer& visitor, lsFormattingOptions::KeyData& value)
+{
+	   if (value._boolean.has_value())
+	   {
+		   Reflect(visitor, value._boolean);
+	   }
+	   else if (value._integer.has_value())
+	   {
+		   Reflect(visitor, value._integer);
+	   }
+	   else if (value._string.has_value())
+	   {
+		   Reflect(visitor, value._string);
+	   }
+}
+
 lsCreateFile::lsCreateFile()
 {
 	kind = "create";

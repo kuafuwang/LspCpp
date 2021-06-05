@@ -8,14 +8,19 @@
 namespace  TextDocumentFormatting  {
 
   struct Params {
+	/**
+	 * The document to format.
+	*/
     lsTextDocumentIdentifier textDocument;
+	/**
+	 * The format options.
+	 */
     lsFormattingOptions options;
-	lsRange range;
-	MAKE_SWAP_METHOD(Params, textDocument, options, range);
+	MAKE_SWAP_METHOD(Params, textDocument, options);
   };
 
 };
-MAKE_REFLECT_STRUCT(TextDocumentFormatting::Params, textDocument, options, range);
+MAKE_REFLECT_STRUCT(TextDocumentFormatting::Params, textDocument, options);
 /**
  * The document formatting request is sent from the client to the server to
  * format a whole document.
