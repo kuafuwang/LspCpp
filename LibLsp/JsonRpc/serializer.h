@@ -331,7 +331,7 @@ void Reflect(Writer& visitor, std::pair<  boost::optional<_Ty1>, boost::optional
 	{
 		Reflect(visitor, value.first);
 	}
-	else if (value.second)
+	else
 	{
 		Reflect(visitor, value.second);
 	}

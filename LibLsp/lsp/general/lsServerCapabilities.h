@@ -163,6 +163,102 @@ struct WorkspaceFoldersOptions {
 };
 MAKE_REFLECT_STRUCT(WorkspaceFoldersOptions, supported, changeNotifications);
 
+/**
+ * A pattern kind describing if a glob pattern matches a file a folder or
+ * both.
+ *
+ * @since 3.16.0
+ */
+enum lsFileOperationPatternKind
+{
+	file,
+	folder
+};
+MAKE_REFLECT_TYPE_PROXY(lsFileOperationPatternKind)
+
+/**
+ * Matching options for the file operation pattern.
+ *
+ * @since 3.16.0
+ */
+struct lsFileOperationPatternOptions {
+
+	/**
+	 * The pattern should be matched ignoring casing.
+	 */
+	boost::optional<bool> ignoreCase;
+	MAKE_SWAP_METHOD(lsFileOperationPatternOptions, ignoreCase)
+};
+MAKE_REFLECT_STRUCT(lsFileOperationPatternOptions, ignoreCase)
+/**
+ * A pattern to describe in which file operation requests or notifications
+ * the server is interested in.
+ *
+ * @since 3.16.0
+ */
+struct lsFileOperationPattern {
+	/**
+	 * The glob pattern to match. Glob patterns can have the following syntax:
+	 * - `*` to match one or more characters in a path segment
+	 * - `?` to match on one character in a path segment
+	 * - `**` to match any number of path segments, including none
+	 * - `{}` to group sub patterns into an OR expression. (e.g. `**​/*.{ts,js}`
+	 *   matches all TypeScript and JavaScript files)
+	 * - `[]` to declare a range of characters to match in a path segment
+	 *   (e.g., `example.[0-9]` to match on `example.0`, `example.1`, …)
+	 * - `[!...]` to negate a range of characters to match in a path segment
+	 *   (e.g., `example.[!0-9]` to match on `example.a`, `example.b`, but
+	 *   not `example.0`)
+	 */
+	std::string glob;
+
+	/**
+	 * Whether to match files or folders with this pattern.
+	 *
+	 * Matches both if undefined.
+	 */
+	boost::optional<lsFileOperationPatternKind> matches;
+
+	/**
+	 * Additional options used during matching.
+	 */
+	boost::optional<lsFileOperationPatternOptions> options ;
+	MAKE_SWAP_METHOD(lsFileOperationPattern, glob, matches, options)
+};
+MAKE_REFLECT_STRUCT(lsFileOperationPattern, glob, matches, options)
+/**
+ * A filter to describe in which file operation requests or notifications
+ * the server is interested in.
+ *
+ * @since 3.16.0
+ */
+struct lsFileOperationFilter {
+
+	/**
+	 * A Uri like `file` or `untitled`.
+	 */
+	boost::optional<std::string>  scheme;
+
+	/**
+	 * The actual file operation pattern.
+	 */
+	boost::optional<lsFileOperationPattern>	pattern;
+	MAKE_SWAP_METHOD(lsFileOperationFilter, scheme, pattern)
+};
+MAKE_REFLECT_STRUCT(lsFileOperationFilter, scheme, pattern)
+/**
+ * The options to register for file operations.
+ *
+ * @since 3.16.0
+ */
+struct lsFileOperationRegistrationOptions {
+	/**
+	 * The actual filters.
+	 */
+	boost::optional<std::vector<lsFileOperationFilter>> filters;
+	MAKE_SWAP_METHOD(lsFileOperationRegistrationOptions, filters)
+};
+MAKE_REFLECT_STRUCT(lsFileOperationRegistrationOptions, filters)
 
 struct WorkspaceServerCapabilities {
 	/**
@@ -171,10 +267,57 @@ struct WorkspaceServerCapabilities {
 	 * Since 3.6.0
 	 */
 	WorkspaceFoldersOptions workspaceFolders;
-	MAKE_SWAP_METHOD(WorkspaceServerCapabilities, workspaceFolders);
-};
-MAKE_REFLECT_STRUCT(WorkspaceServerCapabilities, workspaceFolders);
 
+
+	/**
+	 * The server is interested in file notifications/requests.
+	 *
+	 * @since 3.16.0
+	 */
+	struct  lsFileOperations
+	{
+		/**
+		 * The server is interested in receiving didCreateFiles
+		 * notifications.
+		 */
+		boost::optional<lsFileOperationRegistrationOptions> didCreate;
+
+		/**
+		 * The server is interested in receiving willCreateFiles requests.
+		 */
+		boost::optional<lsFileOperationRegistrationOptions> willCreate;
+
+		/**
+		 * The server is interested in receiving didRenameFiles
+		 * notifications.
+		 */
+		boost::optional<lsFileOperationRegistrationOptions> didRename;
+
+		/**
+		 * The server is interested in receiving willRenameFiles requests.
+		 */
+		boost::optional<lsFileOperationRegistrationOptions> willRename;
+
+		/**
+		 * The server is interested in receiving didDeleteFiles file
+		 * notifications.
+		 */
+		boost::optional<lsFileOperationRegistrationOptions> didDelete;
+
+		/**
+		 * The server is interested in receiving willDeleteFiles file
+		 * requests.
+		 */
+		boost::optional<lsFileOperationRegistrationOptions> willDelete;
+		MAKE_SWAP_METHOD(lsFileOperations, didCreate, willCreate, didRename, willRename, didDelete, willDelete)
+	};
+	boost::optional<lsFileOperations>fileOperations;
+
+	
+	MAKE_SWAP_METHOD(WorkspaceServerCapabilities, workspaceFolders, fileOperations)
+};
+MAKE_REFLECT_STRUCT(WorkspaceServerCapabilities, workspaceFolders, fileOperations)
+MAKE_REFLECT_STRUCT(WorkspaceServerCapabilities::lsFileOperations, didCreate, willCreate, didRename, willRename, didDelete, willDelete)
 
 /**
  * Semantic highlighting server capabilities.
@@ -198,7 +341,7 @@ struct SemanticHighlightingServerCapabilities {
 MAKE_REFLECT_STRUCT(SemanticHighlightingServerCapabilities, scopes);
 
 using  DocumentColorOptions = WorkDoneProgressOptions;
-
+using  FoldingRangeOptions = WorkDoneProgressOptions;
 struct lsServerCapabilities {
 	// Defines how text documents are synced. Is either a detailed structure
 	// defining each notification or for backwards compatibility the
@@ -272,6 +415,13 @@ struct lsServerCapabilities {
 	 */
 	boost::optional< std::pair< boost::optional<bool>, boost::optional<DocumentColorOptions> > >  colorProvider;
 
+
+	/**
+		 * The server provides folding provider support.
+		 *
+		 * @since 3.10.0
+		 */
+	boost::optional < FoldingRangeOptions > foldingRangeProvider;
 	
 	// The server provides execute command support.
 	boost::optional < lsExecuteCommandOptions >executeCommandProvider;
@@ -343,7 +493,7 @@ struct lsServerCapabilities {
 		typeHierarchyProvider,
 		callHierarchyProvider,
 		selectionRangeProvider,
-		experimental, colorProvider)
+		experimental, colorProvider, foldingRangeProvider)
 	
 };
 MAKE_REFLECT_STRUCT(lsServerCapabilities,
@@ -371,5 +521,5 @@ MAKE_REFLECT_STRUCT(lsServerCapabilities,
 	typeHierarchyProvider,
 	callHierarchyProvider,
 	selectionRangeProvider,
-	experimental, colorProvider)
+	experimental, colorProvider, foldingRangeProvider)
 
