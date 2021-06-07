@@ -18,7 +18,7 @@ struct WorkingFile {
     AbsolutePath filename;
     Directory directory;
     WorkingFiles& parent;
-
+    std::atomic<long long> counter=0;
     WorkingFile(WorkingFiles& ,const AbsolutePath& filename, const std::string& buffer_content);
     WorkingFile(WorkingFiles&, const AbsolutePath& filename, std::string&& buffer_content);
     const std::string&  GetContentNoLock() const

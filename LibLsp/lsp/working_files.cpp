@@ -135,7 +135,7 @@ std::shared_ptr<WorkingFile>  WorkingFiles::OnChange(const lsTextDocumentDidChan
 
   if (change.textDocument.version)
     file->version = *change.textDocument.version;
-
+  file->counter.fetch_add(1, std::memory_order_relaxed);
   for (const lsTextDocumentContentChangeEvent& diff : change.contentChanges) {
     // Per the spec replace everything if the rangeLength and range are not set.
     // See https://github.com/Microsoft/language-server-protocol/issues/9.
