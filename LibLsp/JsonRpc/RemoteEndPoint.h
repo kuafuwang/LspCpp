@@ -137,7 +137,7 @@ public:
 			}
 			
 		}
-		local_endpoint->registerRequestHandler(method, [&](std::unique_ptr<LspMessage> msg) {
+		local_endpoint->registerRequestHandler(method, [=](std::unique_ptr<LspMessage> msg) {
 			auto  req = reinterpret_cast<const RequestType*>(msg.get());
 			lsp::ResponseOrError<ResponseType> res(handler(*req));
 			if (res.error) {
@@ -167,7 +167,7 @@ public:
 			}
 		}
 
-		local_endpoint->registerNotifyHandler(NotifyType::kMethodInfo, [&](std::unique_ptr<LspMessage> msg) {
+		local_endpoint->registerNotifyHandler(NotifyType::kMethodInfo, [=](std::unique_ptr<LspMessage> msg) {
 			handler(*reinterpret_cast<NotifyType*>(msg.get()));
 			return  true;
 		});
@@ -189,7 +189,7 @@ public:
 				});
 			}
 		}
-		auto cb = [&](std::unique_ptr<LspMessage> msg) {
+		auto cb = [=](std::unique_ptr<LspMessage> msg) {
 			if (!msg)
 				return true;
 			const auto result = msg.get();

@@ -78,7 +78,7 @@ struct WorkspaceEditCapabilities {
 	 *
 	 * @since 3.16.0
 	 */
-	boost::optional<bool>changeAnnotationSupport;
+	boost::optional<lschangeAnnotationSupport> changeAnnotationSupport;
 	
 	MAKE_SWAP_METHOD(WorkspaceEditCapabilities, documentChanges, resourceChanges, resourceOperations, failureHandling, normalizesLineEndings, changeAnnotationSupport)
 

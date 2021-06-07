@@ -4,6 +4,7 @@
 #include <vector>
 #include "lsDocumentUri.h"
 #include "LibLsp/lsp/lsAny.h"
+#include "LibLsp/lsp/lsTextEdit.h"
 struct ResourceOperation {
 	std::string kind;
 	virtual  ~ResourceOperation() = default;
