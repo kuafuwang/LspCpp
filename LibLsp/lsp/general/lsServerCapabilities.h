@@ -421,7 +421,7 @@ struct lsServerCapabilities {
 		 *
 		 * @since 3.10.0
 		 */
-	boost::optional < FoldingRangeOptions > foldingRangeProvider;
+	boost::optional <  std::pair< boost::optional<bool>, boost::optional<FoldingRangeOptions> >   > foldingRangeProvider;
 	
 	// The server provides execute command support.
 	boost::optional < lsExecuteCommandOptions >executeCommandProvider;

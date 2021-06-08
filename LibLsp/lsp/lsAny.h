@@ -1,50 +1,41 @@
 #pragma once
 
 #include "LibLsp/JsonRpc/serializer.h"
-
 #include <string>
-#include <vector>
-#include <rapidjson/rapidjson.h>
-#include <rapidjson/document.h>
 #include "LibLsp/JsonRpc/message.h"
 #include <rapidjson/writer.h>
-#include "LibLsp/JsonRpc/json.h"
+
 namespace lsp
 {
 	struct Any
 	{
-		
+		//! Type of JSON value
+		enum Type {
+			kNullType = 0,      //!< null
+			kFalseType = 1,     //!< false
+			kTrueType = 2,      //!< true
+			kObjectType = 3,    //!< object
+			kArrayType = 4,     //!< array 
+			kStringType = 5,    //!< string
+			kNumberType = 6     //!< number
+		};
 		int jsonType = -1;
 
 		
 		template <typename  T>                       
 		bool  Get(T& value)
 		{
-			
-			rapidjson::Document document;
-			document.Parse(data.c_str(), data.length());
-			if (document.HasParseError()) {
-				// ÌבÊ¾
-				return false;
-			}
-			if(jsonType == -1)
-			{
-				jsonType = document.GetType();
-			}
-			JsonReader visitor{ &document };
-			Reflect(visitor, value);
+			const auto visitor = GetReader();
+			Reflect(*visitor, value);
 			return true;
 		}
 		
 		template <typename  T>
 		void  Set(T& value)
 		{
-			rapidjson::StringBuffer output;
-			rapidjson::Writer<rapidjson::StringBuffer> writer(output);
-			JsonWriter json_writer{ &writer };
-			Reflect(json_writer,value);
-			data =  output.GetString();
-			GuessType();
+			 auto visitor = GetWriter();
+			Reflect(*visitor,value);
+			SetData(visitor);
 		}
 
 		int GuessType();
@@ -52,30 +43,33 @@ namespace lsp
 
 		void Set(std::unique_ptr<LspMessage> value);
 
-		void SetJsonString(std::string&& _data,rapidjson::Type _type)
+		void SetJsonString(std::string&& _data,Type _type)
 		{
 			jsonType = _type;
 			data.swap(_data);
 		}
-		void SetJsonString(const std::string& _data ,rapidjson::Type _type)
+		void SetJsonString(const std::string& _data ,Type _type)
 		{
 			jsonType = _type;
 			data=(_data);
 			
 		}
 		const std::string& Data()const
-		{
-			
+		{	
 			return  data;
 		}
 		void swap(Any& arg) noexcept
 		{
 			data.swap(arg.data);
-			int temp = jsonType;
+			const int temp = jsonType;
 			jsonType = arg.jsonType;
 			arg.jsonType = temp;
 		}
+
 	private:
+		std::unique_ptr<Reader> GetReader();
+		std::unique_ptr<Writer> GetWriter() const;
+		void SetData(std::unique_ptr<Writer>&);
 		std::string  data;
 	};
 };

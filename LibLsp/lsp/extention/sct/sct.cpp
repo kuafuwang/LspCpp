@@ -12,7 +12,7 @@
 #include "LibLsp/lsp/language/language.h"
 #include "LibLsp/JsonRpc/Condition.h"
 #include "LibLsp/lsp/workspace/execute_command.h"
-
+#include "LibLsp/JsonRpc/json.h"
 
 namespace lsp {
 	class Log;

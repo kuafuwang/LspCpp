@@ -6,7 +6,7 @@
 #include "hover.h"
 #include "prepareRename.h"
 #include <LibLsp/lsp/textDocument/typeHierarchy.h>
-
+#include "LibLsp/JsonRpc/json.h"
 void Reflect(Reader& visitor, TextDocumentComplete::Either& value)
 {
 	if(visitor.IsArray())

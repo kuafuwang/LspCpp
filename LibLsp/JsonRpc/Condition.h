@@ -2,24 +2,24 @@
 
 
 
-//#include <condition_variable>
-#include <boost/thread/mutex.hpp>
-#include <boost/thread/condition_variable.hpp>
+#include <condition_variable>
+//#include <boost/thread/mutex.hpp>
+//#include <boost/thread/condition_variable.hpp>
 
 template <class T>
 class Condition
 {
 public:
 
-	boost::mutex m_mutex;
-	boost::condition_variable   m_condition;
+	std::mutex m_mutex;
+	std::condition_variable   m_condition;
 	~Condition() {
 		m_condition.notify_all();
 	}
 	void notify(std::unique_ptr<T> data) noexcept
 	{
 		{
-			boost::lock_guard<boost::mutex> eventLock(m_mutex);
+			std::lock_guard<std::mutex> eventLock(m_mutex);
 			any.swap(data);
 		}
 		// wake up one waiter
@@ -29,7 +29,7 @@ public:
 	
 	std::unique_ptr<T> wait(unsigned timeout=0)
 	{
-		boost::unique_lock<boost::mutex> ul(m_mutex);
+		std::unique_lock<std::mutex> ul(m_mutex);
 		if (!timeout) {
 			m_condition.wait(ul,[&]() {
 					if (!any)
@@ -39,8 +39,8 @@ public:
 		}
 		else{
 			if(!any){
-				boost::cv_status status = m_condition.wait_for(ul, boost::chrono::milliseconds(timeout));
-				if (status == boost::cv_status::timeout)
+				std::cv_status status = m_condition.wait_for(ul, std::chrono::milliseconds(timeout));
+				if (status == std::cv_status::timeout)
 				{
 					return {};
 				}

@@ -354,6 +354,101 @@ void lsp::Any::Set(std::unique_ptr<LspMessage> value)
 		assert(false);
 	}
 }
+class JsonReaderForAny : public  JsonReader
+{
+public:
+	JsonReaderForAny()
+		: JsonReader(&document)
+	{
+	}
+	rapidjson::Document document;
+};
+std::unique_ptr<Reader> lsp::Any::GetReader()
+{
+	JsonReaderForAny* reader = new JsonReaderForAny();
+	std::unique_ptr<Reader> ret(reader);
+	reader->document.Parse(data.c_str(), data.length());
+	if (reader->document.HasParseError())
+	{
+		return {};
+	}
+	if (jsonType == -1)
+	{
+		jsonType = reader->document.GetType();
+	}
+	return std::move(ret);
+}
+
+class JsonWriterForAny : public JsonWriter
+{
+public:
+	rapidjson::StringBuffer output;
+	rapidjson::Writer<rapidjson::StringBuffer> writer;
+	JsonWriterForAny():JsonWriter(&writer), writer(output)
+	{
+		
+	}
+};
+
+std::unique_ptr<Writer> lsp::Any::GetWriter() const
+{
+	return std::make_unique<JsonWriterForAny>();
+}
+
+void lsp::Any::SetData(std::unique_ptr<Writer>& writer)
+{
+	auto _temp = static_cast<JsonWriterForAny*>(writer.get());
+	data = _temp->output.GetString();
+	GuessType();
+}
+
+namespace 
+{
+	rapidjson::Type convert(lsp::Any::Type type)
+	{
+		switch (type)
+		{
+		case lsp::Any::Type::kNullType:
+			return rapidjson::Type::kNullType;
+		case lsp::Any::Type::kFalseType:
+			return rapidjson::Type::kFalseType;
+		case lsp::Any::Type::kTrueType:
+			return rapidjson::Type::kTrueType;
+		case lsp::Any::Type::kObjectType:
+			return rapidjson::Type::kObjectType;
+		case lsp::Any::Type::kArrayType:
+			return rapidjson::Type::kArrayType;
+		case lsp::Any::Type::kStringType:
+			return rapidjson::Type::kStringType;
+		case lsp::Any::Type::kNumberType:
+			return rapidjson::Type::kNumberType;
+		default:
+			return rapidjson::Type::kNullType;
+		}
+	}
+	lsp::Any::Type convert(rapidjson::Type type)
+	{
+		switch (type)
+		{
+		case rapidjson::Type::kNullType:
+			return lsp::Any::Type::kNullType;
+		case rapidjson::Type::kFalseType:
+			return lsp::Any::Type::kFalseType;
+		case rapidjson::Type::kTrueType:
+			return lsp::Any::Type::kTrueType;
+		case rapidjson::Type::kObjectType:
+			return lsp::Any::Type::kObjectType;
+		case rapidjson::Type::kArrayType:
+			return lsp::Any::Type::kArrayType;
+		case rapidjson::Type::kStringType:
+			return lsp::Any::Type::kStringType;
+		case rapidjson::Type::kNumberType:
+			return lsp::Any::Type::kNumberType;
+		default:
+			return lsp::Any::Type::kNullType;
+		}
+	}
+}
 
 void Reflect(Reader& visitor, lsp::Any& value)
 {
@@ -367,7 +462,7 @@ void Reflect(Reader& visitor, lsp::Any& value)
 		// 
 	 //}
 	 JsonReader& json_reader = reinterpret_cast<JsonReader&>(visitor);
-	 value.SetJsonString(visitor.ToString(), json_reader.m_->GetType());
+	 value.SetJsonString(visitor.ToString(), convert(json_reader.m_->GetType()));
 }
  void Reflect(Writer& visitor, lsp::Any& value)
  {
