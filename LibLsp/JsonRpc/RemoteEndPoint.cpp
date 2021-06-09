@@ -144,20 +144,33 @@ bool RemoteEndPoint::dispatch(const std::string& content)
 		}
 		if (isRequestMessage(visitor))
 		{
-			auto msg = jsonHandler->parseRequstMessage(visitor["method"]->GetString(), visitor);
-			if (msg) {
-				auto temp = reinterpret_cast<RequestInMessage*>(msg.get());
-				{
-					std::lock_guard<std::mutex> lock(m_sendMutex);
-					receivedRequestMap[temp->id.value] = msg.get();
+			try
+			{
+				auto msg = jsonHandler->parseRequstMessage(visitor["method"]->GetString(), visitor);
+				if (msg) {
+					auto temp = reinterpret_cast<RequestInMessage*>(msg.get());
+					{
+						std::lock_guard<std::mutex> lock(m_sendMutex);
+						receivedRequestMap[temp->id.value] = msg.get();
+					}
+					mainLoop(std::move(msg));
+
 				}
-				mainLoop(std::move(msg));
-			
+				else {
+					std::string info = "Unknown support request message when consumer message:\n";
+					info += content;
+					log.log(Log::Level::WARNING, info);
+					return false;
+				}
 			}
-			else {
-				std::string info = "Unknown support request message when consumer message:\n";
-				info += content;
-				log.log(Log::Level::WARNING, info);
+			catch (std::exception& e)
+			{
+				std::string info = "Exception  when process request message:\n";
+				info += e.what();
+				std::string reason;
+				reason = "Reason:" + info + "\n";
+				reason += "content:\n" + content;
+				log.log(Log::Level::SEVERE, reason);
 				return false;
 			}
 		}
@@ -334,79 +347,44 @@ void RemoteEndPoint::mainLoop(std::unique_ptr<LspMessage>msg)
 		auto _kind = msg->GetKid();
 		if (_kind == LspMessage::REQUEST_MESSAGE)
 		{
-			try
+			
+			auto temp = reinterpret_cast<RequestInMessage*>(msg.get());
 			{
-				auto temp = reinterpret_cast<RequestInMessage*>(msg.get());
-				{
-					std::lock_guard<std::mutex> lock(m_sendMutex);
-					receivedRequestMap.erase(temp->id.value);
-				}
-				local_endpoint->onRequest(std::move(msg));
-
+				std::lock_guard<std::mutex> lock(m_sendMutex);
+				receivedRequestMap.erase(temp->id.value);
 			}
-			catch (std::exception& e)
-			{
-				std::string info = "Exception  when process request message:\n";
-				info += e.what();
-				log.log(Log::Level::SEVERE, info);
-			}
+			local_endpoint->onRequest(std::move(msg));
 		}
 
 		else if (_kind == LspMessage::RESPONCE_MESSAGE)
 		{
 			auto response = dynamic_cast<lsResponseMessage*>(msg.get());
-			try
+			auto id = response->id.value;
+			auto msgInfo = GetRequestInfo(id);
+			if (!msgInfo)
 			{
-				auto id = response->id.value;
-				auto msgInfo = GetRequestInfo(id);
-				if (!msgInfo)
-				{
-					local_endpoint->onResponse(msg->GetMethodType(), std::move(msg));
-				}
-				else
-				{
-					
-					
-
-					bool needLocal = true;
-					if (msgInfo->futureInfo)
-					{
-						if (msgInfo->futureInfo(std::move(msg)))
-						{
-							needLocal = false;
-						}
-
-					}
-					
-					if (needLocal)
-					{
-						local_endpoint->onResponse(msgInfo->method, std::move(msg));
-					}
-					removeRequestInfo(id);
-				}
+				local_endpoint->onResponse(msg->GetMethodType(), std::move(msg));
 			}
-			catch (std::exception& e)
+			else
 			{
-				std::string info = "Exception  when process response message in mainLoop:\n";
-				info += e.what();
-				log.log(Log::Level::SEVERE, info);
-				
+				bool needLocal = true;
+				if (msgInfo->futureInfo)
+				{
+					if (msgInfo->futureInfo(std::move(msg)))
+					{
+						needLocal = false;
+					}
+				}
+				if (needLocal)
+				{
+					local_endpoint->onResponse(msgInfo->method, std::move(msg));
+				}
+				removeRequestInfo(id);
 			}
-
-
 		}
 		else if (_kind == LspMessage::NOTIFICATION_MESSAGE)
 		{
-			try
-			{
-				local_endpoint->notify(std::move(msg));
-			}
-			catch (std::exception& e)
-			{
-				std::string info = "Exception  when process notification message in mainLoop:\n";
-				info += e.what();
-				log.log(Log::Level::SEVERE, info);
-			}
+			local_endpoint->notify(std::move(msg));
 		}
 		else
 		{

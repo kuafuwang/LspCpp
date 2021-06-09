@@ -110,11 +110,7 @@ namespace lsp {
                             return;
                         }
                         proxy_->error_message = ec.message();
-                        if (ec != boost::asio::error::operation_aborted)
-                        {
-                            socket_.close();
-                        }
-                    	
+                        
                     }));
             }
             void do_read()
@@ -131,14 +127,7 @@ namespace lsp {
                         return;
                     }
                     proxy_->error_message = ec.message();
-                	if (ec != boost::asio::error::operation_aborted)
-                    {
-                        socket_.close();
-                    }
-                    else
-                    {
-	                    
-                    }
+                	
                 }));
             }
 	    };
@@ -278,9 +267,13 @@ namespace lsp {
                     {
                     	if(d_ptr->_connect_session)
                     	{
-                            std::string desc = "Disconnect previous client " + d_ptr->_connect_session->socket_.local_endpoint().address().to_string();
-                            d_ptr->_log.log(lsp::Log::Level::INFO, desc);
-                            d_ptr->_connect_session->socket_.close();
+                    		if(d_ptr->_connect_session->socket_.is_open())
+                    		{
+                                std::string desc = "Disconnect previous client " + d_ptr->_connect_session->socket_.local_endpoint().address().to_string();
+                                d_ptr->_log.log(lsp::Log::Level::INFO, desc);
+                                d_ptr->_connect_session->socket_.close();
+                    		}
+
                             remote_end_point_.Stop();
                     	}
                         auto local_point = socket.local_endpoint();
