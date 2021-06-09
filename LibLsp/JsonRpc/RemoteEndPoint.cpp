@@ -25,6 +25,19 @@ struct RemoteEndPointData
 	std::atomic<long long> m_id;
 	boost::threadpool::pool tp;
 };
+
+namespace 
+{
+void WriterMsg(std::shared_ptr<lsp::ostream>&  output, LspMessage& msg)
+{
+	const auto& s = msg.ToJson();
+	const auto header =
+		std::string("Content-Length: ") + std::to_string(s.size()) + "\r\n\r\n";
+	output->write(header);
+	output->write(s);
+	output->flush();
+}
+
 bool isResponseMessage(JsonReader& visitor)
 {
 
@@ -73,7 +86,7 @@ bool isNotificationMessage(JsonReader& visitor)
 	}
 	return true;
 }
-
+}
 RemoteEndPoint::RemoteEndPoint(
 	std::shared_ptr < MessageJsonHandler> json_handler, std::shared_ptr < Endpoint> localEndPoint, lsp::Log& _log, uint8_t max_workers):
     jsonHandler(json_handler),log(_log),local_endpoint(localEndPoint)
@@ -150,8 +163,7 @@ bool RemoteEndPoint::dispatch(const std::string& content)
 		}
 		else if (isResponseMessage(visitor))
 		{
-			// �ҵ���Ӧ��request ,Ȼ��ִ��handler
-			
+
 			try
 			{
 				lsRequestId id;
@@ -205,7 +217,6 @@ bool RemoteEndPoint::dispatch(const std::string& content)
 		}
 		else if (isNotificationMessage(visitor))
 		{
-			// ����notification handler������
 			try
 			{
 				auto msg = jsonHandler->parseNotificationMessage(visitor["method"]->GetString(), visitor);
@@ -263,9 +274,9 @@ void RemoteEndPoint::internalSendRequest( RequestInMessage& info, GenericRespons
 {
 	{
 		std::lock_guard<std::mutex> lock(m_sendMutex);
-		if (!output || !output->good())
+		if (!output)
 		{
-			std::string info = "output isn't good any more:\n";
+			std::string info = "Output isn't good any more:\n";
 			log.log(Log::Level::INFO, info);
 			return ;
 		}
@@ -275,10 +286,7 @@ void RemoteEndPoint::internalSendRequest( RequestInMessage& info, GenericRespons
 		info.id.set(d_ptr->m_id);
 		std::lock_guard<std::mutex> lock2(m_requsetInfo);
 		_client_request_futures[info.id.value] = std::make_shared<PendingRequestInfo>(info.method, handler);
-		const auto s = info.ToJson();
-		
-		output->write("Content-Length: ").write(s.size()) .write("\r\n\r\n").write(s) ;
-		output->flush();
+		WriterMsg(output, info);
 	}
 }
 
@@ -346,7 +354,6 @@ void RemoteEndPoint::mainLoop(std::unique_ptr<LspMessage>msg)
 
 		else if (_kind == LspMessage::RESPONCE_MESSAGE)
 		{
-			// �ҵ���Ӧ��request ,Ȼ��ִ��handler
 			auto response = dynamic_cast<lsResponseMessage*>(msg.get());
 			try
 			{
@@ -390,7 +397,6 @@ void RemoteEndPoint::mainLoop(std::unique_ptr<LspMessage>msg)
 		}
 		else if (_kind == LspMessage::NOTIFICATION_MESSAGE)
 		{
-			// ����notification handler������
 			try
 			{
 				local_endpoint->notify(std::move(msg));
@@ -468,13 +474,12 @@ void RemoteEndPoint::sendMsg( LspMessage& msg)
 {
 
 	std::lock_guard<std::mutex> lock(m_sendMutex);
-	if (!output || !output->good())
+	if (!output)
 	{
-		std::string info = "output isn't good any more:\n";
+		std::string info = "Output isn't good any more:\n";
 		log.log(Log::Level::INFO, info);
 		return;
 	}
-	const auto& s = msg.ToJson();
-	output->write(  "Content-Length: " ).write(s.size()) .write("\r\n\r\n").write(s);
-	output->flush();
+	WriterMsg(output, msg);
+
 }

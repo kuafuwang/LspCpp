@@ -242,11 +242,10 @@ class Server
 public:
     Server(const std::string& user_agent) : server(user_agent,_address, _port, protocol_json_handler, endpoint, _log)
     {
-        server.remote_end_point_.registerRequestHandler(td_initialize::kMethodType, 
+        server.remote_end_point_.registerRequestHandler(
             [&](const td_initialize::request& req)
             {
                 td_initialize::response rsp;
-                rsp.id = req.id;
                 CodeLensOptions code_lens_options;
                 code_lens_options.resolveProvider = true;
                 rsp.result.capabilities.codeLensProvider = code_lens_options;

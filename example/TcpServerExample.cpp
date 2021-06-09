@@ -101,6 +101,20 @@ public:
 class Client
 {
 public:
+	struct iostream :public lsp::base_iostream<tcp::iostream>
+	{
+		explicit iostream(boost::asio::basic_socket_iostream<tcp>& _t)
+			: base_iostream<boost::asio::basic_socket_iostream<tcp>>(_t)
+		{
+		}
+
+		std::string what() override
+		{
+			auto  msg = _impl.error().message();
+			return  msg;
+		}
+		
+	};
 	Client() :remote_end_point_(protocol_json_handler, endpoint, _log)
 	{
 		tcp::endpoint end_point( address::from_string(_address), 9333);
@@ -114,7 +128,7 @@ public:
 		}
 	
 		vector<string> args;
-		socket_proxy = std::make_shared<lsp::base_iostream<std::iostream>>(*socket_.get());
+		socket_proxy = std::make_shared<iostream>(*socket_.get());
 	
 		remote_end_point_.startProcessingMessages(socket_proxy, socket_proxy);
 	}
@@ -130,7 +144,7 @@ public:
 
 	std::shared_ptr<GenericEndpoint>  endpoint = std::make_shared<GenericEndpoint>(_log);
 
-	std::shared_ptr < lsp::base_iostream<std::iostream>> socket_proxy;
+	std::shared_ptr < iostream> socket_proxy;
 	std::shared_ptr<tcp::iostream>  socket_;
 	RemoteEndPoint remote_end_point_;
 };

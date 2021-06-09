@@ -17,72 +17,7 @@ namespace websocket = beast::websocket; // from <boost/beast/websocket.hpp>
 namespace net = boost::asio;            // from <boost/asio.hpp>
 using tcp = boost::asio::ip::tcp;       // from <boost/asio/ip/tcp.hpp>
 namespace lsp {
-    class websocket_stream_wrapper :public istream, public ostream
-    {
-    public:
-
-        websocket_stream_wrapper(boost::beast::websocket::stream<boost::beast::tcp_stream>& _w);
-
-        boost::beast::websocket::stream<boost::beast::tcp_stream>& ws_;
-        std::atomic<bool> quit{};
-        std::shared_ptr < MultiQueueWaiter> request_waiter;
-        ThreadedQueue< char > on_request;
-        bool fail()
-        {
-            return  bad();
-        }
-        bool eof()
-        {
-            return  bad();
-        }
-        bool good()
-        {
-            return  !bad();
-        }
-        websocket_stream_wrapper& read(char* str, std::streamsize count)
-        {
-            auto some = on_request.TryDequeueSome(count);
-            size_t i = 0;
-            for (; i < some.size(); ++i)
-            {
-                str[i] = some[i];
-            }
-            for (; i < count; ++i)
-            {
-                str[i] = static_cast<char>(get());
-            }
-            return  *this;
-        }
-        int get()
-        {
-            return on_request.Dequeue();
-        }
-
-        bool bad()
-        {
-            return !ws_.next_layer().socket().is_open();
-        }
-
-        websocket_stream_wrapper& websocket_stream_wrapper::write(const std::string& c)
-        {
-            ws_.write(boost::asio::buffer(std::string(c)));
-            return *this;
-        }
-
-        websocket_stream_wrapper& websocket_stream_wrapper::write(std::streamsize _s)
-        {
-            std::ostringstream temp;
-            temp << _s;
-            ws_.write(boost::asio::buffer(temp.str()));
-            return *this;
-        }
-
-        websocket_stream_wrapper& websocket_stream_wrapper::flush()
-        {
-            return *this;
-        }
-    };
-
+ 
     // Echoes back all received WebSocket messages
     class server_session : public std::enable_shared_from_this<server_session>
     {
@@ -158,25 +93,25 @@ namespace lsp {
                 std::size_t bytes_transferred)
         {
            
+            if(!ec)
+            {
+                char* data = reinterpret_cast<char*>(buffer_.data().data());
+                std::vector<char> elements(data, data + bytes_transferred);
 
-            // This indicates that the server_session was closed
-            if (ec == websocket::error::closed)
-                return;
+                buffer_.clear();
+                proxy_->on_request.EnqueueAll(std::move(elements), false);
 
-            if (ec)
+                // Read a message into our buffer
+                ws_.async_read(
+                    buffer_,
+                    beast::bind_front_handler(
+                        &server_session::on_read,
+                        shared_from_this()));
                 return;
-            char* data = reinterpret_cast<char*>(buffer_.data().data());
-            std::vector<char> elements(data, data + bytes_transferred);
-           
-            buffer_.clear();
-            proxy_->on_request.EnqueueAll(std::move(elements), false);
-        	
-            // Read a message into our buffer
-            ws_.async_read(
-                buffer_,
-                beast::bind_front_handler(
-                    &server_session::on_read,
-                    shared_from_this()));
+            }
+            if (ec){
+                proxy_->error_message = ec.message();
+            }
         }
 
 
@@ -223,8 +158,81 @@ namespace lsp {
     {
     }
 
-   
+    bool websocket_stream_wrapper::fail()
+    {
+	    return bad();
+    }
 
+    bool websocket_stream_wrapper::eof()
+    {
+	    return bad();
+    }
+
+    bool websocket_stream_wrapper::good()
+    {
+	    return !bad();
+    }
+
+    websocket_stream_wrapper& websocket_stream_wrapper::read(char* str, std::streamsize count)
+    {
+	    auto some = on_request.TryDequeueSome(static_cast<size_t>(count));
+	    size_t i = 0;
+	    for (; i < some.size(); ++i)
+	    {
+		    str[i] = some[i];
+	    }
+	    for (; i < count; ++i)
+	    {
+		    str[i] = static_cast<char>(get());
+	    }
+	    return *this;
+    }
+
+    int websocket_stream_wrapper::get()
+    {
+	    return on_request.Dequeue();
+    }
+
+    bool websocket_stream_wrapper::bad()
+    {
+	    return !ws_.next_layer().socket().is_open();
+    }
+
+    websocket_stream_wrapper& websocket_stream_wrapper::write(const std::string& c)
+    {
+	    ws_.write(boost::asio::buffer(std::string(c)));
+	    return *this;
+    }
+
+
+    websocket_stream_wrapper& websocket_stream_wrapper::write(std::streamsize _s)
+    {
+	    std::ostringstream temp;
+	    temp << _s;
+	    ws_.write(boost::asio::buffer(temp.str()));
+	    return *this;
+    }
+
+    websocket_stream_wrapper& websocket_stream_wrapper::flush()
+    {
+	    return *this;
+    }
+
+    void websocket_stream_wrapper::clear()
+    {
+    }
+
+    std::string websocket_stream_wrapper::what()
+    {
+        if (!error_message.empty())
+            return  error_message;
+    	
+	    if (!ws_.next_layer().socket().is_open())
+	    {
+		    return "Socket is not open.";
+	    }
+	    return {};
+    }
 
     WebSocketServer::~WebSocketServer()
 	    {
@@ -313,8 +321,7 @@ namespace lsp {
                         remote_end_point_.startProcessingMessages(d_ptr->_server_session->proxy_, d_ptr->_server_session->proxy_);
                         do_accept();
                     }
-
-                   
+                     
                 });
         }
 

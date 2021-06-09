@@ -89,7 +89,38 @@ private:
 	std::unique_ptr<std::thread>    thread_;
 
 };
+struct boost_process_ipstream : lsp::base_istream< boost::process::ipstream >
+{
+	explicit boost_process_ipstream(boost::process::ipstream& _t)
+		: base_istream<boost::process::ipstream>(_t)
+	{
+	}
 
+	std::string what() override
+	{
+		return {};
+	}
+	void clear() override
+	{
+		
+	}
+};
+struct boost_process_opstream : lsp::base_ostream< boost::process::opstream >
+{
+	explicit boost_process_opstream(boost::process::opstream& _t)
+		: lsp::base_ostream<boost::process::opstream>(_t)
+	{
+	}
+
+	std::string what() override
+	{
+		return {};
+	}
+	void clear() override
+	{
+
+	}
+};
 class Client
 {
 public:
@@ -132,8 +163,8 @@ public:
 	boost::process::opstream write_to_service;
 	boost::process::ipstream   read_from_service;
 
-	std::shared_ptr<lsp::ostream> write_to_service_proxy = std::make_shared<lsp::base_ostream<std::ostream>>(write_to_service);
-	std::shared_ptr<lsp::istream>  read_from_service_proxy = std::make_shared< lsp::base_istream<std::istream> >(read_from_service);
+	std::shared_ptr<lsp::ostream> write_to_service_proxy = std::make_shared<boost_process_opstream>(write_to_service);
+	std::shared_ptr<lsp::istream>  read_from_service_proxy = std::make_shared< boost_process_ipstream >(read_from_service);
 
 	std::shared_ptr<boost::process::child> c;
 	RemoteEndPoint remote_end_point_;

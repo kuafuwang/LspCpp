@@ -1,6 +1,6 @@
 #pragma once
 #include <mutex>
-
+#include <string>
 namespace lsp
 {
 	class stream
@@ -11,6 +11,13 @@ namespace lsp
 		virtual  bool bad() = 0;
 		virtual  bool eof() = 0;
 		virtual  bool good() = 0;
+		virtual  void clear() = 0;
+		virtual  std::string  what() = 0;
+		virtual  bool need_to_clear_the_state()
+		{
+			return false;
+		}
+		
 		bool  operator!()
 		{
 			return bad();
@@ -54,17 +61,21 @@ namespace lsp
 		}
 		istream& read(char* str, std::streamsize count) override
 		{
-			  _impl.read(str,count);
-			  return *this;
+			_impl.read(str, count);
+			return *this;
 		}
-	private:
+
+		void clear() override
+		{
+			_impl.clear();
+		}
 		T& _impl;
 	};
 	class ostream : public  stream
 	{
 	public:
 		virtual ~ostream() = default;
-	
+
 		virtual  ostream& write(const std::string&) = 0;
 		virtual  ostream& write(std::streamsize) = 0;
 		virtual  ostream& flush() = 0;
@@ -104,7 +115,8 @@ namespace lsp
 
 		ostream& write(std::streamsize _s) override
 		{
-			_impl << _s;
+
+			_impl << std::to_string(_s);
 			return *this;
 		}
 
@@ -113,12 +125,17 @@ namespace lsp
 			_impl.flush();
 			return *this;
 		}
-	private:
+
+		void clear() override
+		{
+			_impl.clear();
+		}
+	protected:
 		T& _impl;
 	};
-	
+
 	template <class T >
-	class base_iostream : public istream,public ostream
+	class base_iostream : public istream, public ostream
 	{
 	public:
 		explicit  base_iostream(T& _t) :_impl(_t)
@@ -159,7 +176,7 @@ namespace lsp
 
 		ostream& write(std::streamsize _s) override
 		{
-			_impl << _s;
+			_impl << std::to_string(_s);
 			return *this;
 		}
 
@@ -168,11 +185,12 @@ namespace lsp
 			_impl.flush();
 			return *this;
 		}
-		
-	private:
+
+		void clear() override
+		{
+			_impl.clear();
+		}
+	protected:
 		T& _impl;
 	};
-
-	
-
 }

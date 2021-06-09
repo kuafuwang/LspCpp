@@ -23,7 +23,7 @@ namespace lsp {
 	        std::atomic<bool> quit{};
 	        std::shared_ptr < MultiQueueWaiter> request_waiter;
 	        ThreadedQueue< char > on_request;
-
+            std::string error_message;
 
 
 	        bool fail()
@@ -43,7 +43,7 @@ namespace lsp {
 	        }
 	        tcp_stream_wrapper& read(char* str, std::streamsize count)
 	        {
-                auto some = on_request.TryDequeueSome(count);
+                auto some = on_request.TryDequeueSome(static_cast<size_t>( count ));
                 size_t i = 0;
                 for (; i < some.size(); ++i)
 				{
@@ -75,6 +75,17 @@ namespace lsp {
 	        {
 	            return;
 	        }
+
+		    void clear() override
+	        {
+		        
+	        }
+
+		    std::string what() override;
+		    bool need_to_clear_the_state() override
+		    {
+                return false;
+		    }
 	    };
 	    struct tcp_connect_session:std::enable_shared_from_this<tcp_connect_session>
 	    {
@@ -98,10 +109,12 @@ namespace lsp {
                         {
                             return;
                         }
+                        proxy_->error_message = ec.message();
                         if (ec != boost::asio::error::operation_aborted)
                         {
-
+                            socket_.close();
                         }
+                    	
                     }));
             }
             void do_read()
@@ -115,10 +128,16 @@ namespace lsp {
                         std::vector<char> elements(buffer_.data(), buffer_.data() + bytes_transferred);
                         proxy_->on_request.EnqueueAll(std::move(elements), false);
                         do_read();
+                        return;
                     }
-                    else if (ec != boost::asio::error::operation_aborted)
+                    proxy_->error_message = ec.message();
+                	if (ec != boost::asio::error::operation_aborted)
                     {
-
+                        socket_.close();
+                    }
+                    else
+                    {
+	                    
                     }
                 }));
             }
@@ -141,11 +160,22 @@ namespace lsp {
 
     tcp_stream_wrapper& tcp_stream_wrapper::write(std::streamsize _s)
     {
-        std::ostringstream temp;
-        temp << _s;
-        session.do_write(temp.str());
+        session.do_write(std::to_string(_s));
         return *this;
     }
+
+	std::string tcp_stream_wrapper::what()
+	{
+        if (error_message.size())
+            return error_message;
+		
+       if(! session.socket_.is_open())
+       {
+           return  "Socket is not open.";
+       }
+		return {};
+	}
+
     struct TcpServerData
     {
 	    TcpServerData(

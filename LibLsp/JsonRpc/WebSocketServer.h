@@ -11,6 +11,9 @@
 
 #include "RemoteEndPoint.h"
 #include "stream.h"
+#include "threaded_queue.h"
+
+
 
 
 namespace lsp {
@@ -23,7 +26,40 @@ namespace lsp
 
    
 		struct WebSocketServerData;
-	
+        class websocket_stream_wrapper :public istream, public ostream
+        {
+        public:
+
+            websocket_stream_wrapper(boost::beast::websocket::stream<boost::beast::tcp_stream>& _w);
+
+            boost::beast::websocket::stream<boost::beast::tcp_stream>& ws_;
+            std::atomic<bool> quit{};
+            std::shared_ptr < MultiQueueWaiter> request_waiter;
+            ThreadedQueue< char > on_request;
+            std::string error_message;
+            bool fail();
+
+            bool eof();
+
+            bool good();
+
+            websocket_stream_wrapper& read(char* str, std::streamsize count);
+
+            int get();
+
+            bool bad();
+
+            websocket_stream_wrapper& write(const std::string& c) override;
+
+            websocket_stream_wrapper& write(std::streamsize _s) override;
+
+            websocket_stream_wrapper& flush() override;
+
+            void clear() override;
+
+            std::string what() override;
+        };
+
         /// The top-level class of the HTTP server.
         class WebSocketServer
         {

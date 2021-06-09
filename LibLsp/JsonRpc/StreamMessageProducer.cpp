@@ -57,16 +57,34 @@ void StreamMessageProducer::listen(MessageConsumer callBack)
 	{
 		if(input->bad())
 		{
-			MessageIssue issue("input stream corrupted", lsp::Log::Level::INFO);
+			std::string info = "Input stream is bad.";
+			auto what = input->what();
+			if (what.size())
+			{
+				info += "Reason:";
+				info += input->what();
+			}
+			MessageIssue issue(info, lsp::Log::Level::SEVERE);
 			issueHandler.handle(std::move(issue));
 			return;
 		}
 		if(input->fail())
 		{
-			MessageIssue issue("input fail", lsp::Log::Level::INFO);
+			std::string info = "Input fail.";
+			auto what = input->what();
+			if(what.size())
+			{
+				info += "Reason:";
+				info += input->what();
+			}
+			MessageIssue issue(info, lsp::Log::Level::WARNING);
 			issueHandler.handle(std::move(issue));
-			
-			continue;
+			if(input->need_to_clear_the_state())
+				input->clear();
+			else
+			{
+				return;
+			}
 		}
 		int c = input->get();
 		if (c == EOF) {
@@ -129,32 +147,42 @@ bool StreamMessageProducer::handleMessage(Headers& headers ,MessageConsumer call
 	 input->read(data, content_length);
 	 if (input->bad())
 	 {
-		 MessageIssue issue("input stream corrupted", lsp::Log::Level::INFO);
+		 std::string info = "Input stream is bad.";
+		 auto what = input->what();
+		 if (!what.empty())
+		 {
+			 info += "Reason:";
+			 info += input->what();
+		 }
+		 MessageIssue issue(info, lsp::Log::Level::SEVERE);
 		 issueHandler.handle(std::move(issue));
 		 return false;
 	 }
-	 if (input->fail())
-	 {
-		 MessageIssue issue("input fail", lsp::Log::Level::INFO);
-		 issueHandler.handle(std::move(issue));
-		 return false;
-	 }
+
 	 if (input->eof())
 	 {
 		 MessageIssue issue("No more input when reading content body", lsp::Log::Level::INFO);
 		 issueHandler.handle(std::move(issue));
 		 return false;
 	 }
- 	/* for (int i = 0; i < content_length; ++i) 
+	 if (input->fail())
 	 {
- 		 auto c = input.get();
- 		 if (EOF==c) {
- 			 MessageIssue issue(L"No more input when reading content body", lsp::Log::Level::INFO);
- 			 issueHandler.handle(std::move(issue));
- 			 return false;
- 		 }
- 		 data[i] = c;
- 	 }*/
+		 std::string info = "Input fail.";
+		 auto what = input->what();
+		 if (!what.empty())
+		 {
+			 info += "Reason:";
+			 info += input->what();
+		 }
+		 MessageIssue issue(info, lsp::Log::Level::WARNING);
+		 issueHandler.handle(std::move(issue));
+		 if (input->need_to_clear_the_state())
+			 input->clear();
+		 else
+		 {
+			 return false;
+		 }
+	 }
 
 	 callBack(std::move(content));
  	

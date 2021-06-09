@@ -83,12 +83,37 @@ public:
 	{
 		
 	}
-	
+
+	struct ostream : lsp::base_ostream<std::ostream>
+	{
+		explicit ostream(std::ostream& _t)
+			: base_ostream<std::ostream>(_t)
+		{
+			
+		}
+
+		std::string what() override
+		{
+			return {};
+		}
+	};
+	struct istream :lsp::base_istream<std::istream>
+	{
+		explicit istream(std::istream& _t)
+			: base_istream<std::istream>(_t)
+		{
+		}
+
+		std::string what() override
+		{
+			return {};
+		}
+	};
 	std::shared_ptr < lsp::ProtocolJsonHandler >  protocol_json_handler = std::make_shared < lsp::ProtocolJsonHandler >();
 	DummyLog _log;
 	
-	std::shared_ptr<lsp::base_ostream<std::ostream> > output = std::make_shared<lsp::base_ostream<std::ostream>>(std::cout);
-	std::shared_ptr<lsp::base_istream<std::istream> > input = std::make_shared<lsp::base_istream<std::istream>>(std::cin);
+	std::shared_ptr<ostream> output = std::make_shared<ostream>(std::cout);
+	std::shared_ptr<istream> input = std::make_shared<istream>(std::cin);
 
 	std::shared_ptr < GenericEndpoint >  endpoint = std::make_shared<GenericEndpoint>(_log);
 	RemoteEndPoint remote_end_point_;
