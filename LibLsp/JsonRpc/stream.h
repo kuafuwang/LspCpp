@@ -1,18 +1,19 @@
 #pragma once
+#include <mutex>
+
 namespace lsp
 {
 	class stream
 	{
 	public:
 		virtual ~stream() = default;
-		
 		virtual  bool fail() = 0;
 		virtual  bool bad() = 0;
 		virtual  bool eof() = 0;
 		virtual  bool good() = 0;
 		bool  operator!()
 		{
-			return fail();
+			return bad();
 		}
 	};
 	class istream : public  stream
@@ -20,7 +21,6 @@ namespace lsp
 	public:
 		virtual  int get() = 0;
 		virtual ~istream() = default;
-	
 		virtual  istream& read(char* str, std::streamsize count) = 0;
 	};
 	template <class T >
@@ -68,7 +68,7 @@ namespace lsp
 		virtual  ostream& write(const std::string&) = 0;
 		virtual  ostream& write(std::streamsize) = 0;
 		virtual  ostream& flush() = 0;
-	
+
 	};
 	template <class T >
 	class base_ostream : public ostream
@@ -168,8 +168,11 @@ namespace lsp
 			_impl.flush();
 			return *this;
 		}
+		
 	private:
 		T& _impl;
 	};
+
 	
+
 }

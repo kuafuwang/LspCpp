@@ -65,6 +65,7 @@ void StreamMessageProducer::listen(MessageConsumer callBack)
 		{
 			MessageIssue issue("input fail", lsp::Log::Level::INFO);
 			issueHandler.handle(std::move(issue));
+			
 			continue;
 		}
 		int c = input->get();

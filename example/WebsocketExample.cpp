@@ -93,7 +93,7 @@ class Client : public std::enable_shared_from_this<Client>
 	
     std::shared_ptr<GenericEndpoint>  endpoint = std::make_shared<GenericEndpoint>(_log);
 	
-    std::shared_ptr<lsp::websocket_stream_wraper>  proxy_;
+    std::shared_ptr<lsp::websocket_stream_wrapper>  proxy_;
 public:
    RemoteEndPoint remote_end_point_;
 
@@ -104,7 +104,7 @@ public:
         : resolver_(net::make_strand(ioc))
         , ws_(net::make_strand(ioc)),remote_end_point_(protocol_json_handler, endpoint, _log)
     {
-        proxy_ = std::make_shared<lsp::websocket_stream_wraper>(ws_);
+        proxy_ = std::make_shared<lsp::websocket_stream_wrapper>(ws_);
  
     }
 

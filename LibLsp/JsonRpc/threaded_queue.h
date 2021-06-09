@@ -198,6 +198,39 @@ struct ThreadedQueue : public BaseThreadQueue {
 
 	  return result;
   }
+  std::vector<T> TryDequeueSome(size_t num) {
+      std::lock_guard<std::mutex> lock(mutex);
+
+      std::vector<T> result;
+      num = std::min(num, priority_.size() + queue_.size());
+      total_count_ -= num;
+      result.reserve(num);
+      while (num)
+      {
+          if(!priority_.empty()) {
+              result.emplace_back(std::move(priority_.front()));
+              priority_.pop_front();
+          }
+          else
+          {
+	          break;
+          }
+          num -= 1;
+      }
+      while (num)
+      {
+          if (!queue_.empty()) {
+              result.emplace_back(std::move(queue_.front()));
+              queue_.pop_front();
+          }
+          else
+          {
+              break;
+          }
+          num -= 1;
+      }
+      return result;
+  }
   template <typename Fn>
   void Iterate(Fn fn) {
     std::lock_guard<std::mutex> lock(mutex);

@@ -17,6 +17,71 @@ namespace websocket = beast::websocket; // from <boost/beast/websocket.hpp>
 namespace net = boost::asio;            // from <boost/asio.hpp>
 using tcp = boost::asio::ip::tcp;       // from <boost/asio/ip/tcp.hpp>
 namespace lsp {
+    class websocket_stream_wrapper :public istream, public ostream
+    {
+    public:
+
+        websocket_stream_wrapper(boost::beast::websocket::stream<boost::beast::tcp_stream>& _w);
+
+        boost::beast::websocket::stream<boost::beast::tcp_stream>& ws_;
+        std::atomic<bool> quit{};
+        std::shared_ptr < MultiQueueWaiter> request_waiter;
+        ThreadedQueue< char > on_request;
+        bool fail()
+        {
+            return  bad();
+        }
+        bool eof()
+        {
+            return  bad();
+        }
+        bool good()
+        {
+            return  !bad();
+        }
+        websocket_stream_wrapper& read(char* str, std::streamsize count)
+        {
+            auto some = on_request.TryDequeueSome(count);
+            size_t i = 0;
+            for (; i < some.size(); ++i)
+            {
+                str[i] = some[i];
+            }
+            for (; i < count; ++i)
+            {
+                str[i] = static_cast<char>(get());
+            }
+            return  *this;
+        }
+        int get()
+        {
+            return on_request.Dequeue();
+        }
+
+        bool bad()
+        {
+            return !ws_.next_layer().socket().is_open();
+        }
+
+        websocket_stream_wrapper& websocket_stream_wrapper::write(const std::string& c)
+        {
+            ws_.write(boost::asio::buffer(std::string(c)));
+            return *this;
+        }
+
+        websocket_stream_wrapper& websocket_stream_wrapper::write(std::streamsize _s)
+        {
+            std::ostringstream temp;
+            temp << _s;
+            ws_.write(boost::asio::buffer(temp.str()));
+            return *this;
+        }
+
+        websocket_stream_wrapper& websocket_stream_wrapper::flush()
+        {
+            return *this;
+        }
+    };
 
     // Echoes back all received WebSocket messages
     class server_session : public std::enable_shared_from_this<server_session>
@@ -26,7 +91,7 @@ namespace lsp {
         beast::flat_buffer buffer_;
         std::string user_agent_;
     public:
-       std::shared_ptr<websocket_stream_wraper>  proxy_ =  std::make_shared<websocket_stream_wraper>(ws_) ;
+       std::shared_ptr<websocket_stream_wrapper>  proxy_ =  std::make_shared<websocket_stream_wrapper>(ws_) ;
         // Take ownership of the socket
         explicit
             server_session(tcp::socket&& socket,const std::string& user_agent)
@@ -152,40 +217,13 @@ namespace lsp {
      
 	    };
 
-    websocket_stream_wraper::websocket_stream_wraper(boost::beast::websocket::stream<boost::beast::tcp_stream>& _w):
+    websocket_stream_wrapper::websocket_stream_wrapper(boost::beast::websocket::stream<boost::beast::tcp_stream>& _w):
 	    ws_(_w), request_waiter(new MultiQueueWaiter()),
 	    on_request(request_waiter)
     {
     }
 
-    int websocket_stream_wraper::get()
-    {
-	    return on_request.Dequeue();
-    }
-
-    bool websocket_stream_wraper::bad()
-    {
-	    return !ws_.next_layer().socket().is_open();
-    }
-
-    websocket_stream_wraper& websocket_stream_wraper::write(const std::string& c)
-    {
-	    ws_.write(boost::asio::buffer(std::string(c)));
-	    return *this;
-    }
-
-    websocket_stream_wraper& websocket_stream_wraper::write(std::streamsize _s)
-    {
-	    std::ostringstream temp;
-	    temp << _s;
-	    ws_.write(boost::asio::buffer(temp.str()));
-	    return *this;
-    }
-
-    websocket_stream_wraper& websocket_stream_wraper::flush()
-    {
-	    return *this;
-    }
+   
 
 
     WebSocketServer::~WebSocketServer()

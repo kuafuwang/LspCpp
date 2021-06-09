@@ -426,6 +426,7 @@ void RemoteEndPoint::handle(MessageIssue&& issue)
 void RemoteEndPoint::startProcessingMessages(std::shared_ptr<lsp::istream> r,
 	std::shared_ptr<lsp::ostream> w)
 {
+	quit.store(false, std::memory_order_relaxed);
 	input = r;
 	output = w;
 	message_producer->bind(r);
@@ -443,10 +444,14 @@ void RemoteEndPoint::Stop()
 	{
 		message_producer_thread_->detach();
 	}
-
+	{
+		std::lock_guard<std::mutex> lock(m_requsetInfo);
+		_client_request_futures.clear();
+		receivedRequestMap.clear();
+	}
+	
 	d_ptr->tp.clear();
-	if(!quit.load(std::memory_order_relaxed))
-		quit.store(true, std::memory_order_relaxed);
+	quit.store(true, std::memory_order_relaxed);
 }
 
 void RemoteEndPoint::removeRequestInfo(int _id)

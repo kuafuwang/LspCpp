@@ -4,42 +4,172 @@
 #include "TcpServer.h"
 #include <signal.h>
 #include <utility>
+#include <boost/bind/bind.hpp>
+
 #include "MessageIssue.h"
 #include "stream.h"
 
 
 namespace lsp {
-	    struct TcpServerData
+	struct tcp_connect_session;
+
+
+		class tcp_stream_wrapper :public istream, public ostream
 	    {
-		    TcpServerData(
-                lsp::Log& log, uint32_t _max_workers) :
-			    acceptor_(io_context_), proxy_iostream_(nullptr),
-			   
-			    _log(log)
-		    {
-		    }
+	    public:
+		    tcp_stream_wrapper(tcp_connect_session& _w);
 
-	    	~TcpServerData()
-		    {
-              
-		    }
-            /// The io_context used to perform asynchronous operations.
-            boost::asio::io_context io_context_;
-
-            std::shared_ptr<boost::asio::io_service::work> work;
-
-            /// Acceptor used to listen for incoming connections.
-            boost::asio::ip::tcp::acceptor acceptor_;
+	        tcp_connect_session& session;
+	        std::atomic<bool> quit{};
+	        std::shared_ptr < MultiQueueWaiter> request_waiter;
+	        ThreadedQueue< char > on_request;
 
 
-          
-            boost::asio::ip::tcp::iostream iostream_;
-            std::shared_ptr < base_iostream<boost::asio::ip::tcp::iostream>> proxy_iostream_;
-        
-         
-          
-            lsp::Log& _log;
+
+	        bool fail()
+	        {
+	            return  bad();
+	        }
+
+
+
+	        bool eof()
+	        {
+	            return  bad();
+	        }
+	        bool good()
+	        {
+	            return  !bad();
+	        }
+	        tcp_stream_wrapper& read(char* str, std::streamsize count)
+	        {
+                auto some = on_request.TryDequeueSome(count);
+                size_t i = 0;
+                for (; i < some.size(); ++i)
+				{
+				    str[i] = some[i];
+				}
+                for (; i < count; ++i)
+                {
+                    str[i] = static_cast<char>(get());
+                }
+
+	            return *this;
+	        }
+	        int get()
+	        {
+	            return on_request.Dequeue();
+	        }
+
+	        bool bad();
+
+	        tcp_stream_wrapper& write(const std::string& c);
+
+	        tcp_stream_wrapper& write(std::streamsize _s);
+
+	        tcp_stream_wrapper& flush()
+	        {
+	            return *this;
+	        }
+	        void reset_state() 
+	        {
+	            return;
+	        }
 	    };
+	    struct tcp_connect_session:std::enable_shared_from_this<tcp_connect_session>
+	    {
+            /// Buffer for incoming data.
+            std::array<unsigned char, 8192> buffer_;
+            boost::asio::ip::tcp::socket socket_;
+            /// Strand to ensure the connection's handlers are not called concurrently.
+            boost::asio::io_context::strand strand_;
+            std::shared_ptr<tcp_stream_wrapper>  proxy_;
+            explicit tcp_connect_session(boost::asio::io_context& io_context, boost::asio::ip::tcp::socket&& _socket)
+	            : socket_(std::move(_socket)), strand_(io_context), proxy_(new tcp_stream_wrapper(*this))
+            {
+                do_read();
+            }     	
+            void do_write(const std::string& data)
+            {
+                socket_.async_write_some(boost::asio::buffer(data.data(), data.size()),
+                    boost::asio::bind_executor(strand_,[this](boost::system::error_code ec, std::size_t n)
+                   {
+                        if (!ec)
+                        {
+                            return;
+                        }
+                        if (ec != boost::asio::error::operation_aborted)
+                        {
+
+                        }
+                    }));
+            }
+            void do_read()
+            {
+                socket_.async_read_some(boost::asio::buffer(buffer_),
+            boost::asio::bind_executor(strand_,
+                [this](boost::system::error_code ec, size_t bytes_transferred)
+                {
+                    if (!ec)
+                    {
+                        std::vector<char> elements(buffer_.data(), buffer_.data() + bytes_transferred);
+                        proxy_->on_request.EnqueueAll(std::move(elements), false);
+                        do_read();
+                    }
+                    else if (ec != boost::asio::error::operation_aborted)
+                    {
+
+                    }
+                }));
+            }
+	    };
+
+	tcp_stream_wrapper::tcp_stream_wrapper(tcp_connect_session& _w): session(_w)
+	{
+	}
+
+	bool tcp_stream_wrapper::bad()
+    {
+        return !session.socket_.is_open();
+    }
+
+	tcp_stream_wrapper& tcp_stream_wrapper::write(const std::string& c)
+	{
+		session.do_write(c);
+		return *this;
+	}
+
+    tcp_stream_wrapper& tcp_stream_wrapper::write(std::streamsize _s)
+    {
+        std::ostringstream temp;
+        temp << _s;
+        session.do_write(temp.str());
+        return *this;
+    }
+    struct TcpServerData
+    {
+	    TcpServerData(
+            lsp::Log& log, uint32_t _max_workers) :
+		    acceptor_(io_context_), _log(log)
+	    {
+	    }
+
+	    ~TcpServerData()
+	    {
+          
+	    }
+        /// The io_context used to perform asynchronous operations.
+        boost::asio::io_context io_context_;
+
+        std::shared_ptr<boost::asio::io_service::work> work;
+
+        std::shared_ptr<tcp_connect_session> _connect_session;
+        /// Acceptor used to listen for incoming connections.
+        boost::asio::ip::tcp::acceptor acceptor_;
+
+        lsp::Log& _log;
+
+    };
 
 	    TcpServer::~TcpServer()
 	    {
@@ -67,7 +197,7 @@ namespace lsp {
             }
             catch (boost::system::system_error & e)
             {
-                std::string temp = "Socket Server  blid faild.";
+                std::string temp = "Socket Server  bind failed.";
                 d_ptr->_log.log(lsp::Log::Level::INFO , temp + e.what());
                 return;
             }
@@ -116,22 +246,22 @@ namespace lsp {
 
                     if (!ec)
                     {
-                    	if(d_ptr->proxy_iostream_)
+                    	if(d_ptr->_connect_session)
                     	{
-                            d_ptr->iostream_.close();
+                            std::string desc = "Disconnect previous client " + d_ptr->_connect_session->socket_.local_endpoint().address().to_string();
+                            d_ptr->_log.log(lsp::Log::Level::INFO, desc);
+                            d_ptr->_connect_session->socket_.close();
                             remote_end_point_.Stop();
                     	}
-                     
-                        d_ptr->iostream_ = boost::asio::ip::tcp::iostream(std::move(socket));
-                    	
-                        d_ptr->proxy_iostream_ = std::make_shared < base_iostream<boost::asio::ip::tcp::iostream> >(d_ptr->iostream_);
-                    	
-                     
-                        remote_end_point_.startProcessingMessages(d_ptr->proxy_iostream_, d_ptr->proxy_iostream_);
+                        auto local_point = socket.local_endpoint();
+                      
+                        std::string desc = ("New client " + local_point.address().to_string() + " connect.");
+                        d_ptr->_log.log(lsp::Log::Level::INFO, desc);
+                        d_ptr->_connect_session = std::make_shared<tcp_connect_session>(d_ptr->io_context_,std::move(socket));
+                               
+                        remote_end_point_.startProcessingMessages(d_ptr->_connect_session->proxy_, d_ptr->_connect_session->proxy_);
                         do_accept();
                     }
-
-                   
                 });
         }
 

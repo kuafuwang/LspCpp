@@ -3,8 +3,6 @@
 #include "LibLsp/JsonRpc/serializer.h"
 #include <string>
 #include "LibLsp/JsonRpc/message.h"
-#include <rapidjson/writer.h>
-
 namespace lsp
 {
 	struct Any

@@ -21,51 +21,7 @@ namespace lsp {
 namespace lsp
 {
 
-    class websocket_stream_wraper :public istream, public ostream
-    {
-    public:
-
-	    websocket_stream_wraper(boost::beast::websocket::stream<boost::beast::tcp_stream>& _w);
-
-        boost::beast::websocket::stream<boost::beast::tcp_stream>& ws_;
-        std::atomic<bool> quit{};
-        std::shared_ptr < MultiQueueWaiter> request_waiter;
-        ThreadedQueue< char > on_request;
-
-
-	    int get() override;
-
-        bool fail()
-        {
-            return  bad();
-        }
-
-	    bool bad();
-
-        bool eof()
-        {
-            return  bad();
-        }
-        bool good()
-        {
-            return  !bad();
-        }
-        websocket_stream_wraper& read(char* str, std::streamsize count)
-        {
-            for (auto i = 0; i < count; ++i)
-            {
-                str[i] = get();
-            }
-            return *this;
-        }
-
-	    websocket_stream_wraper& write(const std::string& c);
-
-	    websocket_stream_wraper& write(std::streamsize _s);
-
-	    websocket_stream_wraper& flush();
-    };
-	
+   
 		struct WebSocketServerData;
 	
         /// The top-level class of the HTTP server.
