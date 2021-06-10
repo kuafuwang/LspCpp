@@ -17,7 +17,9 @@ struct RequestInMessage : public LspMessage {
 	{
 		return  REQUEST_MESSAGE;
 	}
+	
 };
+
 
 
 template <class T, class TDerived >

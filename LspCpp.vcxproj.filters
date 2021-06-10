@@ -91,6 +91,12 @@
     <ClCompile Include="LibLsp\lsp\ParentProcessWatcher.cpp">
       <Filter>lsp</Filter>
     </ClCompile>
+    <ClCompile Include="LibLsp\JsonRpc\Cancellation.cpp">
+      <Filter>JsonRpc</Filter>
+    </ClCompile>
+    <ClCompile Include="LibLsp\JsonRpc\Context.cpp">
+      <Filter>JsonRpc</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="LibLsp\JsonRpc\MessageIssue.h">
@@ -114,7 +120,7 @@
     <ClInclude Include="LibLsp\JsonRpc\RemoteEndPoint.h">
       <Filter>JsonRpc</Filter>
     </ClInclude>
-    <ClInclude Include="LibLsp\JsonRpc\cancellation.h">
+    <ClInclude Include="LibLsp\JsonRpc\Cancellation.h">
       <Filter>JsonRpc</Filter>
     </ClInclude>
     <ClInclude Include="LibLsp\JsonRpc\message.h">
@@ -372,9 +378,6 @@
     <ClInclude Include="LibLsp\lsp\windows\MessageNotify.h">
       <Filter>lsp\windows</Filter>
     </ClInclude>
-    <ClInclude Include="LibLsp\JsonRpc\PendingRequestInfo.h">
-      <Filter>JsonRpc</Filter>
-    </ClInclude>
     <ClInclude Include="LibLsp\lsp\AbsolutePath.h">
       <Filter>lsp</Filter>
     </ClInclude>
@@ -572,6 +575,12 @@
     </ClInclude>
     <ClInclude Include="LibLsp\lsp\ProcessIoService.h">
       <Filter>lsp</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\JsonRpc\Context.h">
+      <Filter>JsonRpc</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\JsonRpc\ScopeExit.h">
+      <Filter>JsonRpc</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

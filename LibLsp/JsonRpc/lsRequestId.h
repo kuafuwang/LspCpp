@@ -25,6 +25,24 @@ struct lsRequestId {
 		k_string = v;
 		type = kString;
 	}
+	bool operator==(const lsRequestId& rhs) const
+	{
+		if (type != rhs.type) return  false;
+		if (type == kInt)
+			return  value == rhs.value;
+		return  k_string == rhs.k_string;
+	}
+	bool operator!=(const lsRequestId& rhs) const
+	{
+		return !operator==(rhs);
+	}
+	bool operator<(const lsRequestId& rhs) const
+	{
+		if (type != rhs.type) return  false;
+		if (type == kInt)
+			return  value < rhs.value;
+		return  k_string < rhs.k_string;
+	}
 };
 void Reflect(Reader& visitor, lsRequestId& value);
 void Reflect(Writer& visitor, lsRequestId& value);

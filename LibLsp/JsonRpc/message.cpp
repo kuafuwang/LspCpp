@@ -5,8 +5,8 @@
 #include "lsRequestId.h"
 #include "RequestInMessage.h"
 #include "Condition.h"
-#include "PendingRequestInfo.h"
 #include "json.h"
+#include "cancellation.h"
 
 
 void LspMessage::Write(std::ostream& out) {
@@ -31,17 +31,6 @@ std::string LspMessage::ToJson()
 	return  output.GetString();
 }
 
-
-
-PendingRequestInfo::PendingRequestInfo(const std::string& _md,
-	const	RequestCallBack& callback) : method(_md),
-	futureInfo(callback)
-{
-}
-
-PendingRequestInfo::PendingRequestInfo(const std::string& md): method(md)
-{
-}
 
 
 void Reflect(Reader& visitor, lsRequestId& value) {

@@ -432,6 +432,8 @@
     <ClCompile Include="example\StdIOServerExample.cpp" />
     <ClCompile Include="example\TcpServerExample.cpp" />
     <ClCompile Include="example\WebsocketExample.cpp" />
+    <ClCompile Include="LibLsp\JsonRpc\Cancellation.cpp" />
+    <ClCompile Include="LibLsp\JsonRpc\Context.cpp" />
     <ClCompile Include="LibLsp\JsonRpc\serializer.cpp" />
     <ClCompile Include="LibLsp\JsonRpc\TcpServer.cpp" />
     <ClCompile Include="LibLsp\JsonRpc\threaded_queue.cpp" />
@@ -460,20 +462,21 @@
     <ClCompile Include="network\uri\uri_errors.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="LibLsp\JsonRpc\cancellation.h" />
+    <ClInclude Include="LibLsp\JsonRpc\Cancellation.h" />
     <ClInclude Include="LibLsp\JsonRpc\Condition.h" />
+    <ClInclude Include="LibLsp\JsonRpc\Context.h" />
     <ClInclude Include="LibLsp\JsonRpc\json.h" />
     <ClInclude Include="LibLsp\JsonRpc\lsRequestId.h" />
     <ClInclude Include="LibLsp\JsonRpc\lsResponseMessage.h" />
     <ClInclude Include="LibLsp\JsonRpc\message.h" />
     <ClInclude Include="LibLsp\JsonRpc\NotificationInMessage.h" />
-    <ClInclude Include="LibLsp\JsonRpc\PendingRequestInfo.h" />
     <ClInclude Include="LibLsp\JsonRpc\RemoteEndPoint.h" />
     <ClInclude Include="LibLsp\JsonRpc\Endpoint.h" />
     <ClInclude Include="LibLsp\JsonRpc\MessageIssue.h" />
     <ClInclude Include="LibLsp\JsonRpc\MessageJsonHandler.h" />
     <ClInclude Include="LibLsp\JsonRpc\MessageProducer.h" />
     <ClInclude Include="LibLsp\JsonRpc\RequestInMessage.h" />
+    <ClInclude Include="LibLsp\JsonRpc\ScopeExit.h" />
     <ClInclude Include="LibLsp\JsonRpc\serializer.h" />
     <ClInclude Include="LibLsp\JsonRpc\stream.h" />
     <ClInclude Include="LibLsp\JsonRpc\StreamMessageProducer.h" />

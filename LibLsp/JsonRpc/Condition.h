@@ -1,11 +1,5 @@
 #pragma once
-
-
-
 #include <condition_variable>
-//#include <boost/thread/mutex.hpp>
-//#include <boost/thread/condition_variable.hpp>
-
 template <class T>
 class Condition
 {
