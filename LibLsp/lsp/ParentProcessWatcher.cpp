@@ -18,7 +18,8 @@ struct ParentProcessWatcher::ParentProcessWatcherData : std::enable_shared_from_
 	lsp::Log& _log;
 	std::function<void()>  on_exit;
 	lsp::ProcessIoService asio_io;
-
+	std::shared_ptr < boost::process::opstream>  write_to_service;
+	std::shared_ptr< boost::process::ipstream >   read_from_service;
 	int pid;
 	const  int _poll_delay_secs /*= 10*/;
 	std::string command;
@@ -39,6 +40,9 @@ struct ParentProcessWatcher::ParentProcessWatcherData : std::enable_shared_from_
 
 	void run()
 	{
+		write_to_service = std::make_shared<boost::process::opstream>();
+		read_from_service = std::make_shared<boost::process::ipstream>();
+
 		const uint32_t POLL_DELAY_SECS = _poll_delay_secs;
 		auto self(shared_from_this());
 		std::error_code ec;
@@ -46,7 +50,8 @@ struct ParentProcessWatcher::ParentProcessWatcherData : std::enable_shared_from_
 		c = std::make_shared<bp::child>(asio_io.getIOService(), command,
 			ec,
 			bp::windows::hide,
-
+			bp::std_out > *read_from_service,
+			bp::std_in < *write_to_service,
 			bp::on_exit([self](int exit_code, const std::error_code& ec_in) {
 				// the tasklist command should return 0 (parent process exists) or 1 (parent process doesn't exist)
 				if (exit_code == 1)//
