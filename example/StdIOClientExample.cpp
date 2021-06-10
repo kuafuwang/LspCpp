@@ -1,4 +1,5 @@
 ﻿
+#include "LibLsp/lsp/ProcessIoService.h"
 #ifdef STDIO_CLIENT_EXAMPLE
 
 #include <boost/program_options.hpp>
@@ -49,46 +50,6 @@ public:
 	};
 };
 
-class ProcessIoService
-{
-public:
-	using IOService = boost::asio::io_service;
-	using Work = boost::asio::io_service::work;
-	using WorkPtr = std::unique_ptr<Work>;
-
-	ProcessIoService() {
-
-		work_ = std::unique_ptr<Work>(new Work(ioService_));
-		auto temp_thread_ = new std::thread([this]
-			{
-				ioService_.run();
-			});
-		thread_ = std::unique_ptr<std::thread>(temp_thread_);
-	}
-
-	ProcessIoService(const ProcessIoService&) = delete;
-	ProcessIoService& operator=(const ProcessIoService&) = delete;
-
-	boost::asio::io_service& getIOService()
-	{
-		return ioService_;
-	}
-
-	void stop()
-	{
-
-		work_.reset();
-
-		thread_->join();
-
-	}
-
-private:
-	IOService       ioService_;
-	WorkPtr        work_;
-	std::unique_ptr<std::thread>    thread_;
-
-};
 struct boost_process_ipstream : lsp::base_istream< boost::process::ipstream >
 {
 	explicit boost_process_ipstream(boost::process::ipstream& _t)
@@ -154,7 +115,8 @@ public:
 		::Sleep(1000);
 		
 	}
-	ProcessIoService asio_io;
+
+	lsp::ProcessIoService asio_io;
 	std::shared_ptr < lsp::ProtocolJsonHandler >  protocol_json_handler = std::make_shared< lsp::ProtocolJsonHandler>();
 	DummyLog _log;
 

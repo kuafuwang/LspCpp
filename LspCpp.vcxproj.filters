@@ -88,6 +88,9 @@
     <ClCompile Include="LibLsp\lsp\working_files.cpp">
       <Filter>lsp</Filter>
     </ClCompile>
+    <ClCompile Include="LibLsp\lsp\ParentProcessWatcher.cpp">
+      <Filter>lsp</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="LibLsp\JsonRpc\MessageIssue.h">
@@ -563,6 +566,12 @@
     </ClInclude>
     <ClInclude Include="LibLsp\lsp\general\progress.h">
       <Filter>lsp\general</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\ParentProcessWatcher.h">
+      <Filter>lsp</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\ProcessIoService.h">
+      <Filter>lsp</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

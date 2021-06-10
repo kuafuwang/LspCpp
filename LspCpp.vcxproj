@@ -445,6 +445,7 @@
     <ClCompile Include="LibLsp\lsp\general\initialize.cpp" />
     <ClCompile Include="LibLsp\lsp\lsp.cpp" />
     <ClCompile Include="LibLsp\lsp\lsp_diagnostic.cpp" />
+    <ClCompile Include="LibLsp\lsp\ParentProcessWatcher.cpp" />
     <ClCompile Include="LibLsp\lsp\ProtocolJsonHandler.cpp" />
     <ClCompile Include="LibLsp\lsp\textDocument\textDocument.cpp" />
     <ClCompile Include="LibLsp\lsp\utils.cpp" />
@@ -548,6 +549,8 @@
     <ClInclude Include="LibLsp\lsp\lsWorkspaceEdit.h" />
     <ClInclude Include="LibLsp\lsp\method_type.h" />
     <ClInclude Include="LibLsp\lsp\out_list.h" />
+    <ClInclude Include="LibLsp\lsp\ParentProcessWatcher.h" />
+    <ClInclude Include="LibLsp\lsp\ProcessIoService.h" />
     <ClInclude Include="LibLsp\lsp\ProtocolJsonHandler.h" />
     <ClInclude Include="LibLsp\lsp\ResourceOperation.h" />
     <ClInclude Include="LibLsp\lsp\SimpleTimer.h" />
