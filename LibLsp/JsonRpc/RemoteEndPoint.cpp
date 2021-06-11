@@ -413,7 +413,7 @@ bool RemoteEndPoint::dispatch(const std::string& content)
 					if (b)
 					{
 						result.second->SetMethodType(result.first.c_str());
-						d_ptr->tp.schedule([]() {});
+						mainLoop(std::move(result.second));
 					}
 					else
 					{

@@ -1,12 +1,13 @@
 # LspCpp
 
 ## Dependencies
-`LspCpp` depends on the boost and rapidjson
+`LspCpp` depends on the boost and rapidjson,utfcpp,and threadpool
 
 ## Build
  * `1.Open project with Vistual Studio.
  * `2.[Restore packages][3]
- * `3.Build it.
+ * `3. Restore ths submodule .
+ * `4.Build it.
  
 ## Reference
  Some code from :[cquery][1]
@@ -19,6 +20,7 @@
    
 ##  Demo:
 ```cpp
+
 #ifdef TCP_SERVER_EXAMPLE
 
 #include "LibLsp/lsp/general/exit.h"
@@ -75,8 +77,9 @@ public:
 
 	Server():server(_address,_port,protocol_json_handler, endpoint, _log)
 	{
-		server.remote_end_point_.registerRequestHandler([&](const td_initialize::request& req)
-		                                                ->lsp::ResponseOrError< td_initialize::response >{
+		server.remote_end_point_.registerRequestHandlerWithCancelMonitor(
+			[&](const td_initialize::request& req,const CancelMonitor& monitor)
+		          ->lsp::ResponseOrError< td_initialize::response >{
 				if (req.id.value == 1)
 				{
 					Rsp_Error error;
@@ -91,10 +94,16 @@ public:
 	
 				return rsp;
 			});
-		server.remote_end_point_.registerRequestHandler([&](const td_definition::request& req)
+		server.remote_end_point_.registerRequestHandlerWithCancelMonitor([&](const td_definition::request& req
+			,const CancelMonitor& monitor)
 			{
 				td_definition::response rsp;
 				rsp.result.first= std::vector<lsLocation>();
+				std::this_thread::sleep_for(std::chrono::seconds(8));
+			    if(monitor && monitor())
+			    {
+					_log.log_info("textDocument/definition request had been cancel.");
+			    }
 				return rsp;
 			});
 		
@@ -122,6 +131,20 @@ public:
 class Client
 {
 public:
+	struct iostream :public lsp::base_iostream<tcp::iostream>
+	{
+		explicit iostream(boost::asio::basic_socket_iostream<tcp>& _t)
+			: base_iostream<boost::asio::basic_socket_iostream<tcp>>(_t)
+		{
+		}
+
+		std::string what() override
+		{
+			auto  msg = _impl.error().message();
+			return  msg;
+		}
+		
+	};
 	Client() :remote_end_point_(protocol_json_handler, endpoint, _log)
 	{
 		tcp::endpoint end_point( address::from_string(_address), 9333);
@@ -135,7 +158,7 @@ public:
 		}
 	
 		vector<string> args;
-		socket_proxy = std::make_shared<lsp::base_iostream<std::iostream>>(*socket_.get());
+		socket_proxy = std::make_shared<iostream>(*socket_.get());
 	
 		remote_end_point_.startProcessingMessages(socket_proxy, socket_proxy);
 	}
@@ -151,7 +174,7 @@ public:
 
 	std::shared_ptr<GenericEndpoint>  endpoint = std::make_shared<GenericEndpoint>(_log);
 
-	std::shared_ptr < lsp::base_iostream<std::iostream>> socket_proxy;
+	std::shared_ptr < iostream> socket_proxy;
 	std::shared_ptr<tcp::iostream>  socket_;
 	RemoteEndPoint remote_end_point_;
 };
@@ -177,7 +200,11 @@ int main()
 	{
 		td_definition::request req;
 		auto future_rsp = client.remote_end_point_.sendRequest(req);
-		auto state = future_rsp.wait_for(std::chrono::seconds(4));
+		Notify_Cancellation::notify cancel_notify;
+		cancel_notify.params.id = req.id;
+		client.remote_end_point_.sendNotification(cancel_notify);
+		
+		auto state = future_rsp.wait_for(std::chrono::seconds(16));
 		if (std::future_status::timeout == state)
 		{
 			std::cout << "get textDocument/definition  response time out" << std::endl;
