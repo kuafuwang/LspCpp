@@ -55,7 +55,7 @@ public:
 	Server():server(_address,_port,protocol_json_handler, endpoint, _log)
 	{
 		server.remote_end_point_.registerRequestHandlerWithCancelMonitor(
-			[&](const td_initialize::request& req, CancelMonitor monitor)
+			[&](const td_initialize::request& req,const CancelMonitor& monitor)
 		          ->lsp::ResponseOrError< td_initialize::response >{
 				if (req.id.value == 1)
 				{
@@ -72,7 +72,7 @@ public:
 				return rsp;
 			});
 		server.remote_end_point_.registerRequestHandlerWithCancelMonitor([&](const td_definition::request& req
-			, CancelMonitor monitor)
+			,const CancelMonitor& monitor)
 			{
 				td_definition::response rsp;
 				rsp.result.first= std::vector<lsLocation>();

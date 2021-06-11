@@ -49,13 +49,13 @@ namespace lsp {
 
 
 		template <typename R, typename Arg>
-		struct ArgTy<R(*)(Arg, CancelMonitor)> {
+		struct ArgTy<R(*)(Arg,const CancelMonitor&)> {
 			using type = typename std::decay<Arg>::type;
 			
 		};
 
 		template <typename R, typename C, typename Arg>
-		struct ArgTy<R(C::*)(Arg, CancelMonitor) const> {
+		struct ArgTy<R(C::*)(Arg, const CancelMonitor&) const> {
 			using type = typename std::decay<Arg>::type;
 		};
 
