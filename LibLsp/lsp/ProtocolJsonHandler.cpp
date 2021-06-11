@@ -288,14 +288,7 @@ void AddStadardResponseJsonRpcMethod(MessageJsonHandler& handler)
 		return typeHierarchy_resolve::response::ReflectReader(visitor);
 
 	};
-	handler.method2response[td_callHierarchy::request::kMethodInfo] = [](Reader& visitor)
-	{
-		if (visitor.HasMember("error"))
-			return 	Rsp_Error::ReflectReader(visitor);
 
-		return td_callHierarchy::response::ReflectReader(visitor);
-
-	};
 	handler.method2response[td_selectionRange::request::kMethodInfo] = [](Reader& visitor)
 	{
 		if (visitor.HasMember("error"))

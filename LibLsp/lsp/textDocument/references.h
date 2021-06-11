@@ -22,7 +22,7 @@ namespace  TextDocumentReferences {
 	MAKE_SWAP_METHOD(Params,
 		textDocument,
 		position,
-		context);
+		context)
 
   };
 

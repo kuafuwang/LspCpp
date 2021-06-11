@@ -582,6 +582,12 @@
     <ClInclude Include="LibLsp\JsonRpc\RemoteEndPointTypeDef.h">
       <Filter>JsonRpc</Filter>
     </ClInclude>
+    <ClInclude Include="LibLsp\lsp\textDocument\SemanticTokens.h">
+      <Filter>lsp\textDocument</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\textDocument\linkedEditingRange.h">
+      <Filter>lsp\textDocument</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="JsonRpc">

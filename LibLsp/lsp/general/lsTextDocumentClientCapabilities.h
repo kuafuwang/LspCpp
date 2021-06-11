@@ -413,6 +413,68 @@ struct SemanticHighlightingCapabilities :public DynamicRegistrationCapabilities 
 };
 MAKE_REFLECT_STRUCT(SemanticHighlightingCapabilities, dynamicRegistration, semanticHighlighting)
 
+struct SemanticTokensClientCapabilitiesRequestsFull {
+
+	/**
+	* The client will send the `textDocument/semanticTokens/full/delta` request if
+	* the server provides a corresponding handler.
+	*/
+	bool delta = false;
+	MAKE_SWAP_METHOD(SemanticTokensClientCapabilitiesRequestsFull, delta)
+};
+MAKE_REFLECT_STRUCT(SemanticTokensClientCapabilitiesRequestsFull, delta)
+
+struct SemanticTokensClientCapabilities :  public DynamicRegistrationCapabilities
+{
+	//export  TokenFormat = 'relative';
+	struct lsRequests
+	{
+		/**
+		 * The client will send the `textDocument/semanticTokens/range` request
+		 * if the server provides a corresponding handler.
+		 */
+		boost::optional<std::pair< boost::optional<bool>,
+		boost::optional<SemanticTokensClientCapabilitiesRequestsFull>>>  range;
+		/**
+		 * The client will send the `textDocument/semanticTokens/full` request
+		 * if the server provides a corresponding handler.
+		 */
+		boost::optional<std::pair< boost::optional<bool>, boost::optional<lsp::Any>>> full;
+		MAKE_SWAP_METHOD(lsRequests, range, full)
+	};
+
+	lsRequests requests;
+	/**
+	 * The token types that the client supports.
+	 */
+	std::vector<std::string> tokenTypes;
+
+	/**
+	 * The token modifiers that the client supports.
+	 */
+	std::vector<std::string> tokenModifiers;
+	/**
+	 * The formats the clients supports.
+	 */
+	std::vector<std::string> formats;
+	/**
+	 * Whether the client supports tokens that can overlap each other.
+	 */
+	boost::optional < bool >overlappingTokenSupport;
+
+	/**
+	 * Whether the client supports tokens that can span multiple lines.
+	 */
+	boost::optional < bool > multilineTokenSupport;
+	
+	MAKE_SWAP_METHOD(SemanticTokensClientCapabilities, dynamicRegistration,requests, tokenTypes, tokenModifiers,
+		formats, overlappingTokenSupport, multilineTokenSupport)
+	
+};
+MAKE_REFLECT_STRUCT(SemanticTokensClientCapabilities::lsRequests, range,full)
+MAKE_REFLECT_STRUCT(SemanticTokensClientCapabilities, dynamicRegistration, requests, tokenTypes, tokenModifiers,
+	formats, overlappingTokenSupport, multilineTokenSupport)
+
 // Text document specific client capabilities.
 struct lsTextDocumentClientCapabilities {
   
@@ -554,7 +616,7 @@ struct lsTextDocumentClientCapabilities {
    *
    * @since 3.16.0
    */
-  boost::optional< DynamicRegistrationCapabilities > semanticTokens;
+  boost::optional< SemanticTokensClientCapabilities > semanticTokens;
 
   /**
    * Capabilities specific to the `textDocument/moniker` request.

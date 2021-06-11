@@ -7,8 +7,7 @@
 #include "LibLsp/lsp/lsDocumentUri.h"
 #include "LibLsp/lsp/lsAny.h"
 #include "InitializeParams.h"
-
-
+#include "LibLsp/lsp/textDocument/SemanticTokens.h"
 
 
 extern void Reflect(Reader&, std::pair<boost::optional<lsTextDocumentSyncKind>, boost::optional<lsTextDocumentSyncOptions> >&);
@@ -336,9 +335,48 @@ struct SemanticHighlightingServerCapabilities {
 	 * the server.
 	 */
 	 std::vector< std::vector<std::string> > scopes;
-	 MAKE_SWAP_METHOD(SemanticHighlightingServerCapabilities, scopes);
+	 MAKE_SWAP_METHOD(SemanticHighlightingServerCapabilities, scopes)
 };
-MAKE_REFLECT_STRUCT(SemanticHighlightingServerCapabilities, scopes);
+MAKE_REFLECT_STRUCT(SemanticHighlightingServerCapabilities, scopes)
+
+struct SemanticTokensServerFull
+{
+	/**
+	* The server supports deltas for full documents.
+	*/
+	bool delta =false;
+	MAKE_SWAP_METHOD(SemanticTokensServerFull, delta)
+};
+MAKE_REFLECT_STRUCT(SemanticTokensServerFull, delta)
+struct SemanticTokensWithRegistrationOptions
+{
+	SemanticTokensLegend legend;
+
+	/**
+	 * Server supports providing semantic tokens for a specific range
+	 * of a document.
+	 */
+	boost::optional< std::pair< boost::optional<bool>, boost::optional<lsp::Any> > >  range;
+
+	/**
+	 * Server supports providing semantic tokens for a full document.
+	 */
+	boost::optional< std::pair< boost::optional<bool>,
+	boost::optional<SemanticTokensServerFull> > >  full;
+	
+	/**
+	 * A document selector to identify the scope of the registration. If set to null
+	 * the document selector provided on the client side will be used.
+	 */
+	boost::optional < std::vector<DocumentFilter> > documentSelector;
+	/**
+	 * The id used to register the request. The id can be used to deregister
+	 * the request again. See also Registration#id.
+	 */
+	boost::optional<std::string> id;
+	MAKE_SWAP_METHOD(SemanticTokensWithRegistrationOptions, legend, range, full, documentSelector, id)
+};
+MAKE_REFLECT_STRUCT(SemanticTokensWithRegistrationOptions, legend, range, full, documentSelector ,id)
 
 using  DocumentColorOptions = WorkDoneProgressOptions;
 using  FoldingRangeOptions = WorkDoneProgressOptions;
@@ -448,23 +486,48 @@ struct lsServerCapabilities {
 	 * language feature</a> is not yet part of the official LSP specification.
 	 */
 	
-	 boost::optional< std::pair< boost::optional<bool>, boost::optional<StaticRegistrationOptions> > > typeHierarchyProvider;
+	 boost::optional< std::pair< boost::optional<bool>,
+	boost::optional<StaticRegistrationOptions> > > typeHierarchyProvider;
 
 	/**
 	 * The server provides Call Hierarchy support.
 	 */
 	
-	 boost::optional< std::pair< boost::optional<bool>, boost::optional<StaticRegistrationOptions> > > callHierarchyProvider;
+	 boost::optional< std::pair< boost::optional<bool>,
+	boost::optional<StaticRegistrationOptions> > > callHierarchyProvider;
 
 	/**
 	 * The server provides selection range support.
 	 *
 	 * Since 3.15.0
 	 */
-	 boost::optional< std::pair< boost::optional<bool>, boost::optional<StaticRegistrationOptions> > > selectionRangeProvider;
+	 boost::optional< std::pair< boost::optional<bool>,
+	boost::optional<StaticRegistrationOptions> > > selectionRangeProvider;
+
+	 /**
+	  * The server provides linked editing range support.
+	  *
+	  * Since 3.16.0
+	  */
+	 boost::optional< std::pair< boost::optional<bool>,
+		 boost::optional<StaticRegistrationOptions> > > linkedEditingRangeProvider;
 
 
-
+	 /**
+	  * The server provides semantic tokens support.
+	  *
+	  * Since 3.16.0
+	  */
+	 boost::optional < SemanticTokensWithRegistrationOptions> semanticTokensProvider;
+	
+	 /**
+	  * Whether server provides moniker support.
+	  *
+	  * Since 3.16.0
+	  */
+	 boost::optional< std::pair< boost::optional<bool>,
+		 boost::optional<StaticRegistrationOptions> > >  monikerProvider;
+	
 	boost::optional<lsp::Any> experimental;
 
 
@@ -493,7 +556,8 @@ struct lsServerCapabilities {
 		typeHierarchyProvider,
 		callHierarchyProvider,
 		selectionRangeProvider,
-		experimental, colorProvider, foldingRangeProvider)
+		experimental, colorProvider, foldingRangeProvider, 
+		linkedEditingRangeProvider, monikerProvider, semanticTokensProvider)
 	
 };
 MAKE_REFLECT_STRUCT(lsServerCapabilities,
@@ -521,5 +585,6 @@ MAKE_REFLECT_STRUCT(lsServerCapabilities,
 	typeHierarchyProvider,
 	callHierarchyProvider,
 	selectionRangeProvider,
-	experimental, colorProvider, foldingRangeProvider)
+	experimental, colorProvider, foldingRangeProvider,
+	linkedEditingRangeProvider, monikerProvider, semanticTokensProvider)
 

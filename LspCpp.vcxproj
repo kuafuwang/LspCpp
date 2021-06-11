@@ -577,6 +577,7 @@
     <ClInclude Include="LibLsp\lsp\textDocument\highlight.h" />
     <ClInclude Include="LibLsp\lsp\textDocument\hover.h" />
     <ClInclude Include="LibLsp\lsp\textDocument\implementation.h" />
+    <ClInclude Include="LibLsp\lsp\textDocument\linkedEditingRange.h" />
     <ClInclude Include="LibLsp\lsp\textDocument\onTypeFormatting.h" />
     <ClInclude Include="LibLsp\lsp\textDocument\prepareRename.h" />
     <ClInclude Include="LibLsp\lsp\textDocument\publishDiagnostics.h" />
@@ -588,6 +589,7 @@
     <ClInclude Include="LibLsp\lsp\textDocument\resolveTypeHierarchy.h" />
     <ClInclude Include="LibLsp\lsp\textDocument\selectionRange.h" />
     <ClInclude Include="LibLsp\lsp\textDocument\semanticHighlighting.h" />
+    <ClInclude Include="LibLsp\lsp\textDocument\SemanticTokens.h" />
     <ClInclude Include="LibLsp\lsp\textDocument\signature_help.h" />
     <ClInclude Include="LibLsp\lsp\textDocument\typeHierarchy.h" />
     <ClInclude Include="LibLsp\lsp\textDocument\type_definition.h" />
