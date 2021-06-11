@@ -70,7 +70,8 @@ public:
 				remote_end_point_.Stop();
 				esc_event.notify(std::make_unique<bool>(true));
 			});
-		remote_end_point_.registerRequestHandlerWithCancelMonitor([&](const td_definition::request& req, CancelMonitor monitor)
+		remote_end_point_.registerRequestHandlerWithCancelMonitor([&](const td_definition::request& req,
+			const CancelMonitor& monitor)
 			{
 				td_definition::response rsp;
 				rsp.result.first = std::vector<lsLocation>();
