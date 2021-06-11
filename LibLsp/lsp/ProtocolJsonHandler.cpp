@@ -65,6 +65,7 @@
 #include "language/language.h"
 #include "client/registerCapability.h"
 #include "client/unregisterCapability.h"
+#include "LibLsp/JsonRpc/cancellation.h"
 #include "textDocument/didRenameFiles.h"
 #include "textDocument/semanticHighlighting.h"
 #include "workspace/configuration.h"
@@ -502,6 +503,7 @@ void AddJavaExtentionResponseJsonRpcMethod(MessageJsonHandler& handler)
 
 void AddNotifyJsonRpcMethod(MessageJsonHandler& handler)
 {
+
 	handler.method2notification[Notify_Exit::notify::kMethodInfo] = [](Reader& visitor)
 	{
 		return Notify_Exit::notify::ReflectReader(visitor);

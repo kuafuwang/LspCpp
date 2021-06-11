@@ -8,17 +8,20 @@
 
 // NotificationInMessage does not have |id|.
 struct NotificationInMessage : public LspMessage {
+	
 	Kind GetKid() override
 	{
 		return  NOTIFICATION_MESSAGE;
 	}
-	
-	std::string method;
-	MethodType GetMethodType() const override { return method.c_str(); }
+	MethodType GetMethodType() const override
+	{
+		return method.c_str();
+	}
 	void SetMethodType(MethodType _t)
 	{
 		method = _t;
-	}								  
+	}
+	std::string method;
 };
 template <class T, class TDerived >
 struct lsNotificationInMessage : NotificationInMessage {

@@ -13,6 +13,7 @@
 #include "NotificationInMessage.h"
 #include "lsResponseMessage.h"
 #include "Condition.h"
+#include "Context.h"
 #include "rapidjson/error/en.h"
 #include "json.h"
 #include "ScopeExit.h"
@@ -20,6 +21,111 @@
 #include "third_party/threadpool/boost/threadpool.hpp"
 using namespace  lsp;
 
+
+
+#include "Cancellation.h"
+#include <atomic>
+
+namespace lsp {
+	
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//===----------------------------------------------------------------------===//
+
+// Cancellation mechanism for long-running tasks.
+//
+// This manages interactions between:
+//
+// 1. Client code that starts some long-running work, and maybe cancels later.
+//
+//   std::pair<Context, Canceler> Task = cancelableTask();
+//   {
+//     WithContext Cancelable(std::move(Task.first));
+//     Expected
+//     deepThoughtAsync([](int answer){ errs() << answer; });
+//   }
+//   // ...some time later...
+//   if (User.fellAsleep())
+//     Task.second();
+//
+//  (This example has an asynchronous computation, but synchronous examples
+//  work similarly - the Canceler should be invoked from another thread).
+//
+// 2. Library code that executes long-running work, and can exit early if the
+//   result is not needed.
+//
+//   void deepThoughtAsync(std::function<void(int)> Callback) {
+//     runAsync([Callback]{
+//       int A = ponder(6);
+//       if (getCancelledMonitor())
+//         return;
+//       int B = ponder(9);
+//       if (getCancelledMonitor())
+//         return;
+//       Callback(A * B);
+//     });
+//   }
+//
+//   (A real example may invoke the callback with an error on cancellation,
+//   the CancelledError is provided for this purpose).
+//
+// Cancellation has some caveats:
+//   - the work will only stop when/if the library code next checks for it.
+//     Code outside clangd such as Sema will not do this.
+//   - it's inherently racy: client code must be prepared to accept results
+//     even after requesting cancellation.
+//   - it's Context-based, so async work must be dispatched to threads in
+//     ways that preserve the context. (Like runAsync() or TUScheduler).
+//
+
+	/// A canceller requests cancellation of a task, when called.
+	/// Calling it again has no effect.
+	using Canceler = std::function<void()>;
+
+	// We don't want a cancelable scope to "shadow" an enclosing one.
+	struct CancelState {
+		std::shared_ptr<std::atomic<int>> cancelled;
+		const CancelState* parent = nullptr;
+		lsRequestId id;
+	};
+	static Key<CancelState> g_stateKey;
+
+	/// Defines a new task whose cancellation may be requested.
+	/// The returned Context defines the scope of the task.
+	/// When the context is active, getCancelledMonitor() is 0 until the Canceler is
+	/// invoked, and equal to Reason afterwards.
+	/// Conventionally, Reason may be the LSP error code to return.
+	std::pair<Context, Canceler> cancelableTask(const lsRequestId& id,int reason = 1){
+		assert(reason != 0 && "Can't detect cancellation if Reason is zero");
+		CancelState state;
+		state.id = id;
+		state.cancelled = std::make_shared<std::atomic<int>>();
+		state.parent = Context::current().get(g_stateKey);
+		return {
+			Context::current().derive(g_stateKey, state),
+			[reason, cancelled(state.cancelled)] { *cancelled = reason; },
+		};
+	}
+	/// If the current context is within a cancelled task, returns the reason.
+/// (If the context is within multiple nested tasks, true if any are cancelled).
+/// Always zero if there is no active cancelable task.
+/// This isn't free (context lookup) - don't call it in a tight loop.
+	boost::optional<CancelMonitor> getCancelledMonitor(const lsRequestId& id, const Context& ctx = Context::current()){
+		for (const CancelState* state = ctx.get(g_stateKey); state != nullptr;
+			state = state->parent)
+		{
+			if (id != state->id)continue;
+			const std::shared_ptr<std::atomic<int> > cancelled = state->cancelled;
+			std::function<int()> temp = [=]{
+				return cancelled->load();
+			};
+			return std::move(temp);
+		}
+
+		return {};
+	}
+} // namespace lsp
 
 
 class PendingRequestInfo
@@ -60,6 +166,7 @@ struct RemoteEndPoint::Data
 	explicit Data(lsp::Log& _log , RemoteEndPoint* owner)
 		: message_producer(new StreamMessageProducer(*owner)), log(_log)
 	{
+		
 	}
 	~Data()
 	{
@@ -81,19 +188,13 @@ struct RemoteEndPoint::Data
 		if (it != requestCancelers.end())
 			it->second.first(); // Invoke the canceler.
 	}
-	Key<OffsetEncoding> kCurrentOffsetEncoding;
-	Context handlerContext() const {
-		return Context::current().derive(
-			kCurrentOffsetEncoding,
-			OffsetEncoding::UTF16);
-	}
-
+	
 	// We run cancelable requests in a context that does two things:
 	//  - allows cancellation using requestCancelers[ID]
 	//  - cleans up the entry in requestCancelers when it's no longer needed
 	// If a client reuses an ID, the last wins and the first cannot be canceled.
 	Context cancelableRequestContext(lsRequestId id) {
-		auto task = cancelableTask(
+		auto task = cancelableTask(id,
 			/*Reason=*/static_cast<int>(lsErrorCodes::RequestCancelled));
 		unsigned cookie;
 		{
@@ -221,10 +322,29 @@ bool isNotificationMessage(JsonReader& visitor)
 	return true;
 }
 }
+
+CancelMonitor RemoteEndPoint::getCancelMonitor(const lsRequestId& id)
+{
+	auto  monitor =  getCancelledMonitor(id);
+	if(monitor.has_value())
+	{
+		return  monitor.value();
+	}
+	return [] {
+		return 0;
+	};
+	
+}
+
 RemoteEndPoint::RemoteEndPoint(
 	const std::shared_ptr < MessageJsonHandler >& json_handler,const std::shared_ptr < Endpoint>& localEndPoint, lsp::Log& _log, uint8_t max_workers):
     d_ptr(new Data(_log,this)),jsonHandler(json_handler), local_endpoint(localEndPoint)
 {
+	jsonHandler->method2notification[Notify_Cancellation::notify::kMethodInfo] = [](Reader& visitor)
+	{
+		return Notify_Cancellation::notify::ReflectReader(visitor);
+	};
+	
 	d_ptr->quit.store(false, std::memory_order_relaxed);
 	d_ptr->tp.size_controller().resize(max_workers);
 }
@@ -409,8 +529,6 @@ void RemoteEndPoint::mainLoop(std::unique_ptr<LspMessage>msg)
 	if (_kind == LspMessage::REQUEST_MESSAGE)
 	{
 		auto req = dynamic_cast<RequestInMessage*>(msg.get());
-	
-		WithContext HandlerContext(d_ptr->handlerContext());
 		// Calls can be canceled by the client. Add cancellation context.
 		WithContext WithCancel(d_ptr->cancelableRequestContext(req->id));
 		local_endpoint->onRequest(std::move(msg));
@@ -444,7 +562,7 @@ void RemoteEndPoint::mainLoop(std::unique_ptr<LspMessage>msg)
 	}
 	else if (_kind == LspMessage::NOTIFICATION_MESSAGE)
 	{
-		if (msg->GetMethodType() == Notify_Cancellation::notify::kMethodInfo)
+		if (strcmp(Notify_Cancellation::notify::kMethodInfo, msg->GetMethodType())==0)
 		{
 			d_ptr->onCancel(reinterpret_cast<Notify_Cancellation::notify*>(msg.get()));
 		}

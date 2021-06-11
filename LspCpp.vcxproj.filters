@@ -91,9 +91,6 @@
     <ClCompile Include="LibLsp\lsp\ParentProcessWatcher.cpp">
       <Filter>lsp</Filter>
     </ClCompile>
-    <ClCompile Include="LibLsp\JsonRpc\Cancellation.cpp">
-      <Filter>JsonRpc</Filter>
-    </ClCompile>
     <ClCompile Include="LibLsp\JsonRpc\Context.cpp">
       <Filter>JsonRpc</Filter>
     </ClCompile>
@@ -580,6 +577,9 @@
       <Filter>JsonRpc</Filter>
     </ClInclude>
     <ClInclude Include="LibLsp\JsonRpc\ScopeExit.h">
+      <Filter>JsonRpc</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\JsonRpc\RemoteEndPointTypeDef.h">
       <Filter>JsonRpc</Filter>
     </ClInclude>
   </ItemGroup>

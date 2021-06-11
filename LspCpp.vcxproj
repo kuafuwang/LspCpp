@@ -432,7 +432,6 @@
     <ClCompile Include="example\StdIOServerExample.cpp" />
     <ClCompile Include="example\TcpServerExample.cpp" />
     <ClCompile Include="example\WebsocketExample.cpp" />
-    <ClCompile Include="LibLsp\JsonRpc\Cancellation.cpp" />
     <ClCompile Include="LibLsp\JsonRpc\Context.cpp" />
     <ClCompile Include="LibLsp\JsonRpc\serializer.cpp" />
     <ClCompile Include="LibLsp\JsonRpc\TcpServer.cpp" />
@@ -475,6 +474,7 @@
     <ClInclude Include="LibLsp\JsonRpc\MessageIssue.h" />
     <ClInclude Include="LibLsp\JsonRpc\MessageJsonHandler.h" />
     <ClInclude Include="LibLsp\JsonRpc\MessageProducer.h" />
+    <ClInclude Include="LibLsp\JsonRpc\RemoteEndPointTypeDef.h" />
     <ClInclude Include="LibLsp\JsonRpc\RequestInMessage.h" />
     <ClInclude Include="LibLsp\JsonRpc\ScopeExit.h" />
     <ClInclude Include="LibLsp\JsonRpc\serializer.h" />

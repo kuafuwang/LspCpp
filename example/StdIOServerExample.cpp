@@ -56,24 +56,28 @@ public:
 	StdIOServer() : remote_end_point_(protocol_json_handler, endpoint, _log)
 	{
 		remote_end_point_.registerRequestHandler([&](const td_initialize::request& req)
-			{
+		{
 				td_initialize::response rsp;
 				rsp.id = req.id;
 				CodeLensOptions code_lens_options;
 				code_lens_options.resolveProvider = true;
 				rsp.result.capabilities.codeLensProvider = code_lens_options;
 				return rsp;
-			});
+		});
 
 		remote_end_point_.registerNotifyHandler([&](Notify_Exit::notify& notify)
 			{
 				remote_end_point_.Stop();
 				esc_event.notify(std::make_unique<bool>(true));
 			});
-		remote_end_point_.registerRequestHandler([&](const td_definition::request& req)
+		remote_end_point_.registerRequestHandlerWithCancelMonitor([&](const td_definition::request& req, CancelMonitor monitor)
 			{
 				td_definition::response rsp;
 				rsp.result.first = std::vector<lsLocation>();
+				if (monitor && monitor())
+				{
+					_log.log_info("textDocument/definition request had been cancel.");
+				}
 				return rsp;
 			});
 

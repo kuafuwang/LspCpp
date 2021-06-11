@@ -54,8 +54,9 @@ public:
 
 	Server():server(_address,_port,protocol_json_handler, endpoint, _log)
 	{
-		server.remote_end_point_.registerRequestHandler([&](const td_initialize::request& req)
-		                                                ->lsp::ResponseOrError< td_initialize::response >{
+		server.remote_end_point_.registerRequestHandlerWithCancelMonitor(
+			[&](const td_initialize::request& req, CancelMonitor monitor)
+		          ->lsp::ResponseOrError< td_initialize::response >{
 				if (req.id.value == 1)
 				{
 					Rsp_Error error;
@@ -70,10 +71,16 @@ public:
 	
 				return rsp;
 			});
-		server.remote_end_point_.registerRequestHandler([&](const td_definition::request& req)
+		server.remote_end_point_.registerRequestHandlerWithCancelMonitor([&](const td_definition::request& req
+			, CancelMonitor monitor)
 			{
 				td_definition::response rsp;
 				rsp.result.first= std::vector<lsLocation>();
+				std::this_thread::sleep_for(std::chrono::seconds(8));
+			    if(monitor && monitor())
+			    {
+					_log.log_info("textDocument/definition request had been cancel.");
+			    }
 				return rsp;
 			});
 		
@@ -170,7 +177,11 @@ int main()
 	{
 		td_definition::request req;
 		auto future_rsp = client.remote_end_point_.sendRequest(req);
-		auto state = future_rsp.wait_for(std::chrono::seconds(4));
+		Notify_Cancellation::notify cancel_notify;
+		cancel_notify.params.id = req.id;
+		client.remote_end_point_.sendNotification(cancel_notify);
+		
+		auto state = future_rsp.wait_for(std::chrono::seconds(16));
 		if (std::future_status::timeout == state)
 		{
 			std::cout << "get textDocument/definition  response time out" << std::endl;

@@ -1,144 +1,36 @@
 #pragma once
+#include "RemoteEndPointTypeDef.h"
 #include <future>
 #include <string>
 #include "threaded_queue.h"
 #include <unordered_map>
 #include "MessageIssue.h"
-#include "LibLsp/lsp/lsp_diagnostic.h"
 #include "LibLsp/JsonRpc/MessageJsonHandler.h"
 #include "Endpoint.h"
-namespace lsp {
-	class ostream;
-	class istream;
-}
 
-struct lsResponseMessage;
-class MessageJsonHandler;
-struct InMessage;
-struct NotificationInMessage;
-class  Endpoint;
-struct RequestInMessage;
-struct LspMessage;
-
-
-namespace lsp {
-	// internal functionality
-	namespace detail {
-		template <typename T>
-		struct traits {
-			static constexpr bool isRequest = std::is_base_of<RequestInMessage, T>::value;
-			static constexpr bool isResponse = std::is_base_of<lsResponseMessage, T>::value;
-			static constexpr bool isEvent = std::is_base_of<NotificationInMessage, T>::value;
-		};
-
-		// ArgTy<F>::type resolves to the first argument type of the function F.
-		// F can be a function, static member function, or lambda.
-		template <typename F>
-		struct ArgTy {
-			using type = typename ArgTy<decltype(&F::operator())>::type;
-		};
-
-		template <typename R, typename Arg>
-		struct ArgTy<R(*)(Arg)> {
-			using type = typename std::decay<Arg>::type;
-		};
-
-		template <typename R, typename C, typename Arg>
-		struct ArgTy<R(C::*)(Arg) const> {
-			using type = typename std::decay<Arg>::type;
-		};
-	}  // namespace detail
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-// ResponseOrError<T>
-////////////////////////////////////////////////////////////////////////////////
-
-// ResponseOrError holds either the response to a  request or an error
-// message.
-	template <typename T>
-	struct ResponseOrError {
-		using Request = T;
-
-		inline ResponseOrError() = default;
-		inline ResponseOrError(const T& response);
-		inline ResponseOrError(T&& response);
-		inline ResponseOrError(const Rsp_Error& error);
-		inline ResponseOrError(Rsp_Error&& error);
-		inline ResponseOrError(const ResponseOrError& other);
-		inline ResponseOrError(ResponseOrError&& other);
-
-		inline ResponseOrError& operator=(const ResponseOrError& other);
-		inline ResponseOrError& operator=(ResponseOrError&& other);
-
-		T response;
-		Rsp_Error error;  // empty represents success.
-	};
-
-	template <typename T>
-	ResponseOrError<T>::ResponseOrError(const T& resp) : response(resp) {}
-	template <typename T>
-	ResponseOrError<T>::ResponseOrError(T&& resp) : response(std::move(resp)) {}
-	template <typename T>
-	ResponseOrError<T>::ResponseOrError(const Rsp_Error& err) : error(err) {}
-	template <typename T>
-	ResponseOrError<T>::ResponseOrError(Rsp_Error&& err) : error(std::move(err)) {}
-	template <typename T>
-	ResponseOrError<T>::ResponseOrError(const ResponseOrError& other)
-		: response(other.response), error(other.error) {}
-	template <typename T>
-	ResponseOrError<T>::ResponseOrError(ResponseOrError&& other)
-		: response(std::move(other.response)), error(std::move(other.error)) {}
-	template <typename T>
-	ResponseOrError<T>& ResponseOrError<T>::operator=(
-		const ResponseOrError& other) {
-		response = other.response;
-		error = other.error;
-		return *this;
-	}
-	template <typename T>
-	ResponseOrError<T>& ResponseOrError<T>::operator=(ResponseOrError&& other) {
-		response = std::move(other.response);
-		error = std::move(other.error);
-		return *this;
-	}
-
-}
 class RemoteEndPoint :MessageIssueHandler
 {
 	template <typename T>
 	using IsRequest = typename std::enable_if<lsp::detail::traits<T>::isRequest>::type;
 	template <typename F>
 	using ArgTy = typename lsp::detail::ArgTy<F>::type;
+
 public:
 
+	
 	RemoteEndPoint(const std::shared_ptr <MessageJsonHandler>& json_handler,
 		const std::shared_ptr < Endpoint >& localEndPoint,
 		lsp::Log& _log, uint8_t max_workers = 2);
 	
 	~RemoteEndPoint() override;
-
 	template <typename F, typename RequestType = ArgTy<F>>
-	IsRequest<RequestType>  registerRequestHandler(F&& handler) {
+	IsRequest<RequestType>  registerRequestHandler(F&& handler)
+	{
+		ProcessRequestJsonHandler(handler);
 		using ResponseType = typename RequestType::Response;
-
-		std::string method = RequestType::kMethodInfo;
-
-		{
-			std::lock_guard<std::mutex> lock(m_sendMutex);
-			if (!jsonHandler->GetRequestJsonHandler(RequestType::kMethodInfo))
-			{
-				jsonHandler->SetRequestJsonHandler(RequestType::kMethodInfo,
-					[](Reader& visitor)
-					{
-						return RequestType::ReflectReader(visitor);
-					});
-			}
-
-		}
-		local_endpoint->registerRequestHandler(method, [=](std::unique_ptr<LspMessage> msg) {
+		local_endpoint->registerRequestHandler(RequestType::kMethodInfo, [=](std::unique_ptr<LspMessage> msg) {
 			auto  req = reinterpret_cast<const RequestType*>(msg.get());
+
 			lsp::ResponseOrError<ResponseType> res(handler(*req));
 			if (res.error) {
 				res.error.id = req->id;
@@ -150,7 +42,26 @@ public:
 				sendResponse(res.response);
 			}
 			return  true;
-			});
+		});
+	}
+	template <typename F, typename RequestType = ArgTy<F>>
+	IsRequest<RequestType>  registerRequestHandlerWithCancelMonitor(F&& handler)  {
+		ProcessRequestJsonHandler(handler);
+		using ResponseType = typename RequestType::Response;
+		local_endpoint->registerRequestHandler(RequestType::kMethodInfo, [=](std::unique_ptr<LspMessage> msg) {
+			auto  req = reinterpret_cast<const RequestType*>(msg.get());
+			lsp::ResponseOrError<ResponseType> res(handler(*req , getCancelMonitor(req->id)));
+			if (res.error) {
+				res.error.id = req->id;
+				sendResponse(res.error);
+			}
+			else
+			{
+				res.response.id = req->id;
+				sendResponse(res.response);
+			}
+			return  true;
+		});
 	}
 	template <typename F, typename NotifyType = ArgTy<F>>
 	void  registerNotifyHandler(F&& handler) {
@@ -292,11 +203,22 @@ public:
 	void handle(std::vector<MessageIssue>&&) override;
 	void handle(MessageIssue&&) override;
 private:
-
+	CancelMonitor getCancelMonitor(const lsRequestId&);
 	void sendMsg(LspMessage& msg);
 	void mainLoop(std::unique_ptr<LspMessage>);
 	bool dispatch(const std::string&);
-
+	template <typename F, typename RequestType = ArgTy<F>>
+	IsRequest<RequestType>  ProcessRequestJsonHandler(const F& handler) {
+		std::lock_guard<std::mutex> lock(m_sendMutex);
+		if (!jsonHandler->GetRequestJsonHandler(RequestType::kMethodInfo))
+		{
+			jsonHandler->SetRequestJsonHandler(RequestType::kMethodInfo,
+				[](Reader& visitor)
+				{
+					return RequestType::ReflectReader(visitor);
+				});
+		}	
+	}
 private:
 	struct Data;
 
