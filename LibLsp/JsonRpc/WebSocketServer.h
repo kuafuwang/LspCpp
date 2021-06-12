@@ -25,7 +25,7 @@ namespace lsp
 {
 
    
-		struct WebSocketServerData;
+		
         class websocket_stream_wrapper :public istream, public ostream
         {
         public:
@@ -79,12 +79,13 @@ namespace lsp
 
             RemoteEndPoint remote_end_point_;
         private:
+            struct Data;
             /// Perform an asynchronous accept operation.
             void do_accept();
 
             /// Wait for a request to stop the server.
             void do_stop();
-            WebSocketServerData* d_ptr = nullptr;
+            Data* d_ptr = nullptr;
          
 
         };

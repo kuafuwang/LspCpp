@@ -86,7 +86,7 @@ class Client
 {
 public:
 	Client(std::string& execPath,const std::vector<std::string>& args) 
-		:remote_end_point_(protocol_json_handler, endpoint, _log)
+		:point(protocol_json_handler, endpoint, _log)
 	{
 		std::error_code ec;
 		namespace bp = boost::process;
@@ -106,12 +106,12 @@ public:
 		}
 		else {
 			//success
-			remote_end_point_.startProcessingMessages(read_from_service_proxy, write_to_service_proxy);
+			point.startProcessingMessages(read_from_service_proxy, write_to_service_proxy);
 		}
 	}
 	~Client()
 	{
-		remote_end_point_.Stop();
+		point.Stop();
 		::Sleep(1000);
 		
 	}
@@ -129,7 +129,7 @@ public:
 	std::shared_ptr<lsp::istream>  read_from_service_proxy = std::make_shared< boost_process_ipstream >(read_from_service);
 
 	std::shared_ptr<boost::process::child> c;
-	RemoteEndPoint remote_end_point_;
+	RemoteEndPoint point;
 };
 
 int main(int argc, char* argv[])
@@ -171,7 +171,7 @@ int main(int argc, char* argv[])
 	Client client(execPath, {});
 	{
 		td_initialize::request req;
-		auto rsp = client.remote_end_point_.waitResponse(req);
+		auto rsp = client.point.waitResponse(req);
 		if (rsp)
 		{
 			std::cerr << rsp->ToJson() << std::endl;
@@ -183,7 +183,7 @@ int main(int argc, char* argv[])
 	}
 	{
 		td_definition::request req;
-		auto future_rsp = client.remote_end_point_.sendRequest(req);
+		auto future_rsp = client.point.sendRequest(req);
 		auto state = future_rsp.wait_for(std::chrono::seconds(4));
 		if (std::future_status::timeout == state)
 		{
@@ -191,7 +191,7 @@ int main(int argc, char* argv[])
 			return 0;
 		}
 		auto rsp = future_rsp.get();
-		if (rsp.error)
+		if (rsp.is_error)
 		{
 			std::cerr << "get textDocument/definition  response error" << std::endl;
 
@@ -203,7 +203,7 @@ int main(int argc, char* argv[])
 	}
 	{
 		td_initialize::request req;
-		auto rsp = client.remote_end_point_.waitResponse(req);
+		auto rsp = client.point.waitResponse(req);
 		if (rsp)
 		{
 			std::cerr << rsp->ToJson() << std::endl;
@@ -214,7 +214,7 @@ int main(int argc, char* argv[])
 		}
 	}
 	Notify_Exit::notify notify;
-	client.remote_end_point_.sendNotification(notify);
+	client.point.sendNotification(notify);
 	return 0;
 }
 #endif

@@ -165,15 +165,15 @@ namespace lsp {
 		return {};
 	}
 
-    struct TcpServerData
+    struct TcpServer::Data
     {
-	    TcpServerData(
+        Data(
             lsp::Log& log, uint32_t _max_workers) :
 		    acceptor_(io_context_), _log(log)
 	    {
 	    }
 
-	    ~TcpServerData()
+	    ~Data()
 	    {
           
 	    }
@@ -198,7 +198,7 @@ namespace lsp {
         TcpServer::TcpServer(const std::string& address, const std::string& port, 
             std::shared_ptr < MessageJsonHandler> json_handler,
             std::shared_ptr < Endpoint> localEndPoint, lsp::Log& log, uint32_t _max_workers)
-            : remote_end_point_(json_handler, localEndPoint, log, _max_workers),d_ptr(new TcpServerData( log, _max_workers))
+            : point(json_handler, localEndPoint, log, _max_workers),d_ptr(new Data( log, _max_workers))
            
         {
            
@@ -274,7 +274,7 @@ namespace lsp {
                                 d_ptr->_connect_session->socket_.close();
                     		}
 
-                            remote_end_point_.Stop();
+                            point.Stop();
                     	}
                         auto local_point = socket.local_endpoint();
                       
@@ -282,7 +282,7 @@ namespace lsp {
                         d_ptr->_log.log(lsp::Log::Level::INFO, desc);
                         d_ptr->_connect_session = std::make_shared<tcp_connect_session>(d_ptr->io_context_,std::move(socket));
                                
-                        remote_end_point_.startProcessingMessages(d_ptr->_connect_session->proxy_, d_ptr->_connect_session->proxy_);
+                        point.startProcessingMessages(d_ptr->_connect_session->proxy_, d_ptr->_connect_session->proxy_);
                         do_accept();
                     }
                 });
@@ -292,7 +292,7 @@ namespace lsp {
         {
             d_ptr->acceptor_.close();
            
-           remote_end_point_.Stop();
+           point.Stop();
             
         }
 

@@ -16,7 +16,7 @@ namespace lsp {
 
 namespace lsp
 {
-		struct TcpServerData;
+		
 	
         /// The top-level class of the HTTP server.
         class TcpServer
@@ -35,14 +35,15 @@ namespace lsp
             void run();
             void stop();
 
-           RemoteEndPoint remote_end_point_;
+           RemoteEndPoint point;
         private:
+            struct Data;
             /// Perform an asynchronous accept operation.
             void do_accept();
 
             /// Wait for a request to stop the server.
             void do_stop();
-            TcpServerData* d_ptr = nullptr;
+            Data* d_ptr = nullptr;
          
 
         };

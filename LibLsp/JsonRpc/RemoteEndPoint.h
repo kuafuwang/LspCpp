@@ -30,9 +30,8 @@ public:
 		using ResponseType = typename RequestType::Response;
 		local_endpoint->registerRequestHandler(RequestType::kMethodInfo, [=](std::unique_ptr<LspMessage> msg) {
 			auto  req = reinterpret_cast<const RequestType*>(msg.get());
-
 			lsp::ResponseOrError<ResponseType> res(handler(*req));
-			if (res.error) {
+			if (res.is_error) {
 				res.error.id = req->id;
 				sendResponse(res.error);
 			}
@@ -51,7 +50,7 @@ public:
 		local_endpoint->registerRequestHandler(RequestType::kMethodInfo, [=](std::unique_ptr<LspMessage> msg) {
 			auto  req = reinterpret_cast<const RequestType*>(msg.get());
 			lsp::ResponseOrError<ResponseType> res(handler(*req , getCancelMonitor(req->id)));
-			if (res.error) {
+			if (res.is_error) {
 				res.error.id = req->id;
 				sendResponse(res.error);
 			}
@@ -63,49 +62,18 @@ public:
 			return  true;
 		});
 	}
-	template <typename F, typename NotifyType = ArgTy<F>>
-	void  registerNotifyHandler(F&& handler) {
-
-		{
-			std::lock_guard<std::mutex> lock(m_sendMutex);
-			if (!jsonHandler->GetNotificationJsonHandler(NotifyType::kMethodInfo))
-			{
-				jsonHandler->SetNotificationJsonHandler(NotifyType::kMethodInfo,
-					[](Reader& visitor)
-					{
-						return NotifyType::ReflectReader(visitor);
-					});
-			}
-		}
-
-		local_endpoint->registerNotifyHandler(NotifyType::kMethodInfo, [=](std::unique_ptr<LspMessage> msg) {
-			handler(*reinterpret_cast<NotifyType*>(msg.get()));
-			return  true;
-			});
-	}
 	using RequestErrorCallback = std::function<void(const Rsp_Error&)>;
 	template <typename T, typename F, typename ResponseType = ArgTy<F>>
 	void sendRequestAndRegisterResponseHandler(T& request, F&& handler, RequestErrorCallback onError)
 	{
-		{
-			std::lock_guard<std::mutex> lock(m_sendMutex);
-			std::string method = request.GetMethodType();
-			if (!jsonHandler->GetResponseJsonHandler(method.c_str()))
-			{
-				jsonHandler->SetResponseJsonHandler(T::kMethodInfo, [](Reader& visitor)
-					{
-						if (visitor.HasMember("error"))
-							return 	Rsp_Error::ReflectReader(visitor);
-						return ResponseType::ReflectReader(visitor);
-					});
-			}
-		}
+		ProcessRequestJsonHandler(handler);
 		auto cb = [=](std::unique_ptr<LspMessage> msg) {
 			if (!msg)
 				return true;
 			const auto result = msg.get();
-			const auto rsp_error = dynamic_cast<const Rsp_Error*>(result);
-			if (rsp_error) {
+		
+			if (reinterpret_cast<lsResponseMessage*>(result)->IsErrorType()) {
+				const auto rsp_error = reinterpret_cast<const Rsp_Error*>(result);
 				onError(*rsp_error);
 			}
 			else {
@@ -116,32 +84,21 @@ public:
 		};
 		internalSendRequest(request, cb);
 	}
-
+	
 	template <typename T, typename = IsRequest<T>>
 	std::future< lsp::ResponseOrError<typename T::Response> > sendRequest(T& request) {
+		
+		ProcessResponseJsonHandler(request);
 		using Response = typename T::Response;
-		{
-			std::lock_guard<std::mutex> lock(m_sendMutex);
-			if (!jsonHandler->GetResponseJsonHandler(T::kMethodInfo))
-			{
-				jsonHandler->SetResponseJsonHandler(T::kMethodInfo, [](Reader& visitor)
-					{
-						if (visitor.HasMember("error"))
-							return 	Rsp_Error::ReflectReader(visitor);
-						return Response::ReflectReader(visitor);
-					});
-			}
-		}
-
-
 		auto promise = std::make_shared< std::promise<lsp::ResponseOrError<Response>>>();
 		auto cb = [=](std::unique_ptr<LspMessage> msg) {
 			if (!msg)
 				return true;
 			auto result = msg.get();
-			Rsp_Error* rsp_error = dynamic_cast<Rsp_Error*>(result);
-			if (rsp_error)
+		
+			if (reinterpret_cast<lsResponseMessage*>(result)->IsErrorType()) 
 			{
+				Rsp_Error* rsp_error = reinterpret_cast<Rsp_Error*>(result);
 				Rsp_Error temp;
 				std::swap(temp, *rsp_error);
 				promise->set_value(std::move(lsp::ResponseOrError<Response>(std::move(temp))));
@@ -158,26 +115,48 @@ public:
 		return promise->get_future();
 	}
 
-
-
-	template <typename T>
-	std::unique_ptr<LspMessage> waitResponse(T& request, unsigned time_out = 0)
+	template <typename T, typename = IsRequest<T>>
+	std::unique_ptr<lsp::ResponseOrError<typename T::Response>> waitResponse(T& request,const unsigned time_out = 0)
 	{
+		auto future_rsp = sendRequest(request);
+		if(time_out==0)
+		{
+			future_rsp.wait();
+		}
+		else
+		{
+			auto state = future_rsp.wait_for(std::chrono::milliseconds(time_out));
+			if (std::future_status::timeout == state)
+			{
+				return {};
+			}
+		}
+	
 		using Response = typename T::Response;
+		return std::make_unique<lsp::ResponseOrError<Response>>(std::move(future_rsp.get()));
+	}
+
+	template <typename F, typename NotifyType = ArgTy<F>>
+	void  registerNotifyHandler(F&& handler) {
+
 		{
 			std::lock_guard<std::mutex> lock(m_sendMutex);
-			if (!jsonHandler->GetResponseJsonHandler(T::kMethodInfo))
+			if (!jsonHandler->GetNotificationJsonHandler(NotifyType::kMethodInfo))
 			{
-				jsonHandler->SetResponseJsonHandler(T::kMethodInfo, [](Reader& visitor)
+				jsonHandler->SetNotificationJsonHandler(NotifyType::kMethodInfo,
+					[](Reader& visitor)
 					{
-						if (visitor.HasMember("error"))
-							return 	Rsp_Error::ReflectReader(visitor);
-						return Response::ReflectReader(visitor);
+						return NotifyType::ReflectReader(visitor);
 					});
 			}
 		}
-		return internalWaitResponse(request, time_out);
+		local_endpoint->registerNotifyHandler(NotifyType::kMethodInfo, [=](std::unique_ptr<LspMessage> msg) {
+			handler(*reinterpret_cast<NotifyType*>(msg.get()));
+			return  true;
+			});
 	}
+
+	
 	void sendNotification(NotificationInMessage& msg);
 	void sendResponse(lsResponseMessage& msg);
 
@@ -218,6 +197,21 @@ private:
 					return RequestType::ReflectReader(visitor);
 				});
 		}	
+	}
+	template <typename T, typename = IsRequest<T>>
+	void ProcessResponseJsonHandler(T& request)
+	{
+		using Response = typename T::Response;
+		std::lock_guard<std::mutex> lock(m_sendMutex);
+		if (!jsonHandler->GetResponseJsonHandler(T::kMethodInfo))
+		{
+			jsonHandler->SetResponseJsonHandler(T::kMethodInfo, [](Reader& visitor)
+				{
+					if (visitor.HasMember("error"))
+						return 	Rsp_Error::ReflectReader(visitor);
+					return Response::ReflectReader(visitor);
+				});
+		}
 	}
 private:
 	struct Data;

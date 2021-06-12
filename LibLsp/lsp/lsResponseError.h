@@ -83,15 +83,15 @@ enum class lsErrorCodes:int32_t {
 	 *
 	 * @since 3.16.0
 	 */
-	lspReservedErrorRangeEnd  = -32800
+	lspReservedErrorRangeEnd  = -32800,
+
+	
 
 };
 MAKE_REFLECT_TYPE_PROXY(lsErrorCodes);
 struct lsResponseError {
-	
-	inline operator bool() const
+	lsResponseError(): code(lsErrorCodes::UnknownErrorCode)
 	{
-		return !message.empty();
 	}
 
 	/**

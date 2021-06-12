@@ -54,16 +54,10 @@ public:
 
 	Server():server(_address,_port,protocol_json_handler, endpoint, _log)
 	{
-		server.remote_end_point_.registerRequestHandlerWithCancelMonitor(
+		server.point.registerRequestHandlerWithCancelMonitor(
 			[&](const td_initialize::request& req,const CancelMonitor& monitor)
 		          ->lsp::ResponseOrError< td_initialize::response >{
-				if (req.id.value == 1)
-				{
-					Rsp_Error error;
-					
-					error.error.message = "test";
-					return  error;
-				}
+				
 				td_initialize::response rsp;
 				CodeLensOptions code_lens_options;
 				code_lens_options.resolveProvider = true;
@@ -71,7 +65,7 @@ public:
 	
 				return rsp;
 			});
-		server.remote_end_point_.registerRequestHandlerWithCancelMonitor([&](const td_definition::request& req
+		server.point.registerRequestHandlerWithCancelMonitor([&](const td_definition::request& req
 			,const CancelMonitor& monitor)
 			{
 				td_definition::response rsp;
@@ -84,7 +78,7 @@ public:
 				return rsp;
 			});
 		
-		server.remote_end_point_.registerNotifyHandler([=](Notify_Exit::notify& notify)
+		server.point.registerNotifyHandler([=](Notify_Exit::notify& notify)
 			{
 				std::cout << notify.ToJson() << std::endl;
 			});
@@ -167,7 +161,7 @@ int main()
 		auto rsp = client.remote_end_point_.waitResponse(req);
 		if (rsp)
 		{
-			std::cout << rsp->ToJson() << std::endl;
+			std::cout << rsp->response.ToJson() << std::endl;
 		}
 		else
 		{
@@ -188,7 +182,7 @@ int main()
 			return 0;
 		}
 		auto rsp = future_rsp.get();
-		if (rsp.error)
+		if (rsp.is_error)
 		{
 			std::cout << "get textDocument/definition  response error" << std::endl;
 

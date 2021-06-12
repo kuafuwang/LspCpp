@@ -254,19 +254,16 @@ bool SmartCardTool::initialize(int processId, int version)
 	{
 		return false;
 	}
-	auto  result = dynamic_cast<sct_initialize::response*>(msg.get());
-	if (result)
+	
+	if (msg->is_error)
 	{
-		_lsServerCapabilities.swap(result->result.capabilities);
-		return true;
-	}
-	else
-	{
-		auto error = reinterpret_cast<Rsp_Error*>(msg.get());
-		log->log(Log::Level::SEVERE, error->error.ToString());
+		auto error = &msg->error;
+		log->log_error( error->error.ToString());
 		return false;
 	}
-
+	auto  result = &msg->response;
+	_lsServerCapabilities.swap(result->result.capabilities);
+	return true;
 }
 
 
@@ -297,33 +294,30 @@ bool SmartCardTool::GetCardInfo(CardInfoType type_, std::vector<unsigned char>& 
 		}
 		return false;
 	}
-	auto rsp = dynamic_cast<sct_GetCardInfo::response*>(data.get());
-	if (!rsp)
+
+	if (data->is_error)
 	{
 		if (log)
 		{
-			string strPrompt = "GetCardInfo request error." + data.get()->ToJson();
+			string strPrompt = "GetCardInfo request error." + data->error.ToJson();
 			log->log(Log::Level::SEVERE, strPrompt);
 		}
 		return false;
 	}
+	auto rsp = &data->response;
 	if (rsp->result.state)
 	{
 		out.swap(rsp->result.data.value());
 		return  true;
 	}
-	else
+	
+	if (log)
 	{
-		if (log)
-		{
-			string strPrompt = "GetCardInfo failed. Reason:";
-			strPrompt += rsp->result.info.value();
-			log->log(Log::Level::SEVERE, strPrompt);
-		}
-		return false;
+		string strPrompt = "GetCardInfo failed. Reason:";
+		strPrompt += rsp->result.info.value();
+		log->log(Log::Level::SEVERE, strPrompt);
 	}
-
-	return true;
+	return false;
 }
 
 
@@ -354,17 +348,18 @@ bool SmartCardTool::Launch(bool for_debug)
 		}
 		return false;
 	}
-	auto rsp = dynamic_cast<sct_Launch::response*>(data.get());
-	if (!rsp)
+	
+	if (data->is_error)
 	{
 		if (log)
 		{
-			string strPrompt = "Launch request error." + data.get()->ToJson();
+			string strPrompt = "Launch request error." + data->error.ToJson();
 
 			log->log(Log::Level::SEVERE, strPrompt);
 		}
 		return false;
 	}
+	auto rsp = &data->response;
 	if (rsp->result.state)
 	{
 		if (log)
@@ -393,8 +388,6 @@ bool SmartCardTool::Launch(bool for_debug)
 
 void SmartCardTool::TerminateLaunch()
 {
-
-
 	if (!check_sct_alive())
 	{
 		return ;
@@ -437,25 +430,25 @@ bool SmartCardTool::CheckBeforeLaunch()
 
 		return false;
 	}
-	auto rsp = dynamic_cast<sct_CheckBeforeLaunch::response*>(data.get());
-	if (!rsp)
+	
+	if (data->is_error)
 	{
-		string strPrompt = "CheckBeforeLaunch request error." + data.get()->ToJson();
+		string strPrompt = "CheckBeforeLaunch request error." + data->error.ToJson();
 		log->log(Log::Level::SEVERE, strPrompt);
 		return false;
 	}
+	auto rsp = &data->response;
 	if (rsp->result.state)
 	{
 		return true;
 	}
-	else
-	{
-		string strPrompt = "Check Before Launch JCVM failed. Reason:";
-		strPrompt += rsp->result.info.value();
-		log->log(Log::Level::SEVERE, strPrompt);
-		return false;
-	}
-	return true;
+
+	
+	string strPrompt = "Check Before Launch JCVM failed. Reason:";
+	strPrompt += rsp->result.info.value();
+	log->log(Log::Level::SEVERE, strPrompt);
+	return false;
+
 }
 
 
@@ -477,13 +470,14 @@ bool SmartCardTool::Connect(SctProtocol protocol)
 		log->log(Log::Level::SEVERE, strPrompt);
 		return false;
 	}
-	auto rsp = dynamic_cast<sct_Connect::response*>(data.get());
-	if (!rsp)
+	
+	if (data->is_error)
 	{
-		string strPrompt = "Connect request error." + data.get()->ToJson();
+		string strPrompt = "Connect request error." + data->error.ToJson();
 		log->log(Log::Level::SEVERE, strPrompt);
 		return false;
 	}
+	auto rsp =&data->response;
 	if (rsp->result.state)
 	{
 		connect_state = true;
@@ -531,13 +525,14 @@ bool SmartCardTool::DownLoadCapFile(const string& strCapFileName)
 		log->log(Log::Level::SEVERE,strPrompt);
 		return false;
 	}
-	auto rsp = dynamic_cast<sct_DownLoadCapFile::response*>(data.get());
-	if(!rsp)
+
+	if(data->is_error)
 	{
-		string strPrompt = "DownLoadCapFile request error." + data.get()->ToJson();
+		string strPrompt = "DownLoadCapFile request error." + data->error.ToJson();
 		log->log(Log::Level::SEVERE, strPrompt);
 		return false;
 	}
+	auto rsp = &data->response;
 	if(rsp->result.state)
 	{
 		string strPrompt = "DownLoadCapFile successfully";
@@ -595,13 +590,14 @@ bool SmartCardTool::SetProtocol(SctProtocol protocol)
 		log->log(Log::Level::SEVERE, strPrompt);
 		return false;
 	}
-	auto rsp = dynamic_cast<sct_SetProtocol::response*>(data.get());
-	if (!rsp)
+	
+	if (data->is_error)
 	{
-		string strPrompt = "SetProtocol request error." + data.get()->ToJson();
+		string strPrompt = "SetProtocol request error." + data->error.ToJson();
 		log->log(Log::Level::SEVERE, strPrompt);
 		return false;
 	}
+	auto rsp = &data->response;
 	if (rsp->result.state)
 	{
 		m_curProtocol = protocol;
@@ -634,13 +630,14 @@ bool SmartCardTool::GpAuth()
 		log->log(Log::Level::SEVERE, strPrompt);
 		return false;
 	}
-	auto rsp = dynamic_cast<sct_gp_auth::response*>(data.get());
-	if (!rsp)
+
+	if (data->is_error)
 	{
-		string strPrompt = "gp_auth request error." + data.get()->ToJson();
+		string strPrompt = "gp_auth request error." + data->error.ToJson();
 		log->log(Log::Level::SEVERE, strPrompt);
 		return false;
 	}
+	auto rsp = &data->response;
 	if (rsp->result.state)
 	{
 		string strPrompt = "gp_auth request successfully.";
@@ -676,13 +673,14 @@ bool SmartCardTool::InstallApplet(InstallAppletParams& params)
 		log->log(Log::Level::SEVERE, strPrompt);
 		return false;
 	}
-	auto rsp = dynamic_cast<sct_InstalllApplet::response*>(data.get());
-	if (!rsp)
+	
+	if (data->is_error)
 	{
-		string strPrompt = "Install Applet request error." + data.get()->ToJson();
+		string strPrompt = "Install Applet request error." + data->error.ToJson();
 		log->log(Log::Level::SEVERE, strPrompt);
 		return false;
 	}
+	auto rsp = &data->response;
 	if (rsp->result.state)
 	{
 		string strPrompt = "Install Applet successfully.";
@@ -719,13 +717,14 @@ bool SmartCardTool::Transmit(const std::vector<unsigned char>& cmdApdu, std::vec
 		log->log(Log::Level::SEVERE, strPrompt);
 		return false;
 	}
-	auto rsp = dynamic_cast<sct_Transmit::response*>(data.get());
-	if (!rsp)
+
+	if (data->is_error)
 	{
-		string strPrompt = "Transmit request error." + data.get()->ToJson();
+		string strPrompt = "Transmit request error." + data->error.ToJson();
 		log->log(Log::Level::SEVERE, strPrompt);
 		return false;
 	}
+	auto rsp = &data->response;
 	if (rsp->result.state)
 	{
 		rspApdu.swap(rsp->result.data.value());

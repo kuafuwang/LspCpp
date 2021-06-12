@@ -143,8 +143,6 @@ MAKE_REFLECT_STRUCT(lsDiagnostic, range, severity, code, codeDescription, source
 
 struct Rsp_Error : ResponseError<lsResponseError, Rsp_Error> {
 	
-	 operator bool() const { return error; }
-	
 	MAKE_SWAP_METHOD(Rsp_Error, jsonrpc, id, error)
 };
 MAKE_REFLECT_STRUCT(Rsp_Error, jsonrpc, id, error)

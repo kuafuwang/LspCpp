@@ -83,36 +83,45 @@ namespace lsp {
 
 		inline ResponseOrError& operator=(const ResponseOrError& other);
 		inline ResponseOrError& operator=(ResponseOrError&& other);
-
+		bool  IsError() const { return  is_error; }
+		std::string ToJson()
+		{
+			if (is_error) return  error.ToJson();
+			return  response.ToJson();
+		}
 		T response;
 		Rsp_Error error;  // empty represents success.
+		bool is_error;
+		
 	};
 
 	template <typename T>
-	ResponseOrError<T>::ResponseOrError(const T& resp) : response(resp) {}
+	ResponseOrError<T>::ResponseOrError(const T& resp) : response(resp) , is_error(false){}
 	template <typename T>
-	ResponseOrError<T>::ResponseOrError(T&& resp) : response(std::move(resp)) {}
+	ResponseOrError<T>::ResponseOrError(T&& resp) : response(std::move(resp)), is_error(false) {}
 	template <typename T>
-	ResponseOrError<T>::ResponseOrError(const Rsp_Error& err) : error(err) {}
+	ResponseOrError<T>::ResponseOrError(const Rsp_Error& err) : error(err), is_error(true){}
 	template <typename T>
-	ResponseOrError<T>::ResponseOrError(Rsp_Error&& err) : error(std::move(err)) {}
+	ResponseOrError<T>::ResponseOrError(Rsp_Error&& err) : error(std::move(err)), is_error(true) {}
 	template <typename T>
 	ResponseOrError<T>::ResponseOrError(const ResponseOrError& other)
-		: response(other.response), error(other.error) {}
+		: response(other.response), error(other.error), is_error(other.is_error) {}
 	template <typename T>
 	ResponseOrError<T>::ResponseOrError(ResponseOrError&& other)
-		: response(std::move(other.response)), error(std::move(other.error)) {}
+		: response(std::move(other.response)), error(std::move(other.error)), is_error(other.is_error) {}
 	template <typename T>
 	ResponseOrError<T>& ResponseOrError<T>::operator=(
 		const ResponseOrError& other) {
 		response = other.response;
 		error = other.error;
+		is_error = other.is_error;
 		return *this;
 	}
 	template <typename T>
 	ResponseOrError<T>& ResponseOrError<T>::operator=(ResponseOrError&& other) {
 		response = std::move(other.response);
 		error = std::move(other.error);
+		is_error = other.is_error;
 		return *this;
 	}
 

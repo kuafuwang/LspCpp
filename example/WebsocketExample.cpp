@@ -95,14 +95,14 @@ class Client : public std::enable_shared_from_this<Client>
 	
     std::shared_ptr<lsp::websocket_stream_wrapper>  proxy_;
 public:
-   RemoteEndPoint remote_end_point_;
+   RemoteEndPoint point;
 
 public:
     // Resolver and socket require an io_context
     explicit
         Client()
         : resolver_(net::make_strand(ioc))
-        , ws_(net::make_strand(ioc)),remote_end_point_(protocol_json_handler, endpoint, _log)
+        , ws_(net::make_strand(ioc)),point(protocol_json_handler, endpoint, _log)
     {
         proxy_ = std::make_shared<lsp::websocket_stream_wrapper>(ws_);
  
@@ -128,7 +128,7 @@ public:
         {
                ioc.run();
         }).detach();
-        while (!remote_end_point_.IsWorking())
+        while (!point.IsWorking())
         {
             ::Sleep(50);
         }
@@ -192,7 +192,7 @@ public:
         // Send the message
     
 
-        remote_end_point_.startProcessingMessages(proxy_, proxy_);
+        point.startProcessingMessages(proxy_, proxy_);
         // Read a message into our buffer
         ws_.async_read(
             buffer_,
@@ -242,7 +242,7 @@ class Server
 public:
     Server(const std::string& user_agent) : server(user_agent,_address, _port, protocol_json_handler, endpoint, _log)
     {
-        server.remote_end_point_.registerRequestHandler(
+        server.point.registerRequestHandler(
             [&](const td_initialize::request& req)
             {
                 td_initialize::response rsp;
@@ -279,7 +279,7 @@ int main()
 	
     td_initialize::request req;
 
-    auto rsp = client->remote_end_point_.waitResponse(req);
+    auto rsp = client->point.waitResponse(req);
     if (rsp)
     {
         std::cout << rsp->ToJson() << std::endl;

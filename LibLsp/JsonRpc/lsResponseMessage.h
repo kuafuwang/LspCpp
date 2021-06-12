@@ -23,7 +23,10 @@ struct lsResponseMessage :public LspMessage {
 	{
 		return  RESPONCE_MESSAGE;
 	}
-
+	virtual  bool IsErrorType()
+	{
+		return false;
+	}
 };
 template <class TDerived >
 struct BaseResponseMessage : lsResponseMessage {
@@ -57,7 +60,7 @@ struct ResponseMessage : BaseResponseMessage<TDerived> {
 template <class T, class TDerived >
 struct ResponseError : BaseResponseMessage<TDerived> {
 	T error;
-	
+	bool IsErrorType() override { return true; }
 	void swap(ResponseError<T, TDerived>& arg) noexcept
 	{
 		

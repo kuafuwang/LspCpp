@@ -125,15 +125,15 @@ namespace lsp {
 
     //------------------------------------------------------------------------------
 
-	    struct WebSocketServerData
+	    struct WebSocketServer::Data
 	    {
-		    WebSocketServerData(const std::string& user_agent, lsp::Log& log) :
+            Data(const std::string& user_agent, lsp::Log& log) :
 			    acceptor_(io_context_), user_agent_(user_agent), _log(log)
 		
 		    {
 		    }
 
-	    	~WebSocketServerData()
+	    	~Data()
 		    {
               
 		    }
@@ -242,7 +242,7 @@ namespace lsp {
         WebSocketServer::WebSocketServer(const std::string& user_agent, const std::string& address, const std::string& port,
             std::shared_ptr < MessageJsonHandler> json_handler,
             std::shared_ptr < Endpoint> localEndPoint, lsp::Log& log, uint32_t _max_workers)
-            : remote_end_point_(json_handler,localEndPoint,log, _max_workers),d_ptr(new WebSocketServerData(user_agent,log))
+            : remote_end_point_(json_handler,localEndPoint,log, _max_workers),d_ptr(new Data(user_agent,log))
            
         {
            
