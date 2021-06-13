@@ -73,7 +73,7 @@ public:
 				std::this_thread::sleep_for(std::chrono::seconds(8));
 			    if(monitor && monitor())
 			    {
-					_log.log_info("textDocument/definition request had been cancel.");
+					_log.info("textDocument/definition request had been cancel.");
 			    }
 				return rsp;
 			});

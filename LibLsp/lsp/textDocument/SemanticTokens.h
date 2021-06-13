@@ -2,9 +2,7 @@
 
 #include "LibLsp/lsp/lsTextDocumentIdentifier.h"
 #include "LibLsp/lsp/lsVersionedTextDocumentIdentifier.h"
-
-#include "LibLsp/JsonRpc/NotificationInMessage.h"
-
+#include "LibLsp/JsonRpc/RequestInMessage.h"
 enum class HighlightingKind_clangD {
 	Variable = 0,
 	LocalVariable,

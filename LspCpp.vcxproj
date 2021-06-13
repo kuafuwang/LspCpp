@@ -528,6 +528,7 @@
     <ClInclude Include="LibLsp\lsp\general\lsWorkspaceClientCapabilites.h" />
     <ClInclude Include="LibLsp\lsp\general\progress.h" />
     <ClInclude Include="LibLsp\lsp\general\shutdown.h" />
+    <ClInclude Include="LibLsp\lsp\IProgressMonitor.h" />
     <ClInclude Include="LibLsp\lsp\language\language.h" />
     <ClInclude Include="LibLsp\lsp\location_type.h" />
     <ClInclude Include="LibLsp\lsp\lru_cache.h" />

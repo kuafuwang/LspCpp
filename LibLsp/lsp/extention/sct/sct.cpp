@@ -258,7 +258,7 @@ bool SmartCardTool::initialize(int processId, int version)
 	if (msg->is_error)
 	{
 		auto error = &msg->error;
-		log->log_error( error->error.ToString());
+		log->error( error->error.ToString());
 		return false;
 	}
 	auto  result = &msg->response;

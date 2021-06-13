@@ -109,27 +109,27 @@ namespace lsp
 		virtual  void log(Level level, std::string&& msg) = 0;
 		virtual  void log(Level level, const std::string& msg) = 0;
 		
-		void  log_info(const std::string& msg)
+		void  info(const std::string& msg)
 		{
 			log(Level::INFO, msg);
 		}
-		void  log_info(const std::wstring& msg)
+		void  info(const std::wstring& msg)
 		{
 			log(Level::INFO, msg);
 		}
-		void  log_error(const std::string& msg)
+		void  error(const std::string& msg)
 		{
 			log(Level::SEVERE, msg);
 		}
-		void  log_error(const std::wstring& msg)
+		void  error(const std::wstring& msg)
 		{
 			log(Level::SEVERE, msg);
 		}
-		void  log_warning(const std::string& msg)
+		void  warning(const std::string& msg)
 		{
 			log(Level::WARNING, msg);
 		}
-		void  log_warning(const std::wstring& msg)
+		void  warning(const std::wstring& msg)
 		{
 			log(Level::WARNING, msg);
 		}

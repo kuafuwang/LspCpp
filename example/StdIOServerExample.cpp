@@ -77,7 +77,7 @@ public:
 				rsp.result.first = std::vector<lsLocation>();
 				if (monitor && monitor())
 				{
-					_log.log_info("textDocument/definition request had been cancel.");
+					_log.info("textDocument/definition request had been cancel.");
 				}
 				return rsp;
 			});

@@ -588,6 +588,9 @@
     <ClInclude Include="LibLsp\lsp\textDocument\linkedEditingRange.h">
       <Filter>lsp\textDocument</Filter>
     </ClInclude>
+    <ClInclude Include="LibLsp\lsp\IProgressMonitor.h">
+      <Filter>lsp</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="JsonRpc">
