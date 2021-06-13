@@ -446,6 +446,7 @@
     <ClCompile Include="LibLsp\lsp\general\initialize.cpp" />
     <ClCompile Include="LibLsp\lsp\lsp.cpp" />
     <ClCompile Include="LibLsp\lsp\lsp_diagnostic.cpp" />
+    <ClCompile Include="LibLsp\lsp\Markup\Markup.cpp" />
     <ClCompile Include="LibLsp\lsp\ParentProcessWatcher.cpp" />
     <ClCompile Include="LibLsp\lsp\ProtocolJsonHandler.cpp" />
     <ClCompile Include="LibLsp\lsp\textDocument\textDocument.cpp" />
@@ -551,6 +552,8 @@
     <ClInclude Include="LibLsp\lsp\lsTextEdit.h" />
     <ClInclude Include="LibLsp\lsp\lsVersionedTextDocumentIdentifier.h" />
     <ClInclude Include="LibLsp\lsp\lsWorkspaceEdit.h" />
+    <ClInclude Include="LibLsp\lsp\Markup\Markup.h" />
+    <ClInclude Include="LibLsp\lsp\Markup\string_ref.h" />
     <ClInclude Include="LibLsp\lsp\method_type.h" />
     <ClInclude Include="LibLsp\lsp\out_list.h" />
     <ClInclude Include="LibLsp\lsp\ParentProcessWatcher.h" />

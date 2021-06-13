@@ -94,6 +94,9 @@
     <ClCompile Include="LibLsp\JsonRpc\Context.cpp">
       <Filter>JsonRpc</Filter>
     </ClCompile>
+    <ClCompile Include="LibLsp\lsp\Markup\Markup.cpp">
+      <Filter>lsp\markdown</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="LibLsp\JsonRpc\MessageIssue.h">
@@ -591,6 +594,12 @@
     <ClInclude Include="LibLsp\lsp\IProgressMonitor.h">
       <Filter>lsp</Filter>
     </ClInclude>
+    <ClInclude Include="LibLsp\lsp\Markup\Markup.h">
+      <Filter>lsp\markdown</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\lsp\Markup\string_ref.h">
+      <Filter>lsp\markdown</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="JsonRpc">
@@ -640,6 +649,9 @@
     </Filter>
     <Filter Include="lsp\extention\sonarlint">
       <UniqueIdentifier>{11198774-b392-4339-b654-17aee0eeaa21}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="lsp\markdown">
+      <UniqueIdentifier>{4ce2a4b8-aa8d-462b-a6c9-c11b56e3bb2d}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
