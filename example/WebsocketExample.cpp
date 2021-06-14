@@ -242,7 +242,7 @@ class Server
 public:
     Server(const std::string& user_agent) : server(user_agent,_address, _port, protocol_json_handler, endpoint, _log)
     {
-        server.point.registerRequestHandler(
+        server.point.registerHandler(
             [&](const td_initialize::request& req)
             {
                 td_initialize::response rsp;

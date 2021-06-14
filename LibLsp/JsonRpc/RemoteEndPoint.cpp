@@ -500,10 +500,6 @@ void RemoteEndPoint::internalSendRequest( RequestInMessage& info, GenericRespons
 	WriterMsg(d_ptr->output, info);
 }
 
-void RemoteEndPoint::sendNotification( NotificationInMessage& msg)
-{
-	sendMsg(msg);
-}
 
 std::unique_ptr<LspMessage> RemoteEndPoint::internalWaitResponse(RequestInMessage& request, unsigned time_out)
 {
@@ -515,10 +511,7 @@ std::unique_ptr<LspMessage> RemoteEndPoint::internalWaitResponse(RequestInMessag
 	});
 	return   eventFuture->wait(time_out);
 }
-void RemoteEndPoint::sendResponse( lsResponseMessage& msg)
-{
-	sendMsg(msg);
-}
+
 void RemoteEndPoint::mainLoop(std::unique_ptr<LspMessage>msg)
 {
 	if(d_ptr->quit.load(std::memory_order_relaxed))

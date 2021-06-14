@@ -582,9 +582,6 @@
     <ClInclude Include="LibLsp\JsonRpc\ScopeExit.h">
       <Filter>JsonRpc</Filter>
     </ClInclude>
-    <ClInclude Include="LibLsp\JsonRpc\RemoteEndPointTypeDef.h">
-      <Filter>JsonRpc</Filter>
-    </ClInclude>
     <ClInclude Include="LibLsp\lsp\textDocument\SemanticTokens.h">
       <Filter>lsp\textDocument</Filter>
     </ClInclude>
@@ -599,6 +596,9 @@
     </ClInclude>
     <ClInclude Include="LibLsp\lsp\Markup\string_ref.h">
       <Filter>lsp\markdown</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\JsonRpc\traits.h">
+      <Filter>JsonRpc</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

@@ -55,7 +55,7 @@ public:
 	
 	StdIOServer() : remote_end_point_(protocol_json_handler, endpoint, _log)
 	{
-		remote_end_point_.registerRequestHandler([&](const td_initialize::request& req)
+		remote_end_point_.registerHandler([&](const td_initialize::request& req)
 		{
 				td_initialize::response rsp;
 				rsp.id = req.id;
@@ -65,12 +65,12 @@ public:
 				return rsp;
 		});
 
-		remote_end_point_.registerNotifyHandler([&](Notify_Exit::notify& notify)
+		remote_end_point_.registerHandler([&](Notify_Exit::notify& notify)
 			{
 				remote_end_point_.Stop();
 				esc_event.notify(std::make_unique<bool>(true));
 			});
-		remote_end_point_.registerRequestHandlerWithCancelMonitor([&](const td_definition::request& req,
+		remote_end_point_.registerHandler([&](const td_definition::request& req,
 			const CancelMonitor& monitor)
 			{
 				td_definition::response rsp;

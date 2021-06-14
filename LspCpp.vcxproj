@@ -475,7 +475,6 @@
     <ClInclude Include="LibLsp\JsonRpc\MessageIssue.h" />
     <ClInclude Include="LibLsp\JsonRpc\MessageJsonHandler.h" />
     <ClInclude Include="LibLsp\JsonRpc\MessageProducer.h" />
-    <ClInclude Include="LibLsp\JsonRpc\RemoteEndPointTypeDef.h" />
     <ClInclude Include="LibLsp\JsonRpc\RequestInMessage.h" />
     <ClInclude Include="LibLsp\JsonRpc\ScopeExit.h" />
     <ClInclude Include="LibLsp\JsonRpc\serializer.h" />
@@ -483,6 +482,7 @@
     <ClInclude Include="LibLsp\JsonRpc\StreamMessageProducer.h" />
     <ClInclude Include="LibLsp\JsonRpc\TcpServer.h" />
     <ClInclude Include="LibLsp\JsonRpc\threaded_queue.h" />
+    <ClInclude Include="LibLsp\JsonRpc\traits.h" />
     <ClInclude Include="LibLsp\JsonRpc\WebSocketServer.h" />
     <ClInclude Include="LibLsp\lsp\AbsolutePath.h" />
     <ClInclude Include="LibLsp\lsp\client\registerCapability.h" />

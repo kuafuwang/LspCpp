@@ -77,7 +77,7 @@ namespace lsp
             void run();
             void stop();
 
-            RemoteEndPoint remote_end_point_;
+            RemoteEndPoint point;
         private:
             struct Data;
             /// Perform an asynchronous accept operation.

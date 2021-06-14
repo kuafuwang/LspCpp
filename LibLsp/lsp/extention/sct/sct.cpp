@@ -393,7 +393,7 @@ void SmartCardTool::TerminateLaunch()
 		return ;
 	}
 	sct_TerminateLaunch::notify notify;
-	sct->sendNotification(notify);
+	sct->send(notify);
 	connect_state = false;
 	return  ;
 }
@@ -408,7 +408,7 @@ void SmartCardTool::show_message(lsMessageType type_,
 	Notify_ShowMessage::notify notify;
 	notify.params.type = type_;
 	notify.params.message = msg;
-	sct->sendNotification(notify);
+	sct->send(notify);
 }
 
 bool SmartCardTool::CheckBeforeLaunch()
@@ -503,7 +503,7 @@ void  SmartCardTool::DisConnect()
 		return ;
 	}
 	sct_Disconnect::notify notify;
-	sct->sendNotification(notify);
+	sct->send(notify);
 	connect_state = false;
 	return ;
 }
@@ -561,7 +561,7 @@ void SmartCardTool::SetWindowsVisible(SetWindowVisibleParams& params)
 	}
 	sct_SetWindowsVisible::notify notify;
 	notify.params.swap(params);
-	sct->sendNotification(notify);
+	sct->send(notify);
 
 }
 
@@ -569,7 +569,7 @@ void SmartCardTool::SetWindowPos(SetWindowPosParams& params)
 {
 	sct_SetWindowsPos::notify notify;
 	notify.params.swap(params);
-	sct->sendNotification(notify);
+	sct->send(notify);
 }
 
 bool SmartCardTool::SetProtocol(SctProtocol protocol)

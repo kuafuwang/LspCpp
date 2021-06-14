@@ -183,7 +183,7 @@ int main(int argc, char* argv[])
 	}
 	{
 		td_definition::request req;
-		auto future_rsp = client.point.sendRequest(req);
+		auto future_rsp = client.point.send(req);
 		auto state = future_rsp.wait_for(std::chrono::seconds(4));
 		if (std::future_status::timeout == state)
 		{
@@ -214,7 +214,7 @@ int main(int argc, char* argv[])
 		}
 	}
 	Notify_Exit::notify notify;
-	client.point.sendNotification(notify);
+	client.point.send(notify);
 	return 0;
 }
 #endif

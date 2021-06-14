@@ -54,8 +54,8 @@ public:
 
 	Server():server(_address,_port,protocol_json_handler, endpoint, _log)
 	{
-		server.point.registerRequestHandlerWithCancelMonitor(
-			[&](const td_initialize::request& req,const CancelMonitor& monitor)
+		server.point.registerHandler(
+			[&](const td_initialize::request& req)
 		          ->lsp::ResponseOrError< td_initialize::response >{
 				
 				td_initialize::response rsp;
@@ -65,7 +65,7 @@ public:
 	
 				return rsp;
 			});
-		server.point.registerRequestHandlerWithCancelMonitor([&](const td_definition::request& req
+		server.point.registerHandler([&](const td_definition::request& req
 			,const CancelMonitor& monitor)
 			{
 				td_definition::response rsp;
@@ -78,7 +78,7 @@ public:
 				return rsp;
 			});
 		
-		server.point.registerNotifyHandler([=](Notify_Exit::notify& notify)
+		server.point.registerHandler([=](Notify_Exit::notify& notify)
 			{
 				std::cout << notify.ToJson() << std::endl;
 			});
@@ -170,10 +170,10 @@ int main()
 	}
 	{
 		td_definition::request req;
-		auto future_rsp = client.remote_end_point_.sendRequest(req);
+		auto future_rsp = client.remote_end_point_.send(req);
 		Notify_Cancellation::notify cancel_notify;
 		cancel_notify.params.id = req.id;
-		client.remote_end_point_.sendNotification(cancel_notify);
+		client.remote_end_point_.send(cancel_notify);
 		
 		auto state = future_rsp.wait_for(std::chrono::seconds(16));
 		if (std::future_status::timeout == state)
@@ -193,7 +193,7 @@ int main()
 		}
 	}
 	Notify_Exit::notify notify;
-	client.remote_end_point_.sendNotification(notify);
+	client.remote_end_point_.send(notify);
 	return 0;
 }
 #endif

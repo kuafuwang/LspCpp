@@ -242,7 +242,7 @@ namespace lsp {
         WebSocketServer::WebSocketServer(const std::string& user_agent, const std::string& address, const std::string& port,
             std::shared_ptr < MessageJsonHandler> json_handler,
             std::shared_ptr < Endpoint> localEndPoint, lsp::Log& log, uint32_t _max_workers)
-            : remote_end_point_(json_handler,localEndPoint,log, _max_workers),d_ptr(new Data(user_agent,log))
+            : point(json_handler,localEndPoint,log, _max_workers),d_ptr(new Data(user_agent,log))
            
         {
            
@@ -313,12 +313,12 @@ namespace lsp {
                     	{
                     		
 						   d_ptr->_server_session->close();
-                            remote_end_point_.Stop();
+                            point.Stop();
                     	}
                         d_ptr->_server_session = std::make_shared<server_session>(std::move(socket), d_ptr->user_agent_);
                         d_ptr->_server_session->run();
           
-                        remote_end_point_.startProcessingMessages(d_ptr->_server_session->proxy_, d_ptr->_server_session->proxy_);
+                        point.startProcessingMessages(d_ptr->_server_session->proxy_, d_ptr->_server_session->proxy_);
                         do_accept();
                     }
                      
@@ -329,7 +329,7 @@ namespace lsp {
         {
             d_ptr->acceptor_.close();
            
-          remote_end_point_.Stop();
+          point.Stop();
             
         }
 
