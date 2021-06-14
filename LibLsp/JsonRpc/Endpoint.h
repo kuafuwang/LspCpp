@@ -8,8 +8,6 @@ struct NotificationInMessage;
 struct lsBaseOutMessage;
 struct  RequestInMessage;
 
-struct lsResponseMessage;
-
 using GenericResponseHandler = std::function< bool(std::unique_ptr<LspMessage>) >;
 using GenericRequestHandler = std::function< bool(std::unique_ptr<LspMessage>) >;
 using GenericNotificationHandler = std::function< bool(std::unique_ptr<LspMessage>) >;

@@ -15,13 +15,13 @@ bool StartsWith(std::string value, std::string start) {
 using  namespace std;
 namespace
 {
-	const char* kContentLengthStart = "Content-Length: ";
+	string JSONRPC_VERSION = "2.0";
+	string CONTENT_LENGTH_HEADER = "Content-Length";
+	string CONTENT_TYPE_HEADER = "Content-Type";
+	string JSON_MIME_TYPE = "application/json";
+	string CRLF = "\r\n";
+
 }
-  string JSONRPC_VERSION = "2.0";
-  string CONTENT_LENGTH_HEADER = "Content-Length";
-  string CONTENT_TYPE_HEADER = "Content-Type";
-  string JSON_MIME_TYPE = "application/json";
-  string CRLF = "\r\n";
 
   void StreamMessageProducer::parseHeader(std::string& line, StreamMessageProducer::Headers& headers)
   {

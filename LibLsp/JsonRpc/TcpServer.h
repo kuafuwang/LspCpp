@@ -1,23 +1,14 @@
 #pragma once
 
-#ifndef HTTP_SERVER_HPP
-#define HTTP_SERVER_HPP
-
 #include <boost/asio.hpp>
 #include <string>
-
 #include "RemoteEndPoint.h"
-
 
 namespace lsp {
     class Log;
 }
-
-
 namespace lsp
 {
-		
-	
         /// The top-level class of the HTTP server.
         class TcpServer
         {
@@ -44,10 +35,6 @@ namespace lsp
             /// Wait for a request to stop the server.
             void do_stop();
             Data* d_ptr = nullptr;
-         
-
         };
+} // namespace 
 
-    } // namespace 
-
-#endif // HTTP_SERVER_HPP

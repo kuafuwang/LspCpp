@@ -10,11 +10,7 @@
 // cleanup logic at scope exit.
 //
 //===----------------------------------------------------------------------===//
-
 #pragma once
-
-
-
 #include <type_traits>
 #include <utility>
 

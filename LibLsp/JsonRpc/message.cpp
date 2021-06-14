@@ -6,8 +6,6 @@
 #include "RequestInMessage.h"
 #include "Condition.h"
 #include "json.h"
-#include "cancellation.h"
-
 
 void LspMessage::Write(std::ostream& out) {
 	rapidjson::StringBuffer output;
@@ -23,7 +21,6 @@ void LspMessage::Write(std::ostream& out) {
 
 std::string LspMessage::ToJson() 
 {
-	//return GetJson(const_cast<std::unique_ptr<LspMessage>> (this));
 	rapidjson::StringBuffer output;
 	rapidjson::Writer<rapidjson::StringBuffer> writer(output);
 	JsonWriter json_writer{ &writer };

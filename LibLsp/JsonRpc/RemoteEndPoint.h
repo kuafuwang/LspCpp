@@ -17,7 +17,7 @@
 class MessageJsonHandler;
 class  Endpoint;
 struct LspMessage;
-
+class RemoteEndPoint;
 namespace lsp {
 	class ostream;
 	class istream;
@@ -30,18 +30,17 @@ namespace lsp {
 	// message.
 	template <typename T>
 	struct ResponseOrError {
-		using Request = T;
+		 using Request = T;
+		 ResponseOrError();
+		 ResponseOrError(const T& response);
+		 ResponseOrError(T&& response);
+		 ResponseOrError(const Rsp_Error& error);
+		 ResponseOrError(Rsp_Error&& error);
+		 ResponseOrError(const ResponseOrError& other);
+		 ResponseOrError(ResponseOrError&& other) noexcept;
 
-		inline ResponseOrError() = default;
-		inline ResponseOrError(const T& response);
-		inline ResponseOrError(T&& response);
-		inline ResponseOrError(const Rsp_Error& error);
-		inline ResponseOrError(Rsp_Error&& error);
-		inline ResponseOrError(const ResponseOrError& other);
-		inline ResponseOrError(ResponseOrError&& other);
-
-		inline ResponseOrError& operator=(const ResponseOrError& other);
-		inline ResponseOrError& operator=(ResponseOrError&& other);
+		 ResponseOrError& operator=(const ResponseOrError& other);
+		 ResponseOrError& operator=(ResponseOrError&& other) noexcept;
 		bool  IsError() const { return  is_error; }
 		std::string ToJson()
 		{
@@ -51,8 +50,12 @@ namespace lsp {
 		T response;
 		Rsp_Error error;  // empty represents success.
 		bool is_error;
-
 	};
+
+	template <typename T>
+	ResponseOrError<T>::ResponseOrError(): is_error(false)
+	{
+	}
 
 	template <typename T>
 	ResponseOrError<T>::ResponseOrError(const T& resp) : response(resp), is_error(false) {}
@@ -66,7 +69,7 @@ namespace lsp {
 	ResponseOrError<T>::ResponseOrError(const ResponseOrError& other)
 		: response(other.response), error(other.error), is_error(other.is_error) {}
 	template <typename T>
-	ResponseOrError<T>::ResponseOrError(ResponseOrError&& other)
+	ResponseOrError<T>::ResponseOrError(ResponseOrError&& other) noexcept
 		: response(std::move(other.response)), error(std::move(other.error)), is_error(other.is_error) {}
 	template <typename T>
 	ResponseOrError<T>& ResponseOrError<T>::operator=(
@@ -77,7 +80,8 @@ namespace lsp {
 		return *this;
 	}
 	template <typename T>
-	ResponseOrError<T>& ResponseOrError<T>::operator=(ResponseOrError&& other) {
+	ResponseOrError<T>& ResponseOrError<T>::operator=(ResponseOrError&& other) noexcept
+	{
 		response = std::move(other.response);
 		error = std::move(other.error);
 		is_error = other.is_error;
@@ -97,28 +101,23 @@ class RemoteEndPoint :MessageIssueHandler
 	using IsRequest = lsp::traits::EnableIfIsType<RequestInMessage, T>;
 
 	template <typename T>
-	using IsCancelMonitor = lsp::traits::EnableIfIsType<CancelMonitor, T>;
-
-	
-	template <typename T>
-	using IsResponse = lsp::traits::EnableIfIsType<lsResponseMessage, T>;
+	using IsResponse = lsp::traits::EnableIfIsType<ResponseInMessage, T>;
 
 	template <typename T>
 	using IsNotify = lsp::traits::EnableIfIsType<NotificationInMessage, T>;
 
 
-	template <typename F, typename CallbackType>
+	template <typename F, typename ReturnType>
 	using IsRequestHandler = lsp::traits::EnableIf<lsp::traits::CompatibleWith<
 		F,
-		std::function<CallbackType(const RequestInMessage&)>>::
+		std::function<ReturnType(const RequestInMessage&)>>::
 		value>;
 
-	template <typename F, typename CallbackType>
+	template <typename F, typename ReturnType>
 	using IsRequestHandlerWithMonitor = lsp::traits::EnableIf<lsp::traits::CompatibleWith<
 		F,
-		std::function<CallbackType(const RequestInMessage&,const CancelMonitor&)>>::
+		std::function<ReturnType(const RequestInMessage&,const CancelMonitor&)>>::
 		value>;
-
 
 public:
 
@@ -151,7 +150,7 @@ public:
 	IsRequestHandlerWithMonitor< F, lsp::ResponseOrError<ResponseType> >  registerHandler(F&& handler)  {
 		ProcessRequestJsonHandler(handler);
 		local_endpoint->registerRequestHandler(RequestType::kMethodInfo, [=](std::unique_ptr<LspMessage> msg) {
-			auto  req = reinterpret_cast<const RequestType*>(msg.get());
+			auto  req = static_cast<const RequestType*>(msg.get());
 			lsp::ResponseOrError<ResponseType> res(handler(*req , getCancelMonitor(req->id)));
 			if (res.is_error) {
 				res.error.id = req->id;
@@ -176,12 +175,12 @@ public:
 				return true;
 			const auto result = msg.get();
 		
-			if (reinterpret_cast<lsResponseMessage*>(result)->IsErrorType()) {
-				const auto rsp_error = reinterpret_cast<const Rsp_Error*>(result);
+			if (static_cast<ResponseInMessage*>(result)->IsErrorType()) {
+				const auto rsp_error = static_cast<const Rsp_Error*>(result);
 				onError(*rsp_error);
 			}
 			else {
-				handler(*reinterpret_cast<ResponseType*>(result));
+				handler(*static_cast<ResponseType*>(result));
 			}
 
 			return  true;
@@ -192,7 +191,6 @@ public:
 
 	template <typename F, typename NotifyType = ParamType<F, 0> >
 	IsNotify<NotifyType>  registerHandler(F&& handler) {
-
 		{
 			std::lock_guard<std::mutex> lock(m_sendMutex);
 			if (!jsonHandler->GetNotificationJsonHandler(NotifyType::kMethodInfo))
@@ -205,11 +203,10 @@ public:
 			}
 		}
 		local_endpoint->registerNotifyHandler(NotifyType::kMethodInfo, [=](std::unique_ptr<LspMessage> msg) {
-			handler(*reinterpret_cast<NotifyType*>(msg.get()));
+			handler(*static_cast<NotifyType*>(msg.get()));
 			return  true;
 			});
 	}
-
 
 	template <typename T, typename = IsRequest<T>>
 	std::future< lsp::ResponseOrError<typename T::Response> > send(T& request) {
@@ -222,9 +219,9 @@ public:
 				return true;
 			auto result = msg.get();
 
-			if (reinterpret_cast<lsResponseMessage*>(result)->IsErrorType())
+			if (reinterpret_cast<ResponseInMessage*>(result)->IsErrorType())
 			{
-				Rsp_Error* rsp_error = reinterpret_cast<Rsp_Error*>(result);
+				Rsp_Error* rsp_error = static_cast<Rsp_Error*>(result);
 				Rsp_Error temp;
 				std::swap(temp, *rsp_error);
 				promise->set_value(std::move(lsp::ResponseOrError<Response>(std::move(temp))));
@@ -232,7 +229,7 @@ public:
 			else
 			{
 				Response temp;
-				std::swap(temp, *reinterpret_cast<Response*>(result));
+				std::swap(temp, *static_cast<Response*>(result));
 				promise->set_value(std::move(lsp::ResponseOrError<Response>(std::move(temp))));
 			}
 			return  true;
@@ -265,9 +262,9 @@ public:
 	void send(NotificationInMessage& msg)
 	{
 		sendMsg(msg);
-	};
+	}
 
-	void send(lsResponseMessage& msg)
+	void send(ResponseInMessage& msg)
 	{
 		sendMsg(msg);
 	}
@@ -276,7 +273,7 @@ public:
 	{
 		send(msg);
 	}
-	void sendResponse(lsResponseMessage& msg)
+	void sendResponse(ResponseInMessage& msg)
 	{
 		send(msg);
 	}
@@ -295,9 +292,6 @@ public:
 
 	void internalSendRequest(RequestInMessage&, GenericResponseHandler);
 
-	std::shared_ptr < std::thread > message_producer_thread_;
-
-public:
 	void handle(std::vector<MessageIssue>&&) override;
 	void handle(MessageIssue&&) override;
 private:
@@ -332,7 +326,7 @@ private:
 				});
 		}
 	}
-private:
+
 	struct Data;
 
 	Data* d_ptr;
@@ -341,5 +335,6 @@ private:
 	std::mutex m_sendMutex;
 
 	std::shared_ptr < Endpoint > local_endpoint;
-
+public:
+	std::shared_ptr < std::thread > message_producer_thread_;
 };

@@ -650,24 +650,12 @@ bool needsLeadingEscape(char C, std::string_ref Before,  std::string_ref After,
 
      std::vector<int> v{ 1, 2, 3 };
     
-	
      // Trim rulers.
-    // Children = Children.drop_while(
-    //     [](const std::unique_ptr<Block>& C) { return C->isRuler(); });
-
      Children.erase(std::remove_if(Children.begin(), Children.end(), [](const Block* C)
 	  {
 		  return C->isRuler();
 	  }), Children.end());
-    // std::reverse(Children.begin(), Children.end());
-  /*   auto Last = std::find_if(
-         Children.begin(), Children.end(),
-         [](const Block* C) { return !C->isRuler(); });*/
-
-     //Children.erase(Last, Children.end());
-    
-     //Children = Children.drop_back(Children.end() - Last);
-
+	
      bool LastBlockWasRuler = true;
      for (const auto& C : Children) {
          if (C->isRuler() && LastBlockWasRuler)
@@ -693,15 +681,15 @@ bool needsLeadingEscape(char C, std::string_ref Before,  std::string_ref After,
 
      return AdjustedResult;
  };
- std::string_ref renderBlocks(const std::vector<std::unique_ptr<Block> >& Children,
-     void (Block::* RenderFunc)(std::ostringstream&) const)
+ std::string_ref renderBlocks(const std::vector<std::unique_ptr<Block> >& children,
+     void (Block::* renderFunc)(std::ostringstream&) const)
  {
-     std::vector<Block*> temp(Children.size(), nullptr);
- 	for(size_t i = 0 ; i < Children.size() ; ++i)
+    std::vector<Block*> temp(children.size(), nullptr);
+ 	for(size_t i = 0 ; i < children.size() ; ++i)
  	{
-        temp[i]=(Children[i].get());
+        temp[i]=(children[i].get());
  	}
-    return renderBlocks(std::move(temp), RenderFunc);
+    return renderBlocks(std::move(temp), renderFunc);
  }
 // Separates two blocks with extra spacing. Note that it might render strangely
 // in vscode if the trailing block is a codeblock, see
@@ -790,8 +778,6 @@ private:
   renderPlainText(OS);
   return std::string_ref(OS.str()).trim().c_str();
 }
-
-
 
      void Paragraph::renderMarkdown(std::ostringstream& OS) const {
          bool NeedsSpace = false;

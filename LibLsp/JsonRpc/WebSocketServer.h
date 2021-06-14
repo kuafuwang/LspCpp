@@ -1,8 +1,5 @@
 #pragma once
 
-#ifndef HTTP_SERVER_HPP
-#define HTTP_SERVER_HPP
-
 #include <boost/asio.hpp>
 #include <string>
 #include <boost/beast/core/tcp_stream.hpp>
@@ -12,9 +9,6 @@
 #include "RemoteEndPoint.h"
 #include "stream.h"
 #include "threaded_queue.h"
-
-
-
 
 namespace lsp {
     class Log;
@@ -92,4 +86,4 @@ namespace lsp
 
     } // namespace 
 
-#endif // HTTP_SERVER_HPP
+

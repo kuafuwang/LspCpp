@@ -1,12 +1,8 @@
-//
-// server.cpp
-
+#include "MessageIssue.h"
 #include "WebSocketServer.h"
-
 #include <iostream>
 #include <signal.h>
 #include <utility>
-#include "MessageIssue.h"
 #include "stream.h"
 #include <boost/beast/core.hpp>
 #include <boost/beast/websocket.hpp>

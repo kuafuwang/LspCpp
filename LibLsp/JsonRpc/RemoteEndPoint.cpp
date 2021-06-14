@@ -1,13 +1,8 @@
-
-
 #include "MessageJsonHandler.h"
 #include "Endpoint.h"
 #include "message.h"
-
 #include "RemoteEndPoint.h"
-
 #include <future>
-
 #include "Cancellation.h"
 #include "StreamMessageProducer.h"
 #include "NotificationInMessage.h"
@@ -18,14 +13,9 @@
 #include "json.h"
 #include "ScopeExit.h"
 #include "stream.h"
-#include "third_party/threadpool/boost/threadpool.hpp"
-using namespace  lsp;
 
-
-
-#include "Cancellation.h"
+#include "boost/threadpool.hpp"
 #include <atomic>
-
 namespace lsp {
 	
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
@@ -127,7 +117,7 @@ namespace lsp {
 	}
 } // namespace lsp
 
-
+using namespace  lsp;
 class PendingRequestInfo
 {
 	using   RequestCallBack = std::function< bool(std::unique_ptr<LspMessage>) >;
@@ -149,18 +139,6 @@ PendingRequestInfo::PendingRequestInfo(const std::string& _md,
 PendingRequestInfo::PendingRequestInfo(const std::string& md) : method(md)
 {
 }
-// Determines the encoding used to measure offsets and lengths of source in LSP.
-enum class OffsetEncoding {
-	// Any string is legal on the wire. Unrecognized encodings parse as this.
-	UnsupportedEncoding,
-	// Length counts code units of UTF-16 encoded text. (Standard LSP behavior).
-	UTF16,
-	// Length counts bytes of UTF-8 encoded text. (Clangd extension).
-	UTF8,
-	// Length counts codepoints in unicode text. (Clangd extension).
-	UTF32,
-};
-
 struct RemoteEndPoint::Data
 {
 	explicit Data(lsp::Log& _log , RemoteEndPoint* owner)
@@ -224,7 +202,7 @@ struct RemoteEndPoint::Data
 	{
 		auto id = m_id.fetch_add(1, std::memory_order_relaxed);
 		info.id.set(id);
-		std::lock_guard<std::mutex> lock2(m_requsetInfo);
+		std::lock_guard<std::mutex> lock(m_requsetInfo);
 		_client_request_futures[info.id] = std::make_shared<PendingRequestInfo>(info.method, handler);
 		
 	}
@@ -521,7 +499,7 @@ void RemoteEndPoint::mainLoop(std::unique_ptr<LspMessage>msg)
 	const auto _kind = msg->GetKid();
 	if (_kind == LspMessage::REQUEST_MESSAGE)
 	{
-		auto req = dynamic_cast<RequestInMessage*>(msg.get());
+		auto req = static_cast<RequestInMessage*>(msg.get());
 		// Calls can be canceled by the client. Add cancellation context.
 		WithContext WithCancel(d_ptr->cancelableRequestContext(req->id));
 		local_endpoint->onRequest(std::move(msg));
@@ -529,7 +507,7 @@ void RemoteEndPoint::mainLoop(std::unique_ptr<LspMessage>msg)
 
 	else if (_kind == LspMessage::RESPONCE_MESSAGE)
 	{
-		auto response = dynamic_cast<lsResponseMessage*>(msg.get());
+		auto response = static_cast<ResponseInMessage*>(msg.get());
 		auto msgInfo = d_ptr->getRequestInfo(response->id);
 		if (!msgInfo)
 		{
@@ -557,7 +535,7 @@ void RemoteEndPoint::mainLoop(std::unique_ptr<LspMessage>msg)
 	{
 		if (strcmp(Notify_Cancellation::notify::kMethodInfo, msg->GetMethodType())==0)
 		{
-			d_ptr->onCancel(reinterpret_cast<Notify_Cancellation::notify*>(msg.get()));
+			d_ptr->onCancel(static_cast<Notify_Cancellation::notify*>(msg.get()));
 		}
 		else
 		{

@@ -12,10 +12,6 @@ std::unique_ptr<LspMessage> MessageJsonHandler::parseResponseMessage(const std::
 	{
 		return  findIt->second(r);
 	}
-	else
-	{
-		
-	}
 	return nullptr;
 }
 
@@ -26,10 +22,6 @@ std::unique_ptr<LspMessage> MessageJsonHandler::parseRequstMessage(const std::st
 	if (findIt != method2request.end())
 	{
 		return  findIt->second(r);
-	}
-	else
-	{
-
 	}
 	return nullptr;
 }
@@ -60,10 +52,6 @@ std::unique_ptr<LspMessage> MessageJsonHandler::parseNotificationMessage(const s
 	if (findIt != method2notification.end())
 	{
 		return  findIt->second(r);
-	}
-	else
-	{
-
 	}
 	return nullptr;
 }

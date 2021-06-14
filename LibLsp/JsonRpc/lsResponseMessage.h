@@ -5,7 +5,7 @@
 #include "LibLsp/lsp/method_type.h"
 
 
-struct lsResponseMessage :public LspMessage {
+struct ResponseInMessage :public LspMessage {
 	
 	lsRequestId id;
 	std::string m_methodType;
@@ -29,7 +29,7 @@ struct lsResponseMessage :public LspMessage {
 	}
 };
 template <class TDerived >
-struct BaseResponseMessage : lsResponseMessage {
+struct BaseResponseMessage : ResponseInMessage {
 
 	void ReflectWriter(Writer& writer) override {
 		Reflect(writer, static_cast<TDerived&>(*this));

@@ -39,7 +39,7 @@ public:
 	bool keepRunning = false;
 	void listen(MessageConsumer) override;
 	void bind(std::shared_ptr < lsp::istream>);
-	void parseHeader(std::string& line, StreamMessageProducer::Headers& headers);
+	void parseHeader(std::string& line, Headers& headers);
 private:
 	MessageIssueHandler& issueHandler;
 	std::shared_ptr < lsp::istream> input;

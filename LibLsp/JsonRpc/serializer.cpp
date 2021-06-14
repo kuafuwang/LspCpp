@@ -1,14 +1,9 @@
 #include "serializer.h"
-
-
-
-
-
 #include <stdexcept>
 #include <rapidjson/allocators.h>
 #include "json.h"
 
-bool gTestOutputMode = false;
+
 
 //// Elementary types
 
@@ -131,50 +126,6 @@ void Reflect(Reader& visitor, JsonNull& value) {
 
 void Reflect(Writer& visitor, JsonNull& value) {
   visitor.Null();
-}
-
-
-
-
-template <typename Def>
-void ReflectHoverAndComments(Reader& visitor, Def& def) {
-  ReflectMember(visitor, "hover", def.hover);
-  ReflectMember(visitor, "comments", def.comments);
-}
-
-template <typename Def>
-void ReflectHoverAndComments(Writer& visitor, Def& def) {
-  // Don't emit empty hover and comments in JSON test mode.
-  if (!gTestOutputMode || !def.hover.empty())
-    ReflectMember(visitor, "hover", def.hover);
-  if (!gTestOutputMode || !def.comments.empty())
-    ReflectMember(visitor, "comments", def.comments);
-}
-
-template <typename Def>
-void ReflectShortName(Reader& visitor, Def& def) {
-  if (gTestOutputMode) {
-    std::string short_name;
-    ReflectMember(visitor, "short_name", short_name);
-    def.short_name_offset = def.detailed_name.find(short_name);
-    assert(def.short_name_offset != std::string::npos);
-    def.short_name_size = short_name.size();
-  } else {
-    ReflectMember(visitor, "short_name_offset", def.short_name_offset);
-    ReflectMember(visitor, "short_name_size", def.short_name_size);
-  }
-}
-
-template <typename Def>
-void ReflectShortName(Writer& visitor, Def& def) {
-  if (gTestOutputMode) {
-    std::string short_name(
-        def.detailed_name.substr(def.short_name_offset, def.short_name_size));
-    ReflectMember(visitor, "short_name", short_name);
-  } else {
-    ReflectMember(visitor, "short_name_offset", def.short_name_offset);
-    ReflectMember(visitor, "short_name_size", def.short_name_size);
-  }
 }
 
 
