@@ -21,6 +21,7 @@ class JsonReader : public Reader {
   bool IsInt64() override { return m_->IsInt64(); }
   bool IsUint64() override { return m_->IsUint64(); }
   bool IsDouble() override { return m_->IsDouble(); }
+  bool IsNumber() override { return m_->IsNumber(); }
   bool IsString() override { return m_->IsString(); }
 
   void GetNull() override {}

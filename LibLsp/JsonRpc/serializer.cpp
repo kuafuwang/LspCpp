@@ -94,7 +94,7 @@ void Reflect(Writer& visitor, unsigned long long& value) {
 }
 
 void Reflect(Reader& visitor, double& value) {
-  if (!visitor.IsDouble())
+  if (!visitor.IsNumber())
     throw std::invalid_argument("double");
   value = visitor.GetDouble();
 }

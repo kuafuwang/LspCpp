@@ -37,7 +37,8 @@ public:
 	virtual bool IsInt64() = 0;
 	virtual bool IsUint64() = 0;
 	virtual bool IsDouble() = 0;
-	virtual bool IsString() = 0;
+    virtual bool IsNumber() = 0;
+    virtual bool IsString() = 0;
 
 	virtual void GetNull() = 0;
 	virtual bool GetBool() = 0;
