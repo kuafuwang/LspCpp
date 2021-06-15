@@ -12,7 +12,7 @@ LSP_FILES = extention/sct/sct.o general/initialize.o lsp.o lsp_diagnostic.o \
 	utils.o working_files.o
 JSONRPC_FILES = TcpServer.o threaded_queue.o WebSocketServer.o RemoteEndPoint.o \
 	Endpoint.o message.o MessageJsonHandler.o serializer.o StreamMessageProducer.o \
-	Context.o
+	Context.o GCThreadContext.o
 
 OFILES = $(addprefix ./network/,$(NETWORK_FILES)) \
 	$(addprefix ./LibLsp/lsp/, $(LSP_FILES)) \
