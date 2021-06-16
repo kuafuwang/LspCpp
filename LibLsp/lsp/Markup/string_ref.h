@@ -5,6 +5,10 @@
 #include <vector>
 #include <stdarg.h>
 #include<functional>
+
+#ifndef _WIN32
+#include <cstring>
+#endif
 namespace std
 {
 
@@ -887,11 +891,19 @@ namespace std
 			va_list argList;
 			char* pbuf = 0;
 			va_start( argList, format_string );
+#ifdef _WIN32
 			int len = _vscprintf( format_string, argList );
+#else
+			int len = vsnprintf(nullptr, 0, format_string, argList);
+#endif
 			pbuf = new char[len + 1];
 			if (pbuf != 0)
 			{
+#ifdef _WIN32
 				vsprintf_s( pbuf, len + 1, format_string, argList );
+#else
+                vsprintf(pbuf, format_string, argList);
+#endif
 				*this = pbuf;
 			}
 			delete[] pbuf;
@@ -997,7 +1009,11 @@ namespace std
 		*******************************************************************************/
 		int compare_nocase(const string& str) const
 		{
+#ifdef _WIN32
 			return _stricmp(this->c_str(), str.c_str());
+#else
+		    return strcasecmp(this->c_str(), str.c_str());
+#endif
 		}
 
 		/*******************************************************************************

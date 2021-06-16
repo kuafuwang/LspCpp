@@ -11,6 +11,7 @@
 #include "Context.h"
 #include "rapidjson/error/en.h"
 #include "json.h"
+#include "GCThreadContext.h"
 #include "ScopeExit.h"
 #include "stream.h"
 
@@ -577,6 +578,7 @@ void RemoteEndPoint::startProcessingMessages(std::shared_ptr<lsp::istream> r,
 				auto temp = std::make_shared<std::string>();
 				temp->swap(content);
 				d_ptr->tp.schedule([=]{
+                        GCThreadContext gcContext;
 						dispatch(*temp);
 				});
 		});

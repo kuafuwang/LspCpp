@@ -312,7 +312,7 @@ AbsolutePath RealPathNotExpandSymlink(std::string path,
 	bool ensure_exists) {
 	if (path.empty()) {
 		errno = EINVAL;
-		return nullopt;
+		return {};
 	}
 	if (path[0] == '\0') {
 		errno = ENOENT;

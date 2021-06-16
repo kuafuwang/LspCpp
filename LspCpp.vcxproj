@@ -438,6 +438,7 @@
     <ClCompile Include="LibLsp\JsonRpc\threaded_queue.cpp" />
     <ClCompile Include="LibLsp\JsonRpc\WebSocketServer.cpp" />
     <ClCompile Include="LibLsp\JsonRpc\RemoteEndPoint.cpp" />
+    <ClCompile Include="LibLsp\JsonRpc\GCThreadContext.cpp" />
     <ClCompile Include="LibLsp\JsonRpc\Endpoint.cpp" />
     <ClCompile Include="LibLsp\JsonRpc\message.cpp" />
     <ClCompile Include="LibLsp\JsonRpc\MessageJsonHandler.cpp" />
@@ -471,6 +472,7 @@
     <ClInclude Include="LibLsp\JsonRpc\message.h" />
     <ClInclude Include="LibLsp\JsonRpc\NotificationInMessage.h" />
     <ClInclude Include="LibLsp\JsonRpc\RemoteEndPoint.h" />
+    <ClInclude Include="LibLsp\JsonRpc\GCThreadContext.h" />
     <ClInclude Include="LibLsp\JsonRpc\Endpoint.h" />
     <ClInclude Include="LibLsp\JsonRpc\MessageIssue.h" />
     <ClInclude Include="LibLsp\JsonRpc\MessageJsonHandler.h" />
