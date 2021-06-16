@@ -1,6 +1,10 @@
 #include "ParentProcessWatcher.h"
 #include <boost/process.hpp>
+
+#ifdef _WIN32
 #include <boost/process/windows.hpp>
+#endif
+
 #include <boost/filesystem.hpp>
 #include <boost/asio.hpp>
 #include <iostream>
@@ -29,11 +33,11 @@ struct ParentProcessWatcher::ParentProcessWatcherData : std::enable_shared_from_
 		const std::function<void()>&& callback, uint32_t  poll_delay_secs) :
 		_log(log), on_exit(callback), pid(_pid), _poll_delay_secs(poll_delay_secs)
 	{
-#ifdef WIN32
+#ifdef _WIN32
 		command = "cmd /c \"tasklist /FI \"PID eq " + std::to_string(pid) + "\" | findstr " +
 			std::to_string(pid) + "\"";
 #else
-		command = "ps -p " + +std::to_string(pid);
+		command = "ps -p " + std::to_string(pid);
 #endif
 
 	}
@@ -49,7 +53,9 @@ struct ParentProcessWatcher::ParentProcessWatcherData : std::enable_shared_from_
 		namespace bp = boost::process;
 		c = std::make_shared<bp::child>(asio_io.getIOService(), command,
 			ec,
+#ifdef _WIN32
 			bp::windows::hide,
+#endif
 			bp::std_out > *read_from_service,
 			bp::std_in < *write_to_service,
 			bp::on_exit([self](int exit_code, const std::error_code& ec_in) {
