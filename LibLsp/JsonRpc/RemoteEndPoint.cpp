@@ -575,10 +575,12 @@ void RemoteEndPoint::startProcessingMessages(std::shared_ptr<lsp::istream> r,
 	message_producer_thread_ = std::make_shared<std::thread>([&]()
    {
 		d_ptr->message_producer->listen([&](std::string&& content){
-				auto temp = std::make_shared<std::string>();
-				temp->swap(content);
-				d_ptr->tp.schedule([=]{
+			const auto temp = std::make_shared<std::string>(std::move(content));
+				d_ptr->tp.schedule([this, temp]{
+#ifdef GC_USAGE
                         GCThreadContext gcContext;
+#endif
+						
 						dispatch(*temp);
 				});
 		});

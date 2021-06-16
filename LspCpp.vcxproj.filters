@@ -97,6 +97,9 @@
     <ClCompile Include="LibLsp\lsp\Markup\Markup.cpp">
       <Filter>lsp\markdown</Filter>
     </ClCompile>
+    <ClCompile Include="LibLsp\JsonRpc\GCThreadContext.cpp">
+      <Filter>JsonRpc</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="LibLsp\JsonRpc\MessageIssue.h">
@@ -598,6 +601,9 @@
       <Filter>lsp\markdown</Filter>
     </ClInclude>
     <ClInclude Include="LibLsp\JsonRpc\traits.h">
+      <Filter>JsonRpc</Filter>
+    </ClInclude>
+    <ClInclude Include="LibLsp\JsonRpc\GCThreadContext.h">
       <Filter>JsonRpc</Filter>
     </ClInclude>
   </ItemGroup>

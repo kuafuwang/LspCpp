@@ -12,6 +12,8 @@
 #include <string>
 #include <unordered_map>
 #include <sys/stat.h>
+
+#include "lsPosition.h"
 #include "utf8.h"
 #ifdef  WIN32
 #include <Windows.h>
@@ -423,9 +425,72 @@ AbsolutePath NormalizePath(const std::string& path0,
 	return RealPathNotExpandSymlink(path0, ensure_exists);
 
 #endif
-}
 
 	
+}
+
+// VSCode (UTF-16) disagrees with Emacs lsp-mode (UTF-8) on how to represent
+// text documents.
+// We use a UTF-8 iterator to approximate UTF-16 in the specification (weird).
+// This is good enough and fails only for UTF-16 surrogate pairs.
+int GetOffsetForPosition(lsPosition&position, const std::string& content) {
+	size_t i = 0;
+	// Iterate lines until we have found the correct line.
+	while (position.line > 0 && i < content.size()) {
+		if (content[i] == '\n')
+			position.line--;
+		i++;
+	}
+	// Iterate characters on the target line.
+	while (position.character > 0 && i < content.size()) {
+		if (uint8_t(content[i++]) >= 128) {
+			// Skip 0b10xxxxxx
+			while (i < content.size() && uint8_t(content[i]) >= 128 &&
+				uint8_t(content[i]) < 192)
+				i++;
+		}
+		position.character--;
+	}
+	return int(i);
+}
+
+
+lsPosition GetPositionForOffset(int offset,const  std::string& content) {
+	lsPosition result;
+	for (int i = 0; i < offset && i < content.length(); ++i) {
+		if (content[i] == '\n') {
+			result.line++;
+			result.character = 0;
+		}
+		else {
+			result.character++;
+		}
+	}
+	return result;
+}
+
+lsPosition CharPos(const  std::string& search,
+	char character,
+	int character_offset) {
+	lsPosition result;
+	size_t index = 0;
+	while (index < search.size()) {
+		char c = search[index];
+		if (c == character)
+			break;
+		if (c == '\n') {
+			result.line += 1;
+			result.character = 0;
+		}
+		else {
+			result.character += 1;
+		}
+		++index;
+	}
+	assert(index < search.size());
+	result.character += character_offset;
+	return result;
+}
 
 
 }

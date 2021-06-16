@@ -11,6 +11,8 @@
 #include <LibLsp/lsp/AbsolutePath.h>
 
 
+struct lsPosition;
+
 namespace lsp
 {
 	
@@ -108,4 +110,15 @@ bool IsDirectory(const std::string& path);
 AbsolutePath NormalizePath(const std::string& path,
                             bool ensure_exists = true,
                             bool force_lower_on_windows = true);
+
+
+int GetOffsetForPosition(lsPosition position, const std::string& content);
+
+// Finds the position for an |offset| in |content|.
+lsPosition GetPositionForOffset(int offset, const std::string& content);
+
+// Utility method to find a position for the given character.
+lsPosition CharPos(const std::string& search,
+    char character,
+    int character_offset = 0);
 }
