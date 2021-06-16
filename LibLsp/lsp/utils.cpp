@@ -433,7 +433,7 @@ AbsolutePath NormalizePath(const std::string& path0,
 // text documents.
 // We use a UTF-8 iterator to approximate UTF-16 in the specification (weird).
 // This is good enough and fails only for UTF-16 surrogate pairs.
-int GetOffsetForPosition(lsPosition&position, const std::string& content) {
+int GetOffsetForPosition(lsPosition position, const std::string& content) {
 	size_t i = 0;
 	// Iterate lines until we have found the correct line.
 	while (position.line > 0 && i < content.size()) {

@@ -10,8 +10,8 @@
 #include <boost/optional/optional.hpp>
 #include <LibLsp/lsp/AbsolutePath.h>
 
+#include "lsPosition.h"
 
-struct lsPosition;
 
 namespace lsp
 {
