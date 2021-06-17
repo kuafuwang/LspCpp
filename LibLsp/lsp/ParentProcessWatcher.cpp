@@ -64,10 +64,10 @@ struct ParentProcessWatcher::ParentProcessWatcherData : std::enable_shared_from_
 				{
 					if (self->on_exit)
 					{
-						self->on_exit();
+						
 						std::thread([=]()
 							{
-								std::this_thread::sleep_for(std::chrono::seconds(5));
+								std::this_thread::sleep_for(std::chrono::seconds(3));
 								self->on_exit();
 							}).detach();
 					}
