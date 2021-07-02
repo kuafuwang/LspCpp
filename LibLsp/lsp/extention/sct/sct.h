@@ -1,7 +1,7 @@
 #pragma once
 
 #include <LibLsp/JsonRpc/RemoteEndPoint.h>
-#include <LibLsp/JsonRpc/EndPoint.h>
+#include <LibLsp/JsonRpc/Endpoint.h>
 #include <LibLsp/lsp/ProtocolJsonHandler.h>
 #include "protocol.h"
 enum class lsMessageType;
@@ -24,7 +24,7 @@ namespace sct
 }
 class SmartCardTool 
 {
-	//IP ÍøÂç×Ö½ÚÐò
+	//IP ï¿½ï¿½ï¿½ï¿½ï¿½Ö½ï¿½ï¿½ï¿½
 	std::string m_ipAddr;
 	volatile uint16_t m_jdwpPort;
 

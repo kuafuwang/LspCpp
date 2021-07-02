@@ -65,7 +65,7 @@
 #include "language/language.h"
 #include "client/registerCapability.h"
 #include "client/unregisterCapability.h"
-#include "LibLsp/JsonRpc/cancellation.h"
+#include "LibLsp/JsonRpc/Cancellation.h"
 #include "textDocument/didRenameFiles.h"
 #include "textDocument/semanticHighlighting.h"
 #include "workspace/configuration.h"
