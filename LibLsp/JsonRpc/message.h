@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <string>
+#include <iostream>
 #include <LibLsp/JsonRpc/serializer.h>
 #include "LibLsp/lsp/method_type.h"
 
