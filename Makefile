@@ -1,7 +1,7 @@
 CXX=g++
 OPTFLAGS = -O3 -std=c++17
 INCLUDES=-I. -ILibLsp/lsp/extention/jdtls/ -ILibLsp/JsonRpc/ -ILibLsp/JsonRpc/lsp/extention/jdtls \
-	-Ithird_party/threadpool
+	-Ithird_party/threadpool -Ithird_party/utfcpp/source -Ithird_party/rapidjson/include
 CXXFLAGS = -Wall $(OPTFLAGS) $(INCLUDES)
 
 NETWORKS_DETAIL = $(addprefix detail/, uri_advance_parts.o \
