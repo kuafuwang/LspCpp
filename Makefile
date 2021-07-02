@@ -1,14 +1,14 @@
 CXX=g++
 OPTFLAGS = -O3 -std=c++17
 INCLUDES=-I. -ILibLsp/lsp/extention/jdtls/ -ILibLsp/JsonRpc/ -ILibLsp/JsonRpc/lsp/extention/jdtls \
-	-Ithird_party/threadpool
+	-Ithird_party/threadpool -Ithird_party/utfcpp/source -Ithird_party/rapidjson/include
 CXXFLAGS = -Wall $(OPTFLAGS) $(INCLUDES)
 
 NETWORKS_DETAIL = $(addprefix detail/, uri_advance_parts.o \
 	uri_normalize.o uri_parse.o uri_parse_authority.o uri_resolve.o)
 NETWORK_FILES = $(addprefix uri/, uri.o uri_builder.o uri_errors.o $(NETWORKS_DETAIL))
 LSP_FILES = extention/sct/sct.o general/initialize.o lsp.o lsp_diagnostic.o \
-	ProtocolJsonHandler.o textDocument/textDocument.o markup/Markup.o ParentProcessWatcher.o \
+	ProtocolJsonHandler.o textDocument/textDocument.o Markup/Markup.o ParentProcessWatcher.o \
 	utils.o working_files.o
 JSONRPC_FILES = TcpServer.o threaded_queue.o WebSocketServer.o RemoteEndPoint.o \
 	Endpoint.o message.o MessageJsonHandler.o serializer.o StreamMessageProducer.o \
