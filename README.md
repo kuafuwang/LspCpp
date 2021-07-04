@@ -4,9 +4,20 @@
 `LspCpp` depends on the boost and rapidjson,utfcpp,and threadpool
 
 ## Build
+### Linux
+  1. Install boost
+   ```shell
+      $ sudo apt-get install libboost-dev 
+   ``` 
+ 2. Restore the submodule 
+ 3. Build it.
+    ```shell
+      $ make
+    ``` 
+### Windows
  * `1.Open project with Vistual Studio.
  * `2.[Restore packages][3]
- * `3. Restore ths submodule .
+ * `3. Restore the submodule.
  * `4.Build it.
  
 ## Reference
