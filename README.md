@@ -4,21 +4,30 @@
 `LspCpp` depends on the boost and rapidjson,utfcpp,and threadpool
 
 ## Build
+
 ### Linux
   1. Install boost
    ```shell
       $ sudo apt-get install libboost-dev 
    ``` 
- 2. Restore the submodule 
+ 2. [Restore the submodules][4].
+    ```shell
+      $ git submodule init
+      $ git submodule update
+    ``` 
  3. Build it.
     ```shell
       $ make
     ``` 
 ### Windows
- * `1.Open project with Vistual Studio.
- * `2.[Restore packages][3]
- * `3. Restore the submodule.
- * `4.Build it.
+  1. Open project with Vistual Studio.
+  2. [Restore packages][3] with Vistual Studio.
+  3. [Restore the submodules][4].
+     ```shell
+      git submodule init
+      git submodule update
+     ``` 
+  4. Build it with Vistual Studio.
  
 ## Reference
  Some code from :[cquery][1]
@@ -36,3 +45,4 @@
 [1]: https://github.com/cquery-project/cquery "cquery:"
 [2]: https://www.javacardos.com/tools "JcKit:"
 [3]: https://docs.microsoft.com/en-us/nuget/consume-packages/package-restore "Package Restore"
+[4]: https://git-scm.com/book/en/v2/Git-Tools-Submodules "Git-Tools-Submodules"
