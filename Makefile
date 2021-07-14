@@ -1,8 +1,12 @@
 CXX=g++
-OPTFLAGS = -O3 -std=c++17
+
+CFLAGS = -Wall
 INCLUDES=-I. -ILibLsp/lsp/extention/jdtls/ -ILibLsp/JsonRpc/ -ILibLsp/JsonRpc/lsp/extention/jdtls \
 	-Ithird_party/threadpool -Ithird_party/utfcpp/source -Ithird_party/rapidjson/include
-CXXFLAGS = -Wall $(OPTFLAGS) $(INCLUDES)
+CXXFLAGS = -std=c++17
+OPTFLAGS = -O3
+
+ALL_CXXFLAGS = $(CFLAGS) $(CXXFLAGS) $(CPPFLAGS) $(INCLUDES) $(OPTFLAGS)
 
 NETWORKS_DETAIL = $(addprefix detail/, uri_advance_parts.o \
 	uri_normalize.o uri_parse.o uri_parse_authority.o uri_resolve.o)
@@ -29,7 +33,7 @@ headers.tar.gz: $(HEADERS) macro_map.h
 	tar -czf $@ $^
 
 %.o: %.cpp
-	$(CXX) $(CXXFLAGS) $< -c -o $@
+	$(CXX) $(ALL_CXXFLAGS) $< -c -o $@
 
 clean:
 	find ./ -name *.o | xargs rm -rf
