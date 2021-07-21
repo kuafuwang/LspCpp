@@ -38,7 +38,10 @@
 #include "network/uri/uri_builder.hpp"
 #include "lsp_completion.h"
 #include "utils.h"
-
+#include "client/registerCapability.h"
+#include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_io.hpp>
+#include <boost/uuid/uuid_generators.hpp>
 // namespace
 
 
@@ -1037,5 +1040,14 @@ bool Directory::operator!=(const Directory& rhs) const {
 }
 
 
+
+ Registration Registration::Create(const std::string& method)
+{
+	 Registration reg;
+	 reg.method = method;
+	 const boost::uuids::uuid a_uuid = boost::uuids::random_generator()();
+	 reg.id = to_string(a_uuid);
+	 return reg;
+}
 
 
