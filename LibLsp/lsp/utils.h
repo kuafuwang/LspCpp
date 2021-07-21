@@ -123,19 +123,19 @@ lsPosition CharPos(const std::string& search,
     int character_offset = 0);
 
 
-static void scanDirsNoRecursive(const std::wstring& rootPath, std::vector<std::wstring>& ret);
+ void scanDirsNoRecursive(const std::wstring& rootPath, std::vector<std::wstring>& ret);
 
-static void scanFilesUseRecursive(const std::wstring& rootPath, std::vector<std::wstring>& ret,
+ void scanFilesUseRecursive(const std::wstring& rootPath, std::vector<std::wstring>& ret,
     std::wstring strSuf = L"");
 
-static void scanFileNamesUseRecursive(const std::wstring& rootPath, std::vector<std::wstring>& ret,
+ void scanFileNamesUseRecursive(const std::wstring& rootPath, std::vector<std::wstring>& ret,
     std::wstring strSuf = L"");
-static void scanFileNamesUseRecursive(const std::string& rootPath, std::vector<std::string>& ret,
+ void scanFileNamesUseRecursive(const std::string& rootPath, std::vector<std::string>& ret,
     std::string strSuf = "");
 
-static void scanFilesUseRecursive(const std::string& rootPath, std::vector<std::string>& ret,
+ void scanFilesUseRecursive(const std::string& rootPath, std::vector<std::string>& ret,
     std::string strSuf = "");
 
-static void scanDirsUseRecursive(const std::wstring& rootPath, std::vector<std::wstring>& ret);
+ void scanDirsUseRecursive(const std::wstring& rootPath, std::vector<std::wstring>& ret);
 
 }
