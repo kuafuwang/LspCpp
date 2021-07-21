@@ -487,6 +487,7 @@
     <ClInclude Include="LibLsp\JsonRpc\traits.h" />
     <ClInclude Include="LibLsp\JsonRpc\WebSocketServer.h" />
     <ClInclude Include="LibLsp\lsp\AbsolutePath.h" />
+    <ClInclude Include="LibLsp\lsp\ClientPreferences.h" />
     <ClInclude Include="LibLsp\lsp\client\registerCapability.h" />
     <ClInclude Include="LibLsp\lsp\client\unregisterCapability.h" />
     <ClInclude Include="LibLsp\lsp\CodeActionParams.h" />
