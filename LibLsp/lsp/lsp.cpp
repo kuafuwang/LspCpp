@@ -395,6 +395,11 @@ bool lsp::Any::GetForMapHelper(std::string& value)
 	return Get(value);
 }
 
+bool lsp::Any::GetForMapHelper(boost::optional<std::string>& value)
+{
+	return Get(value);
+}
+
 std::unique_ptr<Reader> lsp::Any::GetReader()
 {
 	auto reader = new JsonReaderForAny();
