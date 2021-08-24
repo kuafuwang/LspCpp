@@ -13,22 +13,18 @@ void LspMessage::Write(std::ostream& out) {
 	JsonWriter json_writer{ &writer };
 	ReflectWriter(json_writer);
 
-	out << "Content-Length: " << output.GetSize() << "\r\n\r\n"
-		<< output.GetString();
+	const auto value = std::string("Content-Length: ") + std::to_string(output.GetSize()) + "\r\n\r\n" + output.GetString();
+	out << value;
 	out.flush();
 }
 
-
-std::string LspMessage::ToJson() 
-{
+std::string LspMessage::ToJson() {
 	rapidjson::StringBuffer output;
 	rapidjson::Writer<rapidjson::StringBuffer> writer(output);
 	JsonWriter json_writer{ &writer };
 	this->ReflectWriter(json_writer);
 	return  output.GetString();
 }
-
-
 
 void Reflect(Reader& visitor, lsRequestId& value) {
 	if (visitor.IsInt()) {

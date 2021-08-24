@@ -245,10 +245,9 @@ namespace
 void WriterMsg(std::shared_ptr<lsp::ostream>&  output, LspMessage& msg)
 {
 	const auto& s = msg.ToJson();
-	const auto header =
-		std::string("Content-Length: ") + std::to_string(s.size()) + "\r\n\r\n";
-	output->write(header);
-	output->write(s);
+	const auto value =
+		std::string("Content-Length: ") + std::to_string(s.size()) + "\r\n\r\n" + s;
+	output->write(value);
 	output->flush();
 }
 
