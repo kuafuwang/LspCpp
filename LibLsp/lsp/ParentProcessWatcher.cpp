@@ -47,7 +47,7 @@ struct ParentProcessWatcher::ParentProcessWatcherData : std::enable_shared_from_
 		write_to_service = std::make_shared<boost::process::opstream>();
 		read_from_service = std::make_shared<boost::process::ipstream>();
 
-		const uint32_t POLL_DELAY_SECS = _poll_delay_secs;
+//		const uint32_t POLL_DELAY_SECS = _poll_delay_secs;
 		auto self(shared_from_this());
 		std::error_code ec;
 		namespace bp = boost::process;
@@ -64,7 +64,7 @@ struct ParentProcessWatcher::ParentProcessWatcherData : std::enable_shared_from_
 				{
 					if (self->on_exit)
 					{
-						
+
 						std::thread([=]()
 							{
 								std::this_thread::sleep_for(std::chrono::seconds(3));

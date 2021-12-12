@@ -15,10 +15,11 @@
 #include "ScopeExit.h"
 #include "stream.h"
 
+#define BOOST_BIND_GLOBAL_PLACEHOLDERS
 #include "boost/threadpool.hpp"
 #include <atomic>
 namespace lsp {
-	
+
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -145,7 +146,7 @@ struct RemoteEndPoint::Data
 	explicit Data(lsp::Log& _log , RemoteEndPoint* owner)
 		: message_producer(new StreamMessageProducer(*owner)), log(_log)
 	{
-		
+
 	}
 	~Data()
 	{
@@ -157,9 +158,9 @@ struct RemoteEndPoint::Data
  // This needs a mutex: handlers may finish on a different thread, and that's
  // when we clean up entries in the map.
 	mutable std::mutex request_cancelers_mutex;
-	
+
 	std::map< lsRequestId, std::pair<Canceler, /*Cookie*/ unsigned> > requestCancelers;
-	
+
 	std::atomic<unsigned>  next_request_cookie = 0; // To disambiguate reused IDs, see below.
 	void onCancel(Notify_Cancellation::notify* notify) {
 		std::lock_guard<std::mutex> Lock(request_cancelers_mutex);
@@ -167,7 +168,7 @@ struct RemoteEndPoint::Data
 		if (it != requestCancelers.end())
 			it->second.first(); // Invoke the canceler.
 	}
-	
+
 	// We run cancelable requests in a context that does two things:
 	//  - allows cancellation using requestCancelers[ID]
 	//  - cleans up the entry in requestCancelers when it's no longer needed
@@ -191,7 +192,7 @@ struct RemoteEndPoint::Data
 				requestCancelers.erase(it);
 			}));
 	}
-	
+
 	std::map <lsRequestId, std::shared_ptr<PendingRequestInfo>>  _client_request_futures;
 	StreamMessageProducer* message_producer;
 	std::atomic<bool> quit{};
@@ -205,7 +206,7 @@ struct RemoteEndPoint::Data
 		info.id.set(id);
 		std::lock_guard<std::mutex> lock(m_requsetInfo);
 		_client_request_futures[info.id] = std::make_shared<PendingRequestInfo>(info.method, handler);
-		
+
 	}
 	const std::shared_ptr<const PendingRequestInfo> getRequestInfo(const lsRequestId& _id)
 	{
@@ -240,7 +241,7 @@ struct RemoteEndPoint::Data
 	}
 };
 
-namespace 
+namespace
 {
 void WriterMsg(std::shared_ptr<lsp::ostream>&  output, LspMessage& msg)
 {
@@ -259,7 +260,7 @@ bool isResponseMessage(JsonReader& visitor)
 	{
 		return false;
 	}
-	
+
 	if (!visitor.HasMember("result") && !visitor.HasMember("error"))
 	{
 		return false;
@@ -312,7 +313,7 @@ CancelMonitor RemoteEndPoint::getCancelMonitor(const lsRequestId& id)
 	return [] {
 		return 0;
 	};
-	
+
 }
 
 RemoteEndPoint::RemoteEndPoint(
@@ -323,7 +324,7 @@ RemoteEndPoint::RemoteEndPoint(
 	{
 		return Notify_Cancellation::notify::ReflectReader(visitor);
 	};
-	
+
 	d_ptr->quit.store(false, std::memory_order_relaxed);
 	d_ptr->tp.size_controller().resize(max_workers);
 }
@@ -347,20 +348,20 @@ bool RemoteEndPoint::dispatch(const std::string& content)
 			info += "ErrorContext offset:\n";
 			info += content.substr(document.GetErrorOffset());
 			d_ptr->log.log(Log::Level::SEVERE, info);
-		
+
 			return false;
 		}
 
 		JsonReader visitor{ &document };
 		if (!visitor.HasMember("jsonrpc") ||
-			std::string(visitor["jsonrpc"]->GetString()) != "2.0") 
+			std::string(visitor["jsonrpc"]->GetString()) != "2.0")
 		{
 			std::string reason;
 			reason = "Reason:Bad or missing jsonrpc version\n";
 			reason += "content:\n" + content;
 			d_ptr->log.log(Log::Level::SEVERE, reason);
 			return  false;
-	
+
 		}
 		LspMessage::Kind _kind = LspMessage::NOTIFICATION_MESSAGE;
 		try {
@@ -469,7 +470,7 @@ bool RemoteEndPoint::dispatch(const std::string& content)
 void RemoteEndPoint::internalSendRequest( RequestInMessage& info, GenericResponseHandler handler)
 {
 	std::lock_guard<std::mutex> lock(m_sendMutex);
-	if (!d_ptr->output && d_ptr->output->bad())
+	if (!d_ptr->output || d_ptr->output->bad())
 	{
 		std::string desc = "Output isn't good any more:\n";
 		d_ptr->log.log(Log::Level::INFO, desc);
@@ -580,7 +581,7 @@ void RemoteEndPoint::startProcessingMessages(std::shared_ptr<lsp::istream> r,
 #ifdef USEGC
                         GCThreadContext gcContext;
 #endif
-						
+
 						dispatch(*temp);
 				});
 		});
@@ -601,7 +602,7 @@ void RemoteEndPoint::sendMsg( LspMessage& msg)
 {
 
 	std::lock_guard<std::mutex> lock(m_sendMutex);
-	if (!d_ptr->output && d_ptr->output->bad())
+	if (!d_ptr->output || d_ptr->output->bad())
 	{
 		std::string info = "Output isn't good any more:\n";
 		d_ptr->log.log(Log::Level::INFO, info);

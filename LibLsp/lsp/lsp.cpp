@@ -147,7 +147,7 @@ void Reflect(Reader& visitor, lsMarkedString& value)
 	  else {
 		  Reflect(visitor, value.first);
 	  }
-	 
+
 }
 
  void Reflect(Writer& visitor, LocationListEither::Either& value)
@@ -165,8 +165,8 @@ void Reflect(Reader& visitor, lsMarkedString& value)
 
 void Reflect(Reader& visitor, TextDocumentCodeAction::Either& value)
 {
-	
-	
+
+
 	if(visitor.HasMember("command"))
 	{
 		if(visitor["command"]->IsString())
@@ -195,8 +195,8 @@ void Reflect(Reader& visitor, TextDocumentCodeAction::Either& value)
 
 void Reflect(Reader& visitor, lsWorkspaceEdit::Either& value)
 {
-	
-	
+
+
 	if(visitor.HasMember("textDocument"))
 	{
 		Reflect(visitor, value.first);
@@ -245,14 +245,14 @@ ResourceOperation* GetResourceOperation(lsp::Any& lspAny)
 	}
 	catch (std::exception&)
 	{
-		
+
 	}
 	return nullptr;
 }
 
   void Reflect(Writer& visitor, ResourceOperation* value)
 {
-	
+
 	if(!value)
 	{
 		throw std::invalid_argument("ResourceOperation value is nullptr");
@@ -260,7 +260,7 @@ ResourceOperation* GetResourceOperation(lsp::Any& lspAny)
 	if (value->kind == "create")
 	{
 		auto temp = (lsCreateFile*)value;
-		Reflect(visitor, *temp);	
+		Reflect(visitor, *temp);
 	}
 	else if (value->kind == "rename")
 	{
@@ -273,7 +273,7 @@ ResourceOperation* GetResourceOperation(lsp::Any& lspAny)
 		auto temp = (lsDeleteFile*)value;
 		Reflect(visitor, *temp);
 	}
-	
+
 }
 
 int lsp::Any::GuessType()
@@ -376,7 +376,7 @@ std::unique_ptr<Reader> lsp::Any::GetReader()
 	{
 		jsonType = reader->document.GetType();
 	}
-	return std::move(ret);
+	return ret;
 }
 
 class JsonWriterForAny : public JsonWriter
@@ -386,7 +386,7 @@ public:
 	rapidjson::Writer<rapidjson::StringBuffer> writer;
 	JsonWriterForAny():JsonWriter(&writer), writer(output)
 	{
-		
+
 	}
 };
 
@@ -402,8 +402,9 @@ void lsp::Any::SetData(std::unique_ptr<Writer>& writer)
 	GuessType();
 }
 
-namespace 
+namespace
 {
+#if 0
 	rapidjson::Type convert(lsp::Any::Type type)
 	{
 		switch (type)
@@ -426,6 +427,7 @@ namespace
 			return rapidjson::Type::kNullType;
 		}
 	}
+#endif
 	lsp::Any::Type convert(rapidjson::Type type)
 	{
 		switch (type)
@@ -452,14 +454,14 @@ namespace
 
 void Reflect(Reader& visitor, lsp::Any& value)
 {
-	 
+
 	 //if (visitor.IsNull()) {
 		// visitor.GetNull();
 		// value.SetJsonString("", rapidjson::Type::kNullType);
 		// return;
 	 //}else
 	 //{
-		// 
+		//
 	 //}
 	 JsonReader& json_reader = reinterpret_cast<JsonReader&>(visitor);
 	 value.SetJsonString(visitor.ToString(), convert(json_reader.m_->GetType()));
@@ -468,7 +470,7 @@ void Reflect(Reader& visitor, lsp::Any& value)
  {
 	 JsonWriter& json_writer = reinterpret_cast<JsonWriter&>(visitor);
 	 json_writer.m_->RawValue( value.Data().data(),value.Data().size(),static_cast<rapidjson::Type>(value.GetType()));
-	
+
  }
   void Reflect(Reader& visitor, lsFormattingOptions::KeyData& value)
 {
@@ -525,7 +527,7 @@ void Reflect(Reader& visitor, boost::optional< SelectionRange* >& value)
 	}
 
 	SelectionRange* entry_value = nullptr;
-	
+
 
 		std::unique_ptr<SelectionRange> ptr = std::make_unique<SelectionRange>();
 		SelectionRange* temp = ptr.get();
@@ -542,9 +544,9 @@ void Reflect(Writer& visitor, SelectionRange* value)
 	{
 		throw std::invalid_argument("ResourceOperation value is nullptr");
 	}
-	
+
 	Reflect(visitor, *value);
-	
+
 
 }
 
@@ -708,7 +710,7 @@ bool lsDocumentUri::operator==(const std::string& other) const
 
 
 AbsolutePath lsDocumentUri::GetAbsolutePath() const {
-	
+
 
 		if (raw_uri_.find("file://") != std::string::npos){
 			try
@@ -720,9 +722,9 @@ AbsolutePath lsDocumentUri::GetAbsolutePath() const {
 				return AbsolutePath("", false);
 			}
 		}
-	
+
 		return AbsolutePath(raw_uri_,false);
-		
+
 }
 
 AbsolutePath::AbsolutePath(const std::string& path, bool validate)
@@ -745,7 +747,7 @@ void Reflect(Reader& visitor, lsDocumentUri& value) {
 	Reflect(visitor, value.raw_uri_);
 	// Only record the path when we deserialize a URI, since it most likely came
 	// from the client.
-	
+
 }
 
  std::string ProgressReport::ToString() const
@@ -790,7 +792,7 @@ std::string EventNotification::ToString() const
 	{
 		std::ostringstream oss;
 		oss << std::hex << eventType << std::endl;
-		
+
 		info += "eventType:";
 		info += oss.str();
 	}
@@ -885,9 +887,9 @@ std::string lsCompletionItem::DisplayText()
 
 	 if (detail)
 	{
-		
+
 		return label + " in " + detail.value();
-	} 
+	}
 	return label;
 }
 
@@ -899,7 +901,7 @@ std::string lsCompletionItem::ToString()
 		info << "kind : " << lsp::ToString(kind.value()) << std::endl;
 	  else
 		 info << "kind : no exist."  << std::endl;
-	
+
 	  if (detail)
 		  info << "detail : " << detail.value() << std::endl;
 	  else
@@ -958,9 +960,9 @@ std::string lsCompletionItem::ToString()
 		  info << "textEdit : no exist." << std::endl;
 
 
-	
+
 	  return  info.str();
-	
+
  }
 namespace  JDT
 {
@@ -1019,7 +1021,7 @@ namespace  JDT
 		const char* SourceOrganizeImports = "source.organizeImports";
 
 		const char* COMMAND_ID_APPLY_EDIT = "java.apply.workspaceEdit";
-		
+
 	};
 
 
@@ -1035,7 +1037,3 @@ bool Directory::operator==(const Directory& rhs) const {
 bool Directory::operator!=(const Directory& rhs) const {
 	return path != rhs.path;
 }
-
-
-
-

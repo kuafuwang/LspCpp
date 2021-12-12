@@ -1,5 +1,3 @@
-#pragma once
-
 #include "completion.h"
 #include "document_symbol.h"
 #include "LibLsp/lsp/lsMarkedString.h"
@@ -17,7 +15,7 @@ constexpr unsigned SemanticTokenEncodingSize = 5;
 std::string to_string(SemanticTokenType _type)
 {
 	switch (_type) {
-		
+
 		case ls_namespace: return "namespace";
 			/**
 			 * Represents a generic type. Acts as a fallback for types which
@@ -205,7 +203,7 @@ std::vector<int32_t> SemanticTokens::encodeTokens(std::vector<SemanticToken>& to
 		result.push_back(tok.tokenModifiers);
 	}
 	assert(result.size() == SemanticTokenEncodingSize * tokens.size());
-	return std::move(result);
+	return result;
 }
 
 void Reflect(Reader& visitor, TextDocumentComplete::Either& value)
@@ -216,10 +214,10 @@ void Reflect(Reader& visitor, TextDocumentComplete::Either& value)
 	}
 	else
 	{
-	
+
 		Reflect(visitor, value.second);
 	}
-	
+
 }
 void Reflect(Reader& visitor, TextDocumentDocumentSymbol::Either& value)
 {
@@ -235,7 +233,7 @@ void Reflect(Reader& visitor, TextDocumentDocumentSymbol::Either& value)
 
 void Reflect(Reader& visitor, std::pair<boost::optional<std::string>, boost::optional<lsMarkedString>>& value)
 {
-	
+
 	if (!visitor.IsString())
 	{
 		Reflect(visitor, value.second);

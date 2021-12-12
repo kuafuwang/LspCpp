@@ -39,11 +39,11 @@ public:
         }
     }
 private:
-    std::function<void()> call_back;
     std::atomic_bool is_running_;
+    std::function<void()> call_back;
     boost::asio::io_service _ios;
     boost::asio::deadline_timer _deadline_timer;
     std::thread _thread;
 
-  
+
 };
