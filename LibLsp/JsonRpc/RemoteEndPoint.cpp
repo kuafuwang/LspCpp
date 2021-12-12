@@ -144,7 +144,7 @@ PendingRequestInfo::PendingRequestInfo(const std::string& md) : method(md)
 struct RemoteEndPoint::Data
 {
 	explicit Data(lsp::Log& _log , RemoteEndPoint* owner)
-		: message_producer(new StreamMessageProducer(*owner)), log(_log)
+          : m_id(0), next_request_cookie(0), message_producer(new StreamMessageProducer(*owner)), log(_log)
 	{
 
 	}
@@ -152,7 +152,7 @@ struct RemoteEndPoint::Data
 	{
 	   delete	message_producer;
 	}
-	std::atomic<unsigned> m_id=0;
+	std::atomic<unsigned> m_id;
 	boost::threadpool::pool tp;
 	// Method calls may be cancelled by ID, so keep track of their state.
  // This needs a mutex: handlers may finish on a different thread, and that's
@@ -161,7 +161,7 @@ struct RemoteEndPoint::Data
 
 	std::map< lsRequestId, std::pair<Canceler, /*Cookie*/ unsigned> > requestCancelers;
 
-	std::atomic<unsigned>  next_request_cookie = 0; // To disambiguate reused IDs, see below.
+	std::atomic<unsigned>  next_request_cookie; // To disambiguate reused IDs, see below.
 	void onCancel(Notify_Cancellation::notify* notify) {
 		std::lock_guard<std::mutex> Lock(request_cancelers_mutex);
 		const auto it = requestCancelers.find(notify->params.id);

@@ -3,7 +3,7 @@ CXX=g++
 CFLAGS = -Wall
 INCLUDES=-I. -ILibLsp/lsp/extention/jdtls/ -ILibLsp/JsonRpc/ -ILibLsp/JsonRpc/lsp/extention/jdtls \
 	-Ithird_party/threadpool -Ithird_party/utfcpp/source -Ithird_party/rapidjson/include
-CXXFLAGS = -std=c++17
+CXXFLAGS = -std=c++14
 OPTFLAGS = -O3
 
 ALL_CXXFLAGS = $(CFLAGS) $(CXXFLAGS) $(CPPFLAGS) $(INCLUDES) $(OPTFLAGS)
