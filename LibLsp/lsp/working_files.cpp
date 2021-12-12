@@ -180,3 +180,7 @@ bool WorkingFiles::GetFileBufferContent(std::shared_ptr<WorkingFile>& file, std:
     }
     return  false;
 }
+void  WorkingFiles::Clear() {
+    std::lock_guard<std::mutex> lock(d_ptr->files_mutex);
+    d_ptr->files.clear();
+}

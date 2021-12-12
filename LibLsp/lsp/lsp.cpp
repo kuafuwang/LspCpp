@@ -38,7 +38,10 @@
 #include "network/uri/uri_builder.hpp"
 #include "lsp_completion.h"
 #include "utils.h"
-
+#include "client/registerCapability.h"
+#include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_io.hpp>
+#include <boost/uuid/uuid_generators.hpp>
 // namespace
 
 
@@ -314,7 +317,7 @@ int lsp::Any::GuessType()
 	}
 	else
 	{
-		if (jsonType != -1)
+		if (jsonType != kUnKnown)
 			return jsonType;
 		jsonType = rapidjson::kNullType;
 	}
@@ -323,7 +326,7 @@ int lsp::Any::GuessType()
 
 int lsp::Any::GetType()
 {
-	if (jsonType == -1)
+	if (jsonType == Type::kUnKnown)
 	{
 		if (data.empty())
 		{
@@ -354,6 +357,29 @@ void lsp::Any::Set(std::unique_ptr<LspMessage> value)
 		assert(false);
 	}
 }
+
+void lsp::Any::SetJsonString(std::string&& _data, Type _type)
+{
+	jsonType = _type;
+	data.swap(_data);
+	GetType();
+}
+
+void lsp::Any::SetJsonString(const std::string& _data, Type _type)
+{
+	jsonType = _type;
+	data = (_data);
+	GetType();
+}
+
+void lsp::Any::swap(Any& arg) noexcept
+{
+	data.swap(arg.data);
+	const int temp = jsonType;
+	jsonType = arg.jsonType;
+	arg.jsonType = temp;
+}
+
 class JsonReaderForAny : public  JsonReader
 {
 public:
@@ -363,20 +389,31 @@ public:
 	}
 	rapidjson::Document document;
 };
+
+bool lsp::Any::GetForMapHelper(std::string& value)
+{
+	return Get(value);
+}
+
+bool lsp::Any::GetForMapHelper(boost::optional<std::string>& value)
+{
+	return Get(value);
+}
+
 std::unique_ptr<Reader> lsp::Any::GetReader()
 {
-	JsonReaderForAny* reader = new JsonReaderForAny();
+	auto reader = new JsonReaderForAny();
 	std::unique_ptr<Reader> ret(reader);
 	reader->document.Parse(data.c_str(), data.length());
 	if (reader->document.HasParseError())
 	{
 		return {};
 	}
-	if (jsonType == -1)
+	if (jsonType == kUnKnown)
 	{
 		jsonType = reader->document.GetType();
 	}
-	return ret;
+	return (ret);
 }
 
 class JsonWriterForAny : public JsonWriter
@@ -1036,4 +1073,15 @@ bool Directory::operator==(const Directory& rhs) const {
 
 bool Directory::operator!=(const Directory& rhs) const {
 	return path != rhs.path;
+}
+
+
+
+ Registration Registration::Create(const std::string& method)
+{
+	 Registration reg;
+	 reg.method = method;
+	 const boost::uuids::uuid a_uuid = boost::uuids::random_generator()();
+	 reg.id = to_string(a_uuid);
+	 return reg;
 }

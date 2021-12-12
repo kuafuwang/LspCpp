@@ -62,6 +62,7 @@ struct WorkingFiles {
   // Find the file with the given filename.
   std::shared_ptr<WorkingFile>   GetFileByFilename(const AbsolutePath& filename);
 
+  void Clear();
 private:
   std::shared_ptr<WorkingFile>  GetFileByFilenameNoLock(const AbsolutePath& filename);
 

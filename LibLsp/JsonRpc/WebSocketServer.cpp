@@ -22,12 +22,13 @@ namespace lsp {
         beast::flat_buffer buffer_;
         std::string user_agent_;
     public:
-       std::shared_ptr<websocket_stream_wrapper>  proxy_ =  std::make_shared<websocket_stream_wrapper>(ws_) ;
+        std::shared_ptr<websocket_stream_wrapper>  proxy_;
         // Take ownership of the socket
         explicit
             server_session(tcp::socket&& socket,const std::string& user_agent)
             : ws_(std::move(socket)),user_agent_(user_agent)
         {
+            proxy_ = std::make_shared<websocket_stream_wrapper>(ws_);
         }
 
         // Get on the correct executor
@@ -115,7 +116,11 @@ namespace lsp {
         void close()
         {
         	if(ws_.is_open())
-			 ws_.close(websocket::close_code::normal);
+        	{
+        		boost::system::error_code ec;
+        		ws_.close(websocket::close_code::normal, ec);
+        	}
+
         }
     };
 
@@ -302,14 +307,18 @@ namespace lsp {
                     {
                         return;
                     }
-
                     if (!ec)
                     {
                     	if(d_ptr->_server_session)
                     	{
-
-						   d_ptr->_server_session->close();
-                            point.Stop();
+	                        try
+	                        {
+                                d_ptr->_server_session->close();
+                                point.Stop();
+	                        }
+	                        catch (...)
+	                        {
+	                        }
                     	}
                         d_ptr->_server_session = std::make_shared<server_session>(std::move(socket), d_ptr->user_agent_);
                         d_ptr->_server_session->run();

@@ -7,6 +7,7 @@
  */
 
 struct Registration {
+	static  Registration Create(const std::string& method);
 	/**
 	 * The id used to register the request. The id can be used to deregister
 	 * the request again.
@@ -21,6 +22,8 @@ struct Registration {
 	
 	MAKE_SWAP_METHOD(Registration, id, method);
 };
+
+
 MAKE_REFLECT_STRUCT(Registration, id, method);
 
 /**

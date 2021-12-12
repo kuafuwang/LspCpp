@@ -9,7 +9,7 @@
 #include "LibLsp/lsp/extention/jdtls/searchSymbols.h"
 #include "lsWorkspaceClientCapabilites.h"
 #include "LibLsp/lsp/lsp_completion.h"
-
+#include "LibLsp/lsp/lsp_diagnostic.h"
 
 
 struct  WorkDoneProgressOptions
@@ -371,16 +371,63 @@ struct RenameCapabilities :public DynamicRegistrationCapabilities {
 };
 MAKE_REFLECT_STRUCT(RenameCapabilities, dynamicRegistration, prepareSupport)
 
-struct PublishDiagnosticsCapabilities :public DynamicRegistrationCapabilities {
-	//
- // The client support code action literals as a valid
- // response of the `textDocument/codeAction` request.
- //
+struct  DiagnosticsTagSupport {
+	/**
+	 * The tags supported by the client.
+	 */
+	std::vector<DiagnosticTag> valueSet;
+	MAKE_SWAP_METHOD(DiagnosticsTagSupport, valueSet)
+};
+MAKE_REFLECT_STRUCT(DiagnosticsTagSupport, valueSet)
+
+struct PublishDiagnosticsClientCapabilities :public DynamicRegistrationCapabilities {
+	/**
+ * The client support code action literals as a valid
+ * response of the `textDocument/codeAction` request.
+ */
 	boost::optional<bool> relatedInformation;
 
-	MAKE_SWAP_METHOD(PublishDiagnosticsCapabilities, dynamicRegistration, relatedInformation)
+	/**
+	 * Client supports the tag property to provide meta data about a diagnostic.
+	 * Clients supporting tags have to handle unknown tags gracefully.
+	 *
+	 * This property had been added and implemented as boolean before it was
+	 * added to the specification as {@link DiagnosticsTagSupport}. In order to
+	 * keep this implementation compatible with intermediate clients (including
+	 * vscode-language-client < 6.0.0) we add an either type here.
+	 *
+	 * Since 3.15
+	 */
+	boost::optional < std::pair<boost::optional<bool>, boost::optional<DiagnosticsTagSupport> > >  tagSupport;
+
+	/**
+	 * Whether the client interprets the version property of the
+	 * `textDocument/publishDiagnostics` notification's parameter.
+	 *
+	 * Since 3.15.0
+	 */
+	boost::optional<bool> versionSupport;
+
+	/**
+ * Client supports a codeDescription property
+ *
+ * @since 3.16.0
+ */
+	boost::optional<bool> codeDescriptionSupport ;
+
+	/**
+	 * Whether code action supports the `data` property which is
+	 * preserved between a `textDocument/publishDiagnostics` and
+	 * `textDocument/codeAction` request.
+	 *
+	 * @since 3.16.0
+	 */
+	boost::optional<bool> dataSupport ;
+
+
+	MAKE_SWAP_METHOD(PublishDiagnosticsClientCapabilities, dynamicRegistration, relatedInformation, tagSupport,versionSupport,codeDescriptionSupport,dataSupport)
 };
-MAKE_REFLECT_STRUCT(PublishDiagnosticsCapabilities, dynamicRegistration, relatedInformation)
+MAKE_REFLECT_STRUCT(PublishDiagnosticsClientCapabilities, dynamicRegistration, relatedInformation, tagSupport, versionSupport, codeDescriptionSupport, dataSupport)
 
 
 struct FoldingRangeCapabilities :public DynamicRegistrationCapabilities {
@@ -565,9 +612,7 @@ struct lsTextDocumentClientCapabilities {
 //
 // Capabilities specific to `textDocument/publishDiagnostics`.
 //
-  boost::optional<PublishDiagnosticsCapabilities> publishDiagnostics;
-
-
+  boost::optional<PublishDiagnosticsClientCapabilities> publishDiagnostics;
 
   //
 // Capabilities specific to `textDocument/foldingRange` requests.

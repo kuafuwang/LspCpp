@@ -606,6 +606,9 @@
     <ClInclude Include="LibLsp\JsonRpc\GCThreadContext.h">
       <Filter>JsonRpc</Filter>
     </ClInclude>
+    <ClInclude Include="LibLsp\lsp\ClientPreferences.h">
+      <Filter>lsp</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="JsonRpc">

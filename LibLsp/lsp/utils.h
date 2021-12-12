@@ -121,4 +121,21 @@ lsPosition GetPositionForOffset(int offset, const std::string& content);
 lsPosition CharPos(const std::string& search,
     char character,
     int character_offset = 0);
+
+
+ void scanDirsNoRecursive(const std::wstring& rootPath, std::vector<std::wstring>& ret);
+
+ void scanFilesUseRecursive(const std::wstring& rootPath, std::vector<std::wstring>& ret,
+    std::wstring strSuf = L"");
+
+ void scanFileNamesUseRecursive(const std::wstring& rootPath, std::vector<std::wstring>& ret,
+    std::wstring strSuf = L"");
+ void scanFileNamesUseRecursive(const std::string& rootPath, std::vector<std::string>& ret,
+    std::string strSuf = "");
+
+ void scanFilesUseRecursive(const std::string& rootPath, std::vector<std::string>& ret,
+    std::string strSuf = "");
+
+ void scanDirsUseRecursive(const std::wstring& rootPath, std::vector<std::wstring>& ret);
+
 }
