@@ -14,14 +14,14 @@ struct WorkingFilesData
 
 WorkingFile::WorkingFile(WorkingFiles& _parent, const AbsolutePath& filename,
                          const std::string& buffer_content)
-	: filename(filename), directory(filename), parent(_parent), buffer_content(buffer_content)
+  : filename(filename), directory(filename), parent(_parent), counter(0), buffer_content(buffer_content)
 {
        directory = Directory(GetDirName(filename.path));
 }
 
 WorkingFile::WorkingFile(WorkingFiles& _parent, const AbsolutePath& filename,
                          std::string&& buffer_content)
-	: filename(filename), directory(filename), parent(_parent), buffer_content(buffer_content)
+  : filename(filename), directory(filename), parent(_parent), counter(0), buffer_content(buffer_content)
 {
     directory = Directory(GetDirName(filename.path));
 }
@@ -33,7 +33,7 @@ WorkingFiles::WorkingFiles():d_ptr(new WorkingFilesData())
 WorkingFiles::~WorkingFiles()
 {
     delete d_ptr;
-	
+
 }
 
 
@@ -42,7 +42,7 @@ void WorkingFiles::CloseFilesInDirectory(const std::vector<Directory>& directori
 {
     std::lock_guard<std::mutex> lock(d_ptr->files_mutex);
     std::vector<AbsolutePath> files_to_be_delete;
- 
+
     for(auto& it : d_ptr->files)
     {
         for (auto& dir : directories)
@@ -52,7 +52,7 @@ void WorkingFiles::CloseFilesInDirectory(const std::vector<Directory>& directori
             }
         }
     }
-    
+
     for(auto& it : files_to_be_delete)
     {
         d_ptr->files.erase(it);
@@ -114,7 +114,7 @@ std::shared_ptr<WorkingFile>  WorkingFiles::OnChange(const lsTextDocumentDidChan
     // See https://github.com/Microsoft/language-server-protocol/issues/9.
     if (!diff.range) {
       file->buffer_content = diff.text;
-    
+
     } else {
       int start_offset =
           GetOffsetForPosition(diff.range->start, file->buffer_content);
@@ -125,7 +125,7 @@ std::shared_ptr<WorkingFile>  WorkingFiles::OnChange(const lsTextDocumentDidChan
       file->buffer_content.replace(file->buffer_content.begin() + start_offset,
           file->buffer_content.begin() + end_offset,
                                    diff.text);
-    
+
     }
   }
   return  file;
@@ -157,7 +157,7 @@ std::shared_ptr<WorkingFile> WorkingFiles::OnSave(const lsTextDocumentIdentifier
         return findIt->second;
     }
     return  {};
- 
+
 }
 
 bool WorkingFiles::GetFileBufferContent(std::shared_ptr<WorkingFile>&file, std::string& out)

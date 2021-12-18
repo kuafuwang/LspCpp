@@ -13,12 +13,12 @@ namespace websocket = beast::websocket; // from <boost/beast/websocket.hpp>
 namespace net = boost::asio;            // from <boost/asio.hpp>
 using tcp = boost::asio::ip::tcp;       // from <boost/asio/ip/tcp.hpp>
 namespace lsp {
- 
+
     // Echoes back all received WebSocket messages
     class server_session : public std::enable_shared_from_this<server_session>
     {
         websocket::stream<beast::tcp_stream> ws_;
-       
+
         beast::flat_buffer buffer_;
         std::string user_agent_;
     public:
@@ -82,14 +82,14 @@ namespace lsp {
                     shared_from_this()));
         }
 
-    
+
 
         void
             on_read(
                 beast::error_code ec,
                 std::size_t bytes_transferred)
         {
-           
+
             if(!ec)
             {
                 char* data = reinterpret_cast<char*>(buffer_.data().data());
@@ -112,7 +112,7 @@ namespace lsp {
         }
 
 
-        
+
         void close()
         {
         	if(ws_.is_open())
@@ -120,7 +120,7 @@ namespace lsp {
         		boost::system::error_code ec;
         		ws_.close(websocket::close_code::normal, ec);
         	}
-			
+
         }
     };
 
@@ -130,13 +130,13 @@ namespace lsp {
 	    {
             Data(const std::string& user_agent, lsp::Log& log) :
 			    acceptor_(io_context_), user_agent_(user_agent), _log(log)
-		
+
 		    {
 		    }
 
 	    	~Data()
 		    {
-              
+
 		    }
             /// The io_context used to perform asynchronous operations.
             boost::asio::io_context io_context_;
@@ -147,10 +147,10 @@ namespace lsp {
             boost::asio::ip::tcp::acceptor acceptor_;
 
             std::shared_ptr < server_session> _server_session;
-         
-            lsp::Log& _log;
+
             std::string user_agent_;
-     
+            lsp::Log& _log;
+
 	    };
 
     websocket_stream_wrapper::websocket_stream_wrapper(boost::beast::websocket::stream<boost::beast::tcp_stream>& _w):
@@ -177,12 +177,12 @@ namespace lsp {
     websocket_stream_wrapper& websocket_stream_wrapper::read(char* str, std::streamsize count)
     {
 	    auto some = on_request.TryDequeueSome(static_cast<size_t>(count));
-	    size_t i = 0;
-	    for (; i < some.size(); ++i)
+
+	    for (size_t i = 0; i < some.size(); ++i)
 	    {
 		    str[i] = some[i];
 	    }
-	    for (; i < count; ++i)
+	    for (std::streamsize i = 0; i < count; ++i)
 	    {
 		    str[i] = static_cast<char>(get());
 	    }
@@ -225,9 +225,9 @@ namespace lsp {
 
     std::string websocket_stream_wrapper::what()
     {
-        if (!error_message.empty())
-            return  error_message;
-    	
+            if (!error_message.empty())
+                     return  error_message;
+
 	    if (!ws_.next_layer().socket().is_open())
 	    {
 		    return "Socket is not open.";
@@ -244,9 +244,9 @@ namespace lsp {
             std::shared_ptr < MessageJsonHandler> json_handler,
             std::shared_ptr < Endpoint> localEndPoint, lsp::Log& log, uint32_t _max_workers)
             : point(json_handler,localEndPoint,log, _max_workers),d_ptr(new Data(user_agent,log))
-           
+
         {
-           
+
             d_ptr->work = std::make_shared<boost::asio::io_service::work>(d_ptr->io_context_);
 
             // Open the acceptor with the option to reuse the address (i.e. SO_REUSEADDR).
@@ -318,25 +318,24 @@ namespace lsp {
 	                        }
 	                        catch (...)
 	                        {
-	                        }	
+	                        }
                     	}
                         d_ptr->_server_session = std::make_shared<server_session>(std::move(socket), d_ptr->user_agent_);
                         d_ptr->_server_session->run();
-          
+
                         point.startProcessingMessages(d_ptr->_server_session->proxy_, d_ptr->_server_session->proxy_);
                         do_accept();
                     }
-                     
+
                 });
         }
 
         void WebSocketServer::do_stop()
         {
             d_ptr->acceptor_.close();
-           
+
           point.Stop();
-            
+
         }
 
-    } // namespace 
-
+    } // namespace

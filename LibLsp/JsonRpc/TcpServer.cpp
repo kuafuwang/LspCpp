@@ -44,12 +44,11 @@ namespace lsp {
 	        tcp_stream_wrapper& read(char* str, std::streamsize count)
 	        {
                 auto some = on_request.TryDequeueSome(static_cast<size_t>( count ));
-                size_t i = 0;
-                for (; i < some.size(); ++i)
+                for (size_t i = 0; i < some.size(); ++i)
 				{
 				    str[i] = some[i];
 				}
-                for (; i < count; ++i)
+                for (std::streamsize i = 0; i < count; ++i)
                 {
                     str[i] = static_cast<char>(get());
                 }
@@ -71,14 +70,14 @@ namespace lsp {
 	        {
 	            return *this;
 	        }
-	        void reset_state() 
+	        void reset_state()
 	        {
 	            return;
 	        }
 
 		    void clear() override
 	        {
-		        
+
 	        }
 
 		    std::string what() override;
@@ -99,7 +98,7 @@ namespace lsp {
 	            : socket_(std::move(_socket)), strand_(io_context), proxy_(new tcp_stream_wrapper(*this))
             {
                 do_read();
-            }     	
+            }
             void do_write(const std::string& data)
             {
                 socket_.async_write_some(boost::asio::buffer(data.data(), data.size()),
@@ -110,7 +109,7 @@ namespace lsp {
                             return;
                         }
                         proxy_->error_message = ec.message();
-                        
+
                     }));
             }
             void do_read()
@@ -127,7 +126,7 @@ namespace lsp {
                         return;
                     }
                     proxy_->error_message = ec.message();
-                	
+
                 }));
             }
 	    };
@@ -157,7 +156,7 @@ namespace lsp {
 	{
         if (error_message.size())
             return error_message;
-		
+
        if(! session.socket_.is_open())
        {
            return  "Socket is not open.";
@@ -175,7 +174,7 @@ namespace lsp {
 
 	    ~Data()
 	    {
-          
+
 	    }
         /// The io_context used to perform asynchronous operations.
         boost::asio::io_context io_context_;
@@ -195,13 +194,13 @@ namespace lsp {
             delete d_ptr;
 	    }
 
-        TcpServer::TcpServer(const std::string& address, const std::string& port, 
+        TcpServer::TcpServer(const std::string& address, const std::string& port,
             std::shared_ptr < MessageJsonHandler> json_handler,
             std::shared_ptr < Endpoint> localEndPoint, lsp::Log& log, uint32_t _max_workers)
             : point(json_handler, localEndPoint, log, _max_workers),d_ptr(new Data( log, _max_workers))
-           
+
         {
-           
+
             d_ptr->work = std::make_shared<boost::asio::io_service::work>(d_ptr->io_context_);
 
             // Open the acceptor with the option to reuse the address (i.e. SO_REUSEADDR).
@@ -277,11 +276,11 @@ namespace lsp {
                             point.Stop();
                     	}
                         auto local_point = socket.local_endpoint();
-                      
+
                         std::string desc = ("New client " + local_point.address().to_string() + " connect.");
                         d_ptr->_log.log(lsp::Log::Level::INFO, desc);
                         d_ptr->_connect_session = std::make_shared<tcp_connect_session>(d_ptr->io_context_,std::move(socket));
-                               
+
                         point.startProcessingMessages(d_ptr->_connect_session->proxy_, d_ptr->_connect_session->proxy_);
                         do_accept();
                     }
@@ -291,10 +290,9 @@ namespace lsp {
         void TcpServer::do_stop()
         {
             d_ptr->acceptor_.close();
-           
+
            point.Stop();
-            
+
         }
 
-    } // namespace 
-
+    } // namespace

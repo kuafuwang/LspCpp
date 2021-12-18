@@ -11,10 +11,10 @@ enum class lsFileChangeType {
 #ifdef  _WIN32
 MAKE_REFLECT_TYPE_PROXY(lsFileChangeType);
 #else
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunused-function"
+//#pragma clang diagnostic push
+//#pragma clang diagnostic ignored "-Wunused-function"
 MAKE_REFLECT_TYPE_PROXY(lsFileChangeType);
-#pragma clang diagnostic pop
+//#pragma clang diagnostic pop
 #endif
 
 
@@ -24,7 +24,7 @@ MAKE_REFLECT_TYPE_PROXY(lsFileChangeType);
 struct lsFileEvent {
   lsDocumentUri uri;
   lsFileChangeType type;
-	
+
   MAKE_SWAP_METHOD(lsFileEvent, uri, type)
 };
 MAKE_REFLECT_STRUCT(lsFileEvent, uri, type);
@@ -44,5 +44,3 @@ MAKE_REFLECT_STRUCT(lsDidChangeWatchedFilesParams, changes);
   */
 
 DEFINE_NOTIFICATION_TYPE(Notify_WorkspaceDidChangeWatchedFiles, lsDidChangeWatchedFilesParams, "workspace/didChangeWatchedFiles");
-
-

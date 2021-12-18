@@ -33,7 +33,7 @@
 #include <boost/algorithm/string.hpp>
 namespace lsp
 {
-	
+
 
 // See http://stackoverflow.com/a/2072890
 bool EndsWith(std::string value, std::string ending) {
@@ -218,7 +218,7 @@ bool WriteToFile(const std::string& filename, const std::string& content) {
   std::ofstream file(filename,
                      std::ios::out | std::ios::trunc | std::ios::binary);
   if (!file.good()) {
-   
+
     return false;
   }
 
@@ -428,7 +428,7 @@ AbsolutePath NormalizePath(const std::string& path0,
 
 #endif
 
-	
+
 }
 
 // VSCode (UTF-16) disagrees with Emacs lsp-mode (UTF-8) on how to represent
@@ -457,9 +457,9 @@ int GetOffsetForPosition(lsPosition position, const std::string& content) {
 }
 
 
-lsPosition GetPositionForOffset(int offset,const  std::string& content) {
+lsPosition GetPositionForOffset(size_t offset,const  std::string& content) {
 	lsPosition result;
-	for (int i = 0; i < offset && i < content.length(); ++i) {
+	for (size_t i = 0; i < offset && i < content.length(); ++i) {
 		if (content[i] == '\n') {
 			result.line++;
 			result.character = 0;
