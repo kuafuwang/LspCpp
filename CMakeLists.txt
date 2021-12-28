@@ -48,10 +48,8 @@ function (set_if_not_defined name value)
     endif()
 endfunction()
 
-set(LSPCPP_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set(LSPCPP_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
 set_if_not_defined(LSPCPP_THIRD_PARTY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
-
 
 macro(lspcpp_set_target_options_with_nuget_pkg target id version)
     if (CMAKE_GENERATOR MATCHES "Visual Studio.*")
@@ -109,6 +107,7 @@ function(lspcpp_set_target_options target)
 
                 # Warnings from nlohmann/json headers.
                 "/wd4267" # 'argument': conversion from 'size_t' to 'int', possible loss of data
+                "/bigobj" # for visual studio 2022 x64 or later.
                 )
     endif()
 
@@ -165,12 +164,16 @@ if (CMAKE_GENERATOR MATCHES "Visual Studio.*")
     INSTALL_NUGET(boost_system-vc141 1.76.0.0)
     INSTALL_NUGET(boost_thread-vc141 1.76.0.0)
 else()
-    find_package(Boost COMPONENTS date_time  chrono filesystem system thread program_options)
+    if(LSPCPP_BUILD_EXAMPLES)
+        find_package(Boost COMPONENTS date_time  chrono filesystem system thread program_options)
+    else()
+        find_package(Boost)
+    endif()
     if(NOT Boost_FOUND)
         if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-            message(FATAL_ERROR "Can't find boost,please install boost with : brew install boost")
+            message(FATAL_ERROR "Can't find boost,lease build boost and install it or install boost with : brew install boost")
         elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-            message(FATAL_ERROR "Can't find boost,please install boost with : sudo apt-get install libboost-dev")
+            message(FATAL_ERROR "Can't find boost,please build boost and install it. or install boost with : sudo apt-get install libboost-dev")
         endif()
     endif()
 endif()

@@ -45,12 +45,8 @@ namespace lsp {
                   override
 	        {
                 auto some = on_request.TryDequeueSome(static_cast<size_t>( count ));
-                size_t i = 0;
-                for (; i < some.size(); ++i)
-				{
-				    str[i] = some[i];
-				}
-                for (; i < count; ++i)
+                memcpy(str,some.data(),some.size());
+                for (std::streamsize i = some.size(); i < count; ++i)
                 {
                     str[i] = static_cast<char>(get());
                 }
