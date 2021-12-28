@@ -24,7 +24,7 @@
 -----------------------
 	$ mkdir _build
 	$ cd _build
-	$ cmake ..
+	$ cmake -DUri_BUILD_TESTS=OFF ..
 	$ make -j4
 
 ### Windows
