@@ -1,3 +1,6 @@
 [submodule "third_party/rapidjson"]
 	path = third_party/rapidjson
 	url = https://github.com/Tencent/rapidjson
+[submodule "third_party/uri"]
+	path = third_party/uri
+	url = https://github.com/cpp-netlib/uri.git
