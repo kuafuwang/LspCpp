@@ -292,19 +292,28 @@ bool IsDirectory(const std::string& path) {
   return path_stat.st_mode & S_IFDIR;
 }
 
+    std::string ws2s(std::wstring const& wstr) {
+        if(sizeof(wchar_t) == 2){
+            std::string narrow;
+            utf8::utf16to8(wstr.begin(), wstr.end(), std::back_inserter(narrow));
+            return narrow;
+        }else{
+            std::string narrow;
+            utf8::utf32to8(wstr.begin(), wstr.end(), std::back_inserter(narrow));
+            return narrow;
+        }
 
-std::string ws2s(std::wstring const& wstr) {
-
-	std::string narrow;
-	utf8::utf32to8(wstr.begin(), wstr.end(), std::back_inserter(narrow));
-	return narrow;
-}
-std::wstring s2ws(const std::string& str) {
-	std::wstring wide;
-	utf8::utf8to32(str.begin(), str.end(), std::back_inserter(wide));
-	return wide;
-}
-
+    }
+    std::wstring s2ws(const std::string& str) {
+        std::wstring wide;
+        if(sizeof(wchar_t) == 2){
+            utf8::utf8to16(str.begin(), str.end(), std::back_inserter(wide));
+            return wide;
+        }else{
+            utf8::utf8to32(str.begin(), str.end(), std::back_inserter(wide));
+            return wide;
+        }
+    }
 
 #ifdef _WIN32
 

@@ -13,10 +13,12 @@ set(LIB_MINOR_VERSION "0")
 set(LIB_PATCH_VERSION "0")
 set(LIB_VERSION_STRING "${LIB_MAJOR_VERSION}.${LIB_MINOR_VERSION}.${LIB_PATCH_VERSION}")
 
-cmake_policy(SET CMP0048 NEW)
+# Without this, paths are not relative in the sources list
+cmake_policy(SET CMP0076 NEW)
 project(lspcpp VERSION "${LIB_VERSION_STRING}" LANGUAGES CXX C)
 
-# compile in Debug  mode by default
+
+# compile in RelWithDebInfo  mode by default
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Choose the type of build, options are: Debug Release RelWithDebInfo MinSizeRel." FORCE)
 endif()
