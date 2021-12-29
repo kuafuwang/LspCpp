@@ -166,11 +166,8 @@ if (CMAKE_GENERATOR MATCHES "Visual Studio.*")
     INSTALL_NUGET(boost_system-vc141 1.76.0.0)
     INSTALL_NUGET(boost_thread-vc141 1.76.0.0)
 else()
-    if(LSPCPP_BUILD_EXAMPLES)
-        find_package(Boost COMPONENTS date_time  chrono filesystem system thread program_options)
-    else()
-        find_package(Boost)
-    endif()
+
+    find_package(Boost COMPONENTS date_time  chrono filesystem system thread program_options)
     if(NOT Boost_FOUND)
         if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
             message(FATAL_ERROR "Can't find boost,lease build boost and install it or install boost with : brew install boost")
@@ -212,15 +209,21 @@ add_library(lspcpp STATIC)
 
 ### Includes
 target_include_directories(lspcpp
-        PUBLIC ${LSPCPP_INCLUDE_DIR}  ${Boost_INCLUDE_DIRS})
+        PUBLIC
+            ${LSPCPP_INCLUDE_DIR}
+            ${Boost_INCLUDE_DIRS}
+            ${RapidJSON_INCLUDE_DIRS}
+            ${Uri_SOURCE_DIR}/include
+        )
 
-set(LSPCPP_THIRD_PARTY_DIR
-        third_party/threadpool
-        third_party/utfcpp/source
-        ${RapidJSON_INCLUDE_DIRS}
-        ${Uri_SOURCE_DIR}/include)
+target_link_libraries(lspcpp PUBLIC network-uri  ${Boost_LIBRARIES})
 
-foreach(include_dir  ${LSPCPP_THIRD_PARTY_DIR})
+set(LSPCPP_THIRD_PARTY_DIR_LIST
+        ${LSPCPP_THIRD_PARTY_DIR}/threadpool
+        ${LSPCPP_THIRD_PARTY_DIR}/utfcpp/source
+        )
+
+foreach(include_dir  ${LSPCPP_THIRD_PARTY_DIR_LIST})
     get_filename_component(include_dir_realpath ${include_dir} REALPATH)
     # Don't add as SYSTEM if they are in CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES.
     # It would reorder the system search paths and cause issues with libstdc++'s
@@ -309,7 +312,7 @@ if(LSPCPP_BUILD_EXAMPLES)
                 FOLDER "Examples"
                 )
         lspcpp_set_target_options(${target})
-        target_link_libraries(${target} lspcpp  network-uri "${LSPCPP_OS_LIBS}" ${Boost_LIBRARIES})
+        target_link_libraries(${target}  PRIVATE lspcpp "${LSPCPP_OS_LIBS}")
     endfunction(build_example)
 
     set(EXAMPLES
