@@ -38,7 +38,7 @@
   -----------------------
     mkdir _build
 	cd _build
-	cmake -DUri_BUILD_TESTS=OFF  ..
+	cmake -DUri_BUILD_TESTS=OFF -DUri_USE_STATIC_CRT=OFF ..
 
   3. "cmake -help" is useful if you are not familiar with cmake.
   
