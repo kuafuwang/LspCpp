@@ -883,33 +883,35 @@ namespace std
 		*******************************************************************************/
 		string_ref& format(const char* format_string, ...)
 		{
-			if (format_string == 0)
-			{
-				return *this;
-			}
+            if (format_string == 0)
+            {
+                return *this;
+            }
 
-			va_list argList;
-			char* pbuf = 0;
-			va_start( argList, format_string );
-#ifdef _WIN32
-			int len = _vscprintf( format_string, argList );
-#else
-			int len = vsnprintf(nullptr, 0, format_string, argList);
-#endif
-			pbuf = new char[len + 1];
-			if (pbuf != 0)
-			{
-#ifdef _WIN32
-				vsprintf_s( pbuf, len + 1, format_string, argList );
-#else
-                vsprintf(pbuf, format_string, argList);
-#endif
-				*this = pbuf;
-			}
-			delete[] pbuf;
-			va_end( argList );
+            va_list argList;
+            va_start( argList, format_string );
 
-			return *this;
+#ifdef _WIN32
+            int len = _vscprintf( format_string, argList );
+            char* pbuf = new char[len + 1];
+            if (pbuf != 0)
+            {
+                vsprintf_s( pbuf, len + 1, format_string, argList );
+                *this = pbuf;
+                delete[] pbuf;
+            }
+#else
+            const int INLINE_FORMAT_BUFFER_LEN =2048;
+            char* buf = new char[INLINE_FORMAT_BUFFER_LEN + 1];
+            if (buf != 0)
+            {
+                int len  =vsnprintf(buf,INLINE_FORMAT_BUFFER_LEN, format_string, argList);
+                assign(buf,buf+len);
+                delete[] buf;
+            }
+#endif
+            va_end( argList );
+            return *this;
 		}
 
 		/*******************************************************************************
