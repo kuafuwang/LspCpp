@@ -1,16 +1,16 @@
 # LspCpp
 
 ## Dependencies
-`LspCpp` depends on boost rapidjson, utfcpp, uri, and threadpool.
+`LspCpp` depends on boost, rapidjson, utfcpp, uri, and threadpool.
 
 ## Build
 
 ### Linux / Mac
-1. On linux ,install boost
+1. On linux, install boost
    ```shell
       $ sudo apt-get install libboost-dev 
    ``` 
-   On Mac,install boost on Mac
+   On Mac, install boost on Mac
    ```shell
       $ brew install boost
    ``` 
