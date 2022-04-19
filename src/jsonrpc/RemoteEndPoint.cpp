@@ -508,8 +508,8 @@ void RemoteEndPoint::mainLoop(std::unique_ptr<LspMessage>msg)
 
 	else if (_kind == LspMessage::RESPONCE_MESSAGE)
 	{
-		auto response = static_cast<ResponseInMessage*>(msg.get());
-		auto msgInfo = d_ptr->getRequestInfo(response->id);
+		const auto id = static_cast<ResponseInMessage*>(msg.get())->id;
+		auto msgInfo = d_ptr->getRequestInfo(id);
 		if (!msgInfo)
 		{
 			const auto _method_desc = msg->GetMethodType();
@@ -529,7 +529,7 @@ void RemoteEndPoint::mainLoop(std::unique_ptr<LspMessage>msg)
 			{
 				local_endpoint->onResponse(msgInfo->method, std::move(msg));
 			}
-			d_ptr->removeRequestInfo(response->id);
+			d_ptr->removeRequestInfo(id);
 		}
 	}
 	else if (_kind == LspMessage::NOTIFICATION_MESSAGE)
