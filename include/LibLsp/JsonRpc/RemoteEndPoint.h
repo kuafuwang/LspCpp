@@ -12,6 +12,7 @@
 #include "MessageIssue.h"
 #include "LibLsp/JsonRpc/MessageJsonHandler.h"
 #include "Endpoint.h"
+#include "future.h"
 
 
 class MessageJsonHandler;
@@ -209,11 +210,11 @@ public:
 	}
 
 	template <typename T, typename = IsRequest<T>>
-	std::future< lsp::ResponseOrError<typename T::Response> > send(T& request) {
+	lsp::future< lsp::ResponseOrError<typename T::Response> > send(T& request) {
 
 		ProcessResponseJsonHandler(request);
 		using Response = typename T::Response;
-		auto promise = std::make_shared< std::promise<lsp::ResponseOrError<Response>>>();
+		auto promise = std::make_shared< lsp::promise<lsp::ResponseOrError<Response>>>();
 		auto cb = [=](std::unique_ptr<LspMessage> msg) {
 			if (!msg)
 				return true;
@@ -249,7 +250,7 @@ public:
 		else
 		{
 			auto state = future_rsp.wait_for(std::chrono::milliseconds(time_out));
-			if (std::future_status::timeout == state)
+			if (lsp::future_status::timeout == state)
 			{
 				return {};
 			}
