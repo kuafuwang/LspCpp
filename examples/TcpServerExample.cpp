@@ -175,7 +175,7 @@ int main()
 		client.remote_end_point_.send(cancel_notify);
 		
 		auto state = future_rsp.wait_for(std::chrono::seconds(16));
-		if (std::future_status::timeout == state)
+		if (lsp::future_status::timeout == state)
 		{
 			std::cout << "get textDocument/definition  response time out" << std::endl;
 			return 0;

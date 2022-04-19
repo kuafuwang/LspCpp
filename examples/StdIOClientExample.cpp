@@ -182,7 +182,7 @@ int main(int argc, char* argv[])
 		td_definition::request req;
 		auto future_rsp = client.point.send(req);
 		auto state = future_rsp.wait_for(std::chrono::seconds(4));
-		if (std::future_status::timeout == state)
+		if (lsp::future_status::timeout == state)
 		{
 			std::cerr << "get textDocument/definition  response time out" << std::endl;
 			return 0;
