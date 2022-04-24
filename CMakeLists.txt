@@ -227,7 +227,6 @@ target_include_directories(lspcpp
 target_link_libraries(lspcpp PUBLIC network-uri  ${Boost_LIBRARIES})
 
 set(LSPCPP_THIRD_PARTY_DIR_LIST
-        ${LSPCPP_THIRD_PARTY_DIR}/threadpool
         ${LSPCPP_THIRD_PARTY_DIR}/utfcpp/source
         )
 
