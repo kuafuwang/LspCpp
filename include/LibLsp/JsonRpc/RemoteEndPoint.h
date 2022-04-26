@@ -278,6 +278,14 @@ public:
 	{
 		send(msg);
 	}
+    template <typename T>
+    T createRequest() {
+        auto req = T();
+        req.id.set(getNextRequestId());
+        return req;
+    }
+    int getNextRequestId();
+
 	void startProcessingMessages(std::shared_ptr<lsp::istream> r,
 		std::shared_ptr<lsp::ostream> w);
 
@@ -291,7 +299,7 @@ public:
 
 	std::unique_ptr<LspMessage> internalWaitResponse(RequestInMessage&, unsigned time_out = 0);
 
-	void internalSendRequest(RequestInMessage&, GenericResponseHandler);
+	bool internalSendRequest(RequestInMessage &info, GenericResponseHandler handler);
 
 	void handle(std::vector<MessageIssue>&&) override;
 	void handle(MessageIssue&&) override;

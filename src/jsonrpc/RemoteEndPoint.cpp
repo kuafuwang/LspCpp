@@ -153,7 +153,7 @@ struct RemoteEndPoint::Data
 	   delete	message_producer;
 	}
     uint8_t max_workers;
-	std::atomic<unsigned> m_id;
+	std::atomic<int> m_id;
     std::shared_ptr<boost::asio::thread_pool> tp;
 	// Method calls may be cancelled by ID, so keep track of their state.
  // This needs a mutex: handlers may finish on a different thread, and that's
@@ -201,13 +201,21 @@ struct RemoteEndPoint::Data
 	std::shared_ptr<lsp::istream>  input;
 	std::shared_ptr<lsp::ostream>  output;
 
-	void pendingRequest(RequestInMessage& info, GenericResponseHandler&& handler)
+	bool pendingRequest(RequestInMessage& info, GenericResponseHandler&& handler)
 	{
-		auto id = m_id.fetch_add(1, std::memory_order_relaxed);
-		info.id.set(id);
-		std::lock_guard<std::mutex> lock(m_requsetInfo);
-		_client_request_futures[info.id] = std::make_shared<PendingRequestInfo>(info.method, handler);
-
+        bool ret = true;
+        std::lock_guard<std::mutex> lock(m_requsetInfo);
+        if(!info.id.has_value()){
+            auto id = getNextRequestId();
+            info.id.set(id);
+        }
+        else{
+            if(_client_request_futures.find(info.id) != _client_request_futures.end()){
+                ret =  false;
+            }
+        }
+        _client_request_futures[info.id] = std::make_shared<PendingRequestInfo>(info.method, handler);
+        return ret;
 	}
 	const std::shared_ptr<const PendingRequestInfo> getRequestInfo(const lsRequestId& _id)
 	{
@@ -241,6 +249,11 @@ struct RemoteEndPoint::Data
         }
 		quit.store(true, std::memory_order_relaxed);
 	}
+
+    int getNextRequestId()
+    {
+        return m_id.fetch_add(1, std::memory_order_relaxed);
+    }
 };
 
 namespace
@@ -468,19 +481,29 @@ bool RemoteEndPoint::dispatch(const std::string& content)
 
 
 
-void RemoteEndPoint::internalSendRequest( RequestInMessage& info, GenericResponseHandler handler)
+bool RemoteEndPoint::internalSendRequest(RequestInMessage& info, GenericResponseHandler handler)
 {
 	std::lock_guard<std::mutex> lock(m_sendMutex);
 	if (!d_ptr->output || d_ptr->output->bad())
 	{
 		std::string desc = "Output isn't good any more:\n";
-		d_ptr->log.log(Log::Level::INFO, desc);
-		return ;
+		d_ptr->log.log(Log::Level::WARNING, desc);
+		return false;
 	}
-	d_ptr->pendingRequest(info, std::move(handler));
+	if(!d_ptr->pendingRequest(info, std::move(handler)))
+    {
+        std::string desc = "Duplicate id  which of request:";
+        desc += info.ToJson();
+        desc += "\n";
+        d_ptr->log.log(Log::Level::WARNING, desc);
+    }
 	WriterMsg(d_ptr->output, info);
+    return true;
 }
 
+int RemoteEndPoint::getNextRequestId(){
+    return   d_ptr->getNextRequestId();
+}
 
 std::unique_ptr<LspMessage> RemoteEndPoint::internalWaitResponse(RequestInMessage& request, unsigned time_out)
 {
