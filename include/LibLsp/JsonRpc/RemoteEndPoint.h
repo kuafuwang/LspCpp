@@ -284,7 +284,10 @@ public:
         req.id.set(getNextRequestId());
         return req;
     }
+
     int getNextRequestId();
+
+    bool cancelRequest(const lsRequestId&);
 
 	void startProcessingMessages(std::shared_ptr<lsp::istream> r,
 		std::shared_ptr<lsp::ostream> w);
