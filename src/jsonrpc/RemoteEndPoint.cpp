@@ -201,10 +201,12 @@ struct RemoteEndPoint::Data
 	std::shared_ptr<lsp::istream>  input;
 	std::shared_ptr<lsp::ostream>  output;
 
+    std::mutex m_requestInfo;
+
 	bool pendingRequest(RequestInMessage& info, GenericResponseHandler&& handler)
 	{
         bool ret = true;
-        std::lock_guard<std::mutex> lock(m_requsetInfo);
+        std::lock_guard<std::mutex> lock(m_requestInfo);
         if(!info.id.has_value()){
             auto id = getNextRequestId();
             info.id.set(id);
@@ -219,7 +221,7 @@ struct RemoteEndPoint::Data
 	}
 	const std::shared_ptr<const PendingRequestInfo> getRequestInfo(const lsRequestId& _id)
 	{
-		std::lock_guard<std::mutex> lock(m_requsetInfo);
+		std::lock_guard<std::mutex> lock(m_requestInfo);
 		auto findIt = _client_request_futures.find(_id);
 		if (findIt != _client_request_futures.end())
 		{
@@ -228,10 +230,9 @@ struct RemoteEndPoint::Data
 		return  nullptr;
 	}
 
-	std::mutex m_requsetInfo;
 	void removeRequestInfo(const lsRequestId& _id)
 	{
-		std::lock_guard<std::mutex> lock(m_requsetInfo);
+		std::lock_guard<std::mutex> lock(m_requestInfo);
 		auto findIt = _client_request_futures.find(_id);
 		if (findIt != _client_request_futures.end())
 		{
@@ -241,7 +242,7 @@ struct RemoteEndPoint::Data
 	void clear()
 	{
 		{
-			std::lock_guard<std::mutex> lock(m_requsetInfo);
+			std::lock_guard<std::mutex> lock(m_requestInfo);
 			_client_request_futures.clear();
 		}
         if(tp){
@@ -402,19 +403,9 @@ bool RemoteEndPoint::dispatch(const std::string& content)
 				auto msgInfo = d_ptr->getRequestInfo(id);
 				if (!msgInfo)
 				{
-					std::pair<std::string, std::unique_ptr<LspMessage>> result;
-					auto b = jsonHandler->resovleResponseMessage(visitor, result);
-					if (b)
-					{
-						result.second->SetMethodType(result.first.c_str());
-						mainLoop(std::move(result.second));
-					}
-					else
-					{
-						std::string info = "Unknown response message :\n";
-						info += content;
-						d_ptr->log.log(Log::Level::INFO, info);
-					}
+                    std::string info = "Unknown response message :\n";
+                    info += content;
+                    d_ptr->log.log(Log::Level::INFO, info);
 				}
 				else
 				{
@@ -504,7 +495,15 @@ bool RemoteEndPoint::internalSendRequest(RequestInMessage& info, GenericResponse
 int RemoteEndPoint::getNextRequestId(){
     return   d_ptr->getNextRequestId();
 }
-
+bool RemoteEndPoint::cancelRequest(const lsRequestId& id){
+    if(!IsWorking()){
+        return false;
+    }
+    Notify_Cancellation::notify cancel_notify;
+    cancel_notify.params.id = id;
+    send(cancel_notify);
+    return true;
+}
 std::unique_ptr<LspMessage> RemoteEndPoint::internalWaitResponse(RequestInMessage& request, unsigned time_out)
 {
 	auto  eventFuture = std::make_shared< Condition< LspMessage > >();
