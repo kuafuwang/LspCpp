@@ -271,7 +271,7 @@ namespace lsp {
                                 d_ptr->_connect_session->socket_.close();
                     		}
 
-                            point.Stop();
+                            point.stop();
                     	}
                         auto local_point = socket.local_endpoint();
 
@@ -289,7 +289,7 @@ namespace lsp {
         {
             d_ptr->acceptor_.close();
 
-           point.Stop();
+            point.stop();
 
         }
 

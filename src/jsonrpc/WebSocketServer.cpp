@@ -310,7 +310,7 @@ namespace lsp {
 	                        try
 	                        {
                                 d_ptr->_server_session->close();
-                                point.Stop();
+                                point.stop();
 	                        }
 	                        catch (...)
 	                        {
@@ -330,7 +330,7 @@ namespace lsp {
         {
             d_ptr->acceptor_.close();
 
-          point.Stop();
+            point.stop();
 
         }
 

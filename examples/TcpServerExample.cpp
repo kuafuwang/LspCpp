@@ -144,7 +144,7 @@ public:
 	}
 	~Client()
 	{
-		remote_end_point_.Stop();
+        remote_end_point_.stop();
 		std::this_thread::sleep_for(std::chrono::milliseconds (1000));
 		socket_->close();
 	}

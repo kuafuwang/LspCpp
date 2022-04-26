@@ -131,7 +131,7 @@ public:
 	template <typename F, typename RequestType = ParamType<F, 0>, typename ResponseType = typename RequestType::Response>
 	IsRequestHandler< F, lsp::ResponseOrError<ResponseType> >  registerHandler(F&& handler)
 	{
-		ProcessRequestJsonHandler(handler);
+		processRequestJsonHandler(handler);
 		local_endpoint->registerRequestHandler(RequestType::kMethodInfo, [=](std::unique_ptr<LspMessage> msg) {
 			auto  req = reinterpret_cast<const RequestType*>(msg.get());
 			lsp::ResponseOrError<ResponseType> res(handler(*req));
@@ -149,7 +149,7 @@ public:
 	}
 	template <typename F, typename RequestType = ParamType<F, 0>, typename ResponseType = typename RequestType::Response>
 	IsRequestHandlerWithMonitor< F, lsp::ResponseOrError<ResponseType> >  registerHandler(F&& handler)  {
-		ProcessRequestJsonHandler(handler);
+		processRequestJsonHandler(handler);
 		local_endpoint->registerRequestHandler(RequestType::kMethodInfo, [=](std::unique_ptr<LspMessage> msg) {
 			auto  req = static_cast<const RequestType*>(msg.get());
 			lsp::ResponseOrError<ResponseType> res(handler(*req , getCancelMonitor(req->id)));
@@ -170,7 +170,7 @@ public:
 	template <typename T, typename F, typename ResponseType = ParamType<F, 0> >
 	void send(T& request, F&& handler, RequestErrorCallback onError)
 	{
-		ProcessRequestJsonHandler(handler);
+		processRequestJsonHandler(handler);
 		auto cb = [=](std::unique_ptr<LspMessage> msg) {
 			if (!msg)
 				return true;
@@ -212,7 +212,7 @@ public:
 	template <typename T, typename = IsRequest<T>>
 	lsp::future< lsp::ResponseOrError<typename T::Response> > send(T& request) {
 
-		ProcessResponseJsonHandler(request);
+		processResponseJsonHandler(request);
 		using Response = typename T::Response;
 		auto promise = std::make_shared< lsp::promise<lsp::ResponseOrError<Response>>>();
 		auto cb = [=](std::unique_ptr<LspMessage> msg) {
@@ -292,13 +292,13 @@ public:
 	void startProcessingMessages(std::shared_ptr<lsp::istream> r,
 		std::shared_ptr<lsp::ostream> w);
 
-	bool IsWorking() const
+	bool isWorking() const
 	{
 		if (message_producer_thread_)
 			return true;
 		return  false;
 	}
-	void Stop();
+	void stop();
 
 	std::unique_ptr<LspMessage> internalWaitResponse(RequestInMessage&, unsigned time_out = 0);
 
@@ -312,7 +312,7 @@ private:
 	void mainLoop(std::unique_ptr<LspMessage>);
 	bool dispatch(const std::string&);
 	template <typename F, typename RequestType = ParamType<F, 0>>
-	IsRequest<RequestType>  ProcessRequestJsonHandler(const F& handler) {
+	IsRequest<RequestType>  processRequestJsonHandler(const F& handler) {
 		std::lock_guard<std::mutex> lock(m_sendMutex);
 		if (!jsonHandler->GetRequestJsonHandler(RequestType::kMethodInfo))
 		{
@@ -324,7 +324,7 @@ private:
 		}	
 	}
 	template <typename T, typename = IsRequest<T>>
-	void ProcessResponseJsonHandler(T& request)
+	void processResponseJsonHandler(T& request)
 	{
 		using Response = typename T::Response;
 		std::lock_guard<std::mutex> lock(m_sendMutex);

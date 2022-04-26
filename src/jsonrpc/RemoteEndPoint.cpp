@@ -496,13 +496,17 @@ int RemoteEndPoint::getNextRequestId(){
     return   d_ptr->getNextRequestId();
 }
 bool RemoteEndPoint::cancelRequest(const lsRequestId& id){
-    if(!IsWorking()){
+    if(!isWorking()){
         return false;
     }
-    Notify_Cancellation::notify cancel_notify;
-    cancel_notify.params.id = id;
-    send(cancel_notify);
-    return true;
+    auto msgInfo = d_ptr->getRequestInfo(id);
+    if (msgInfo){
+        Notify_Cancellation::notify cancel_notify;
+        cancel_notify.params.id = id;
+        send(cancel_notify);
+        return true;
+    }
+    return false;
 }
 std::unique_ptr<LspMessage> RemoteEndPoint::internalWaitResponse(RequestInMessage& request, unsigned time_out)
 {
@@ -613,7 +617,7 @@ void RemoteEndPoint::startProcessingMessages(std::shared_ptr<lsp::istream> r,
 	});
 }
 
-void RemoteEndPoint::Stop()
+void RemoteEndPoint::stop()
 {
 	if(message_producer_thread_ && message_producer_thread_->joinable())
 	{

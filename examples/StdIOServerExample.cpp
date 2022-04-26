@@ -64,7 +64,7 @@ public:
 
 		remote_end_point_.registerHandler([&](Notify_Exit::notify& notify)
 			{
-				remote_end_point_.Stop();
+                remote_end_point_.stop();
 				esc_event.notify(std::make_unique<bool>(true));
 			});
 		remote_end_point_.registerHandler([&](const td_definition::request& req,
