@@ -622,6 +622,7 @@ void RemoteEndPoint::stop()
 	if(message_producer_thread_ && message_producer_thread_->joinable())
 	{
 		message_producer_thread_->detach();
+        message_producer_thread_ = nullptr;
 	}
 	d_ptr->clear();
 
@@ -639,4 +640,10 @@ void RemoteEndPoint::sendMsg( LspMessage& msg)
 	}
 	WriterMsg(d_ptr->output, msg);
 
+}
+
+bool RemoteEndPoint::isWorking() const {
+    if (message_producer_thread_ && message_producer_thread_->joinable())
+        return true;
+    return  false;
 }

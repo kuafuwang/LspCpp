@@ -292,12 +292,7 @@ public:
 	void startProcessingMessages(std::shared_ptr<lsp::istream> r,
 		std::shared_ptr<lsp::ostream> w);
 
-	bool isWorking() const
-	{
-		if (message_producer_thread_)
-			return true;
-		return  false;
-	}
+	bool isWorking() const;
 	void stop();
 
 	std::unique_ptr<LspMessage> internalWaitResponse(RequestInMessage&, unsigned time_out = 0);
