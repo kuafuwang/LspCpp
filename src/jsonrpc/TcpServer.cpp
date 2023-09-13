@@ -97,18 +97,18 @@ namespace lsp {
             {
                 do_read();
             }
-            void do_write(const std::string& data)
+            void do_write(const char* data, size_t size)
             {
-                socket_.async_write_some(boost::asio::buffer(data.data(), data.size()),
-                    boost::asio::bind_executor(strand_,[this](boost::system::error_code ec, std::size_t n)
-                   {
-                        if (!ec)
-                        {
-                            return;
-                        }
-                        proxy_->error_message = ec.message();
+                socket_.async_write_some(boost::asio::buffer(data, size),
+                                         boost::asio::bind_executor(strand_,[this](boost::system::error_code ec, std::size_t n)
+                                         {
+                                             if (!ec)
+                                             {
+                                                 return;
+                                             }
+                                             proxy_->error_message = ec.message();
 
-                    }));
+                                         }));
             }
             void do_read()
             {
@@ -140,13 +140,23 @@ namespace lsp {
 
         tcp_stream_wrapper& tcp_stream_wrapper::write(const std::string& c)
         {
-                session.do_write(c);
-                return *this;
+            size_t off = 0;
+            for(;off < c.size();){
+                if(off + 1024 < c.size()){
+                    session.do_write(c.data()+off,1024);
+                    off += 1024;
+                }else{
+                    session.do_write(c.data()+off,c.size() - off);
+                    break;
+                }
+            }
+            return *this;
         }
 
     tcp_stream_wrapper& tcp_stream_wrapper::write(std::streamsize _s)
     {
-        session.do_write(std::to_string(_s));
+        auto s = std::to_string(_s);
+        session.do_write(s.data(),s.size());
         return *this;
     }
 
