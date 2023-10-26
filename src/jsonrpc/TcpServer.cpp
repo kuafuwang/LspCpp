@@ -205,7 +205,7 @@ namespace lsp {
         TcpServer::TcpServer(const std::string& address, const std::string& port,
             std::shared_ptr < MessageJsonHandler> json_handler,
             std::shared_ptr < Endpoint> localEndPoint, lsp::Log& log, uint32_t _max_workers)
-            : point(json_handler, localEndPoint, log, _max_workers),d_ptr(new Data( log, _max_workers))
+            : point(json_handler, localEndPoint, log,lsp::JSONStreamStyle::Standard, _max_workers),d_ptr(new Data( log, _max_workers))
 
         {
 
