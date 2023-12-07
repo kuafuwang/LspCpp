@@ -43,6 +43,7 @@ option_if_not_defined(LSPCPP_ASAN "Build lsp with address sanitizer" OFF)
 option_if_not_defined(LSPCPP_MSAN "Build lsp with memory sanitizer" OFF)
 option_if_not_defined(LSPCPP_TSAN "Build lsp with thread sanitizer" OFF)
 option_if_not_defined(LSPCPP_INSTALL "Create lsp install target" OFF)
+option_if_not_defined(LSPCPP_USE_CPP17 "Use C++17 for compilation. Setting this to off requires boost-optional." OFF)
 
 ###########################################################
 # Directories
@@ -89,8 +90,12 @@ function(lspcpp_set_target_options target)
 
     set_property(TARGET ${target} PROPERTY CXX_STANDARD_REQUIRED ON)
 
-    # Enable C++14 (Required)
-    set_property(TARGET ${target} PROPERTY CXX_STANDARD 14)
+    # Enable C++14/17 (Required)
+    if (LSPCPP_USE_CPP17)
+        set_property(TARGET ${target} PROPERTY CXX_STANDARD 17)
+    else()
+        set_property(TARGET ${target} PROPERTY CXX_STANDARD 14)
+    endif()
 
     set_property(TARGET ${target} PROPERTY CXX_EXTENSIONS OFF)
 
