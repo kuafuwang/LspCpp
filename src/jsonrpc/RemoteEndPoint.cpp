@@ -612,7 +612,7 @@ void RemoteEndPoint::startProcessingMessages(std::shared_ptr<lsp::istream> r,
                         const auto temp = std::make_shared<std::string>(std::move(content));
             boost::asio::post(*d_ptr->tp,
                         [this, temp]{
-#ifdef USEGC
+#ifdef LSPCPP_USEGC
                         GCThreadContext gcContext;
 #endif
 
