@@ -43,7 +43,16 @@ option_if_not_defined(LSPCPP_ASAN "Build lsp with address sanitizer" OFF)
 option_if_not_defined(LSPCPP_MSAN "Build lsp with memory sanitizer" OFF)
 option_if_not_defined(LSPCPP_TSAN "Build lsp with thread sanitizer" OFF)
 option_if_not_defined(LSPCPP_INSTALL "Create lsp install target" OFF)
+option_if_not_defined(LSPCPP_SUPPORT_BOEHM_GC
+    "Enable support for Boehm GC. Boehm GC must be available by find_package(BDWgc CONFIG REQUIRED)." OFF)
 option_if_not_defined(LSPCPP_USE_CPP17 "Use C++17 for compilation. Setting this to off requires boost-optional." OFF)
+
+
+# Boehm GC
+
+if (LSPCPP_SUPPORT_BOEHM_GC)
+    find_package(BDWgc CONFIG REQUIRED)
+endif()
 
 ###########################################################
 # Directories
@@ -156,6 +165,11 @@ function(lspcpp_set_target_options target)
     # if(NOT MSVC)
     #     target_compile_options(${target} PRIVATE "-Wl,--no-undefined")
     # endif()
+
+    if (LSPCPP_SUPPORT_BOEHM_GC)
+        target_link_libraries(${target} PUBLIC BDWgc::gc)
+        target_compile_definitions(${target} PUBLIC LSPCPP_USEGC)
+    endif()
 
 endfunction()
 
