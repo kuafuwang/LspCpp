@@ -139,6 +139,10 @@ public:
                 return v3supported && isDynamicRegistrationSupported(textDocument.documentHighlight);
         }
 
+        bool isDocumentLinkDynamicRegistered() {
+                return v3supported && isDynamicRegistrationSupported(textDocument.documentLink);
+        }
+
         bool isFoldgingRangeDynamicRegistered() {
                 return v3supported && isDynamicRegistrationSupported(textDocument.foldingRange);
         }
