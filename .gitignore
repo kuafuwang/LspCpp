@@ -542,3 +542,4 @@ FodyWeavers.xsd
 
 # Cmake directories
 cmake-*
+CMakeUserPresets.json
