@@ -147,6 +147,10 @@ public:
                 return v3supported && isDynamicRegistrationSupported(textDocument.foldingRange);
         }
 
+        bool isInlayHintDynamicRegistered() {
+            return v3supported && isDynamicRegistrationSupported(textDocument.inlayHint);
+        }
+
         bool isImplementationDynamicRegistered() {
                 return v3supported && isDynamicRegistrationSupported(textDocument.implementation);
         }
