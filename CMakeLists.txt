@@ -51,7 +51,14 @@ option_if_not_defined(LSPCPP_USE_CPP17 "Use C++17 for compilation. Setting this 
 # Boehm GC
 
 if (LSPCPP_SUPPORT_BOEHM_GC)
-    find_package(BDWgc CONFIG REQUIRED)
+    find_package(BDWgc CONFIG)
+    if (NOT BDWgc_FOUND)
+	    set(GC_USE_PKGCONFIG 1)
+	    # fallback to pkg-config
+	    message(STATUS "CMake config for BDWgc not found; falling back to pkg-config")
+	    find_package(PkgConfig REQUIRED)
+	    pkg_check_modules(gc REQUIRED IMPORTED_TARGET bdw-gc)
+    endif()
 endif()
 
 ###########################################################
@@ -167,7 +174,13 @@ function(lspcpp_set_target_options target)
     # endif()
 
     if (LSPCPP_SUPPORT_BOEHM_GC)
-        target_link_libraries(${target} PUBLIC BDWgc::gc)
+	    if (NOT GC_USE_PKGCONFIG)
+		    message(STATUS "Using cmake config for locating gc")
+		    target_link_libraries(${target} PUBLIC BDWgc::gc)
+	    else()
+		    message(STATUS "Using pkg-config for locating gc")
+		    target_link_libraries(${target} PUBLIC PkgConfig::gc)
+	    endif() 
         target_compile_definitions(${target} PUBLIC LSPCPP_USEGC)
     endif()
 
