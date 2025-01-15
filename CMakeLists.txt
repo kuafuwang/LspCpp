@@ -285,15 +285,12 @@ endif()
 
 # lsp
 add_library(lspcpp STATIC)
-
+set (LSP_INCLUDE_LIST ${LSPCPP_INCLUDE_DIR}
+        ${Boost_INCLUDE_DIRS}
+        ${RapidJSON_INCLUDE_DIRS}
+        ${Uri_SOURCE_DIR}/include)
 ### Includes
-target_include_directories(lspcpp
-        PUBLIC
-            ${LSPCPP_INCLUDE_DIR}
-            ${Boost_INCLUDE_DIRS}
-            ${RapidJSON_INCLUDE_DIRS}
-            ${Uri_SOURCE_DIR}/include
-        )
+target_include_directories(lspcpp PRIVATE ${LSP_INCLUDE_LIST})
 
 target_link_libraries(lspcpp PUBLIC network-uri  ${Boost_LIBRARIES})
 
@@ -356,6 +353,15 @@ set_target_properties(lspcpp PROPERTIES POSITION_INDEPENDENT_CODE 1)
 # install
 if(LSPCPP_INSTALL)
     include(GNUInstallDirs)
+    install(TARGETS network-uri
+            EXPORT NetworkURITargets
+            LIBRARY DESTINATION lib
+            ARCHIVE DESTINATION lib
+            RUNTIME DESTINATION bin
+            INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+    install(EXPORT NetworkURITargets
+            FILE NetworkURITargets.cmake
+            DESTINATION lib/cmake/NetworkURI)
 
     install(DIRECTORY ${LSPCPP_INCLUDE_DIR}/LibLsp
             DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
@@ -393,7 +399,7 @@ if(LSPCPP_BUILD_EXAMPLES)
 
     function(build_example target)
         add_executable(${target} "${CMAKE_CURRENT_SOURCE_DIR}/examples/${target}.cpp")
-        target_include_directories(${target} PRIVATE ${Uri_SOURCE_DIR}/include)
+        target_include_directories(${target} PRIVATE ${LSP_INCLUDE_LIST})
         set_target_properties(${target} PROPERTIES
                 FOLDER "Examples"
                 )
