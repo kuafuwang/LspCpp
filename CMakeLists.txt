@@ -11,7 +11,8 @@ endif()
 set(LIB_MAJOR_VERSION "1")
 set(LIB_MINOR_VERSION "0")
 set(LIB_PATCH_VERSION "0")
-set(LIB_VERSION_STRING "${LIB_MAJOR_VERSION}.${LIB_MINOR_VERSION}.${LIB_PATCH_VERSION}")
+set(LIB_TWEAK_VERSION "0")
+set(LIB_VERSION_STRING "${LIB_MAJOR_VERSION}.${LIB_MINOR_VERSION}.${LIB_PATCH_VERSION}.${LIB_TWEAK_VERSION}")
 
 # Without this, paths are not relative in the sources list
 cmake_policy(SET CMP0076 NEW)
@@ -353,6 +354,7 @@ set_target_properties(lspcpp PROPERTIES POSITION_INDEPENDENT_CODE 1)
 # install
 if(LSPCPP_INSTALL)
     include(GNUInstallDirs)
+    include(CMakePackageConfigHelpers)
     install(TARGETS network-uri
             EXPORT NetworkURITargets
             LIBRARY DESTINATION lib
@@ -381,6 +383,15 @@ if(LSPCPP_INSTALL)
             NAMESPACE lspcpp::
             DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/lspcpp
             )
+    write_basic_package_version_file(
+            "${CMAKE_CURRENT_BINARY_DIR}/lspcpp-config-version.cmake"
+            VERSION ${LIB_VERSION_STRING}
+            COMPATIBILITY SameMajorVersion
+    )
+    install(
+            FILES "${CMAKE_CURRENT_BINARY_DIR}/lspcpp-config-version.cmake"
+            DESTINATION lib/cmake/lspcpp
+    )
 endif()
 
 # examples
