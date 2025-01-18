@@ -463,7 +463,7 @@ if(LSPCPP_INSTALL)
             DESTINATION ${LSPCPP_CMAKE_DIR}
             )
     install(
-            FILES ${project_config} ${version_config} ${version_config}
+            FILES ${project_config} ${version_config}
             DESTINATION ${LSPCPP_CMAKE_DIR}
     )
     install(FILES "${pkgconfig}" DESTINATION "${LSPCPP_PKGCONFIG_DIR}")
