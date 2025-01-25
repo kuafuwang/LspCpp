@@ -1,0 +1,16 @@
+name: pull-req-precheck
+on:
+  pull_request:
+    branches:
+      - "master"
+      - "main"
+
+jobs:
+  check-cpp-format:
+    uses: ./.github/workflows/check-format-cpp.yaml
+  lsp-precheck-pass:
+    runs-on: "ubuntu-22.04"
+    needs:
+      - check-cpp-format
+    steps:
+      - run: echo All prechecks pass!
