@@ -10,7 +10,7 @@
 //Commands are identified by a string identifier.
 //The recommended way to handle commands is to implement their execution on the server side
 //if the clientand server provides the corresponding capabilities.Alternatively the tool
-//extension code could handle the command.The protocol currently doesn¡¯t specify a set of well - known commands.
+//extension code could handle the command.The protocol currently doesn't specify a set of well - known commands.
 template<typename AnyArray>
 struct lsCommand
 {
