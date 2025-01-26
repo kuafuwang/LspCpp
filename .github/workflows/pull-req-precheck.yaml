@@ -8,9 +8,12 @@ on:
 jobs:
   check-cpp-format:
     uses: ./.github/workflows/check-format-cpp.yaml
+  build-lsp-linux:
+    uses: ./.github/workflows/build-lsp-linux.yaml
   lsp-precheck-pass:
     runs-on: "ubuntu-22.04"
     needs:
       - check-cpp-format
+      - build-lsp-linux
     steps:
       - run: echo All prechecks pass!
