@@ -1,0 +1,9 @@
+[submodule "third_party/asio"]
+	path = third_party/asio
+	url = https://github.com/chriskohlhoff/asio.git
+[submodule "third_party/websocketpp"]
+	path = third_party/websocketpp
+	url = https://github.com/zaphoyd/websocketpp.git
+[submodule "third_party/optional"]
+	path = third_party/optional
+	url = https://github.com/TartanLlama/optional.git

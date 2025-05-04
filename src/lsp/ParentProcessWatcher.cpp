@@ -6,19 +6,18 @@
 #include <boost/process/v1/windows.hpp>
 #endif
 
-#include <boost/filesystem.hpp>
-#include <boost/asio.hpp>
+#include <asio.hpp>
 #include <iostream>
 
 #include "LibLsp/lsp/ProcessIoService.h"
 #include "LibLsp/lsp/SimpleTimer.h"
 
-using namespace boost::asio::ip;
+using namespace asio::ip;
 using namespace std;
 
 struct ParentProcessWatcher::ParentProcessWatcherData : std::enable_shared_from_this<ParentProcessWatcherData>
 {
-    std::unique_ptr<SimpleTimer<boost::posix_time::seconds>> timer;
+    std::unique_ptr<SimpleTimer<std::chrono::seconds>> timer;
     lsp::Log& _log;
     std::function<void()> on_exit;
     lsp::ProcessIoService asio_io;
@@ -83,7 +82,7 @@ struct ParentProcessWatcher::ParentProcessWatcherData : std::enable_shared_from_
                             );
                         }
 
-                        self->timer = std::make_unique<SimpleTimer<boost::posix_time::seconds>>(
+                        self->timer = std::make_unique<SimpleTimer<std::chrono::seconds>>(
                             self->_poll_delay_secs, [=]() { self->run(); }
                         );
                     }

@@ -1,9 +1,9 @@
 #pragma once
 
-#include <boost/asio.hpp>
 #include <string>
-#include <boost/beast/core/tcp_stream.hpp>
-#include <boost/beast/websocket/stream.hpp>
+#include <asio.hpp>
+#include <websocketpp/config/asio_no_tls.hpp>
+#include <websocketpp/server.hpp>
 
 #include "RemoteEndPoint.h"
 #include "stream.h"

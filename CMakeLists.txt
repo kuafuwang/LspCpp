@@ -265,30 +265,70 @@ endif()
 set(Uri_BUILD_TESTS OFF)
 add_subdirectory(third_party/uri)
 
+################################################
+# ——— Optional Library ———
+################################################
+# bring in the tl::optional interface library
+add_subdirectory(third_party/optional)
+
+################################################
+# ——— Add Asio as INTERFACE target ———
+################################################
+# threading (Asio needs this)
+find_package(Threads REQUIRED)
+add_library(asio_lib INTERFACE)
+# point at the standalone Asio headers
+set(ASIO_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/asio/asio/include)
+# attach that include‑dir to our INTERFACE target
+target_include_directories(asio_lib
+        INTERFACE
+        $<BUILD_INTERFACE:${ASIO_INCLUDE_DIRS}>
+        $<INSTALL_INTERFACE:include>         # if you ever install
+)
+# define ASIO_STANDALONE for any consumer
+target_compile_definitions(asio_lib INTERFACE ASIO_STANDALONE)
+# link OS threads
+target_link_libraries(asio_lib INTERFACE Threads::Threads)
+
+#################################################
+# ——— Add WebSocket++ as INTERFACE target ———
+#################################################
+add_library(websocketpp_lib INTERFACE)
+# point at the web socket headers
+set(WEB_SOCKET_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/websocketpp)
+# attach WebSocket++ headers
+target_include_directories(websocketpp_lib
+        INTERFACE
+        $<BUILD_INTERFACE:${WEB_SOCKET_INCLUDE_DIRS}>
+        $<INSTALL_INTERFACE:include>
+)
+# WebSocket++ needs ASIO_STANDALONE too
+target_compile_definitions(websocketpp_lib INTERFACE ASIO_STANDALONE)
+
 ###########################################################
 # boost library
 ###########################################################
-if (CMAKE_GENERATOR MATCHES "Visual Studio.*")
-    INSTALL_NUGET(boost 1.76.0.0)
-    INSTALL_NUGET(boost_chrono-vc141 1.76.0.0)
-    INSTALL_NUGET(boost_date_time-vc141 1.76.0.0)
-    INSTALL_NUGET(boost_filesystem-vc141 1.76.0.0)
-    INSTALL_NUGET(boost_program_options-vc141 1.76.0.0)
-    INSTALL_NUGET(boost_system-vc141 1.76.0.0)
-    INSTALL_NUGET(boost_thread-vc141 1.76.0.0)
-else()
-
-    find_package(Boost CONFIG COMPONENTS date_time  chrono filesystem system thread program_options)
-    if(NOT Boost_FOUND)
-        if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-            message(FATAL_ERROR "Can't find boost,lease build boost and install it or install boost with : brew install boost")
-        elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-            message(FATAL_ERROR "Can't find boost,please build boost and install it. or install boost with : sudo apt-get install libboost-dev")
-        else()
-            message(FATAL_ERROR "Boost not found. Please ensure boost is available for CMake.")
-        endif()
-    endif()
-endif()
+#if (CMAKE_GENERATOR MATCHES "Visual Studio.*")
+#    INSTALL_NUGET(boost 1.76.0.0)
+#    INSTALL_NUGET(boost_chrono-vc141 1.76.0.0)
+#    INSTALL_NUGET(boost_date_time-vc141 1.76.0.0)
+#    INSTALL_NUGET(boost_filesystem-vc141 1.76.0.0)
+#    INSTALL_NUGET(boost_program_options-vc141 1.76.0.0)
+#    INSTALL_NUGET(boost_system-vc141 1.76.0.0)
+#    INSTALL_NUGET(boost_thread-vc141 1.76.0.0)
+#else()
+#
+#    find_package(Boost CONFIG COMPONENTS date_time  chrono filesystem system thread program_options)
+#    if(NOT Boost_FOUND)
+#        if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+#            message(FATAL_ERROR "Can't find boost,lease build boost and install it or install boost with : brew install boost")
+#        elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+#            message(FATAL_ERROR "Can't find boost,please build boost and install it. or install boost with : sudo apt-get install libboost-dev")
+#        else()
+#            message(FATAL_ERROR "Boost not found. Please ensure boost is available for CMake.")
+#        endif()
+#    endif()
+#endif()
 
 
 ###########################################################
@@ -320,13 +360,14 @@ endif()
 # lsp
 add_library(lspcpp STATIC)
 set (LSP_INCLUDE_LIST ${LSPCPP_INCLUDE_DIR}
-        ${Boost_INCLUDE_DIRS}
         ${RapidJSON_INCLUDE_DIRS}
+        ${ASIO_INCLUDE_DIRS}
+        ${WEB_SOCKET_INCLUDE_DIRS}
         ${Uri_SOURCE_DIR}/include)
 ### Includes
 target_include_directories(lspcpp PRIVATE ${LSP_INCLUDE_LIST})
 
-target_link_libraries(lspcpp PUBLIC network-uri  ${Boost_LIBRARIES})
+target_link_libraries(lspcpp PUBLIC network-uri asio_lib websocketpp_lib tl::optional)
 
 set(LSPCPP_THIRD_PARTY_DIR_LIST
         ${LSPCPP_THIRD_PARTY_DIR}/utfcpp/source
