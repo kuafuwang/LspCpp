@@ -4,7 +4,6 @@
 #include "LibLsp/JsonRpc/TcpServer.h"
 #include <signal.h>
 #include <utility>
-#include <boost/bind/bind.hpp>
 #include <asio.hpp>
 #include "LibLsp/JsonRpc/MessageIssue.h"
 #include "LibLsp/JsonRpc/stream.h"
@@ -96,7 +95,7 @@ struct tcp_connect_session : std::enable_shared_from_this<tcp_connect_session>
         socket_.async_write_some(
             asio::buffer(data, size), asio::bind_executor(
                                                  strand_,
-                                                 [this](boost::system::error_code ec, std::size_t)
+                                                 [this](asio::error_code ec, std::size_t)
                                                  {
                                                      if (!ec)
                                                      {
@@ -113,7 +112,7 @@ struct tcp_connect_session : std::enable_shared_from_this<tcp_connect_session>
             asio::buffer(buffer_),
             asio::bind_executor(
                 strand_,
-                [this](boost::system::error_code ec, size_t bytes_transferred)
+                [this](asio::error_code ec, size_t bytes_transferred)
                 {
                     if (!ec)
                     {
@@ -188,13 +187,13 @@ struct TcpServer::Data
     {
     }
     /// The io_context used to perform asynchronous operations.
-    boost::asio::io_context io_context_;
+    asio::io_context io_context_;
 
-    std::shared_ptr<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>> work;
+    std::shared_ptr<asio::executor_work_guard<asio::io_context::executor_type>> work;
 
     std::shared_ptr<tcp_connect_session> _connect_session;
     /// Acceptor used to listen for incoming connections.
-    boost::asio::ip::tcp::acceptor acceptor_;
+    asio::ip::tcp::acceptor acceptor_;
 
     lsp::Log& _log;
 };
@@ -226,7 +225,7 @@ TcpServer::TcpServer(
     {
         d_ptr->acceptor_.bind(endpoint);
     }
-    catch (boost::system::system_error& e)
+    catch (asio::system_error& e)
     {
         std::string temp = "Socket Server  bind failed.";
         d_ptr->_log.log(lsp::Log::Level::INFO, temp + e.what());
@@ -267,7 +266,7 @@ void TcpServer::stop()
 void TcpServer::do_accept()
 {
     d_ptr->acceptor_.async_accept(
-        [this](boost::system::error_code ec, asio::ip::tcp::socket socket)
+        [this](asio::error_code ec, asio::ip::tcp::socket socket)
         {
             // Check whether the TcpServer was stopped by a signal before this
             // completion handler had a chance to run.
