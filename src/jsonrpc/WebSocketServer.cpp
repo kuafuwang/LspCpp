@@ -10,8 +10,8 @@
 namespace beast = boost::beast; // from <boost/beast.hpp>
 namespace http = beast::http; // from <boost/beast/http.hpp>
 namespace websocket = beast::websocket; // from <boost/beast/websocket.hpp>
-namespace net = boost::asio; // from <boost/asio.hpp>
-using tcp = boost::asio::ip::tcp; // from <boost/asio/ip/tcp.hpp>
+namespace net = asio; // from <boost/asio.hpp>
+using tcp = asio::ip::tcp; // from <boost/asio/ip/tcp.hpp>
 namespace lsp
 {
 
@@ -111,12 +111,12 @@ struct WebSocketServer::Data
     {
     }
     /// The io_context used to perform asynchronous operations.
-    boost::asio::io_context io_context_;
+    asio::io_context io_context_;
 
-    std::shared_ptr<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>> work;
+    std::shared_ptr<asio::executor_work_guard<asio::io_context::executor_type>> work;
 
     /// Acceptor used to listen for incoming connections.
-    boost::asio::ip::tcp::acceptor acceptor_;
+    asio::ip::tcp::acceptor acceptor_;
 
     std::shared_ptr<server_session> _server_session;
 
@@ -167,7 +167,7 @@ bool websocket_stream_wrapper::bad()
 
 websocket_stream_wrapper& websocket_stream_wrapper::write(std::string const& c)
 {
-    ws_.write(boost::asio::buffer(std::string(c)));
+    ws_.write(asio::buffer(std::string(c)));
     return *this;
 }
 
@@ -175,7 +175,7 @@ websocket_stream_wrapper& websocket_stream_wrapper::write(std::streamsize _s)
 {
     std::ostringstream temp;
     temp << _s;
-    ws_.write(boost::asio::buffer(temp.str()));
+    ws_.write(asio::buffer(temp.str()));
     return *this;
 }
 
@@ -217,15 +217,15 @@ WebSocketServer::WebSocketServer(
 
 {
 
-    d_ptr->work = std::make_shared<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>(
+    d_ptr->work = std::make_shared<asio::executor_work_guard<asio::io_context::executor_type>>(
         d_ptr->io_context_.get_executor()
     );
 
     // Open the acceptor with the option to reuse the address (i.e. SO_REUSEADDR).
-    boost::asio::ip::tcp::resolver resolver(d_ptr->io_context_);
-    boost::asio::ip::tcp::endpoint endpoint = *resolver.resolve(address, port).begin();
+    asio::ip::tcp::resolver resolver(d_ptr->io_context_);
+    asio::ip::tcp::endpoint endpoint = *resolver.resolve(address, port).begin();
     d_ptr->acceptor_.open(endpoint.protocol());
-    d_ptr->acceptor_.set_option(boost::asio::ip::tcp::acceptor::reuse_address(true));
+    d_ptr->acceptor_.set_option(asio::ip::tcp::acceptor::reuse_address(true));
     try
     {
         d_ptr->acceptor_.bind(endpoint);
@@ -271,7 +271,7 @@ void WebSocketServer::stop()
 void WebSocketServer::do_accept()
 {
     d_ptr->acceptor_.async_accept(
-        [this](boost::system::error_code ec, boost::asio::ip::tcp::socket socket)
+        [this](asio::error_code ec, asio::ip::tcp::socket socket)
         {
             // Check whether the WebSocketServer was stopped by a signal before this
             // completion handler had a chance to run.
