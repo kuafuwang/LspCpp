@@ -272,6 +272,19 @@ add_subdirectory(third_party/uri)
 add_subdirectory(third_party/optional)
 
 ################################################
+# ——— Add filesystem as INTERFACE target ———
+################################################
+add_library(ghc_filesystem INTERFACE)
+# point at the ghc filesystem headers
+set(GHC_FS_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/filesystem/include)
+# attach that include‑dir to our INTERFACE target
+target_include_directories(ghc_filesystem
+        INTERFACE
+        $<BUILD_INTERFACE:${GHC_FS_INCLUDE_DIRS}>
+        $<INSTALL_INTERFACE:include>
+)
+
+################################################
 # ——— Add Asio as INTERFACE target ———
 ################################################
 # threading (Asio needs this)
@@ -363,11 +376,12 @@ set (LSP_INCLUDE_LIST ${LSPCPP_INCLUDE_DIR}
         ${RapidJSON_INCLUDE_DIRS}
         ${ASIO_INCLUDE_DIRS}
         ${WEB_SOCKET_INCLUDE_DIRS}
+        ${GHC_FS_INCLUDE_DIRS}
         ${Uri_SOURCE_DIR}/include)
 ### Includes
 target_include_directories(lspcpp PRIVATE ${LSP_INCLUDE_LIST})
 
-target_link_libraries(lspcpp PUBLIC network-uri asio_lib websocketpp_lib tl::optional)
+target_link_libraries(lspcpp PUBLIC network-uri asio_lib websocketpp_lib tl::optional ghc_filesystem)
 
 set(LSPCPP_THIRD_PARTY_DIR_LIST
         ${LSPCPP_THIRD_PARTY_DIR}/utfcpp/source
