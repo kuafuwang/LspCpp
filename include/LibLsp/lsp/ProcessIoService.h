@@ -22,7 +22,7 @@ public:
     ProcessIoService(ProcessIoService const&) = delete;
     ProcessIoService& operator=(ProcessIoService const&) = delete;
 
-    boost::asio::io_context& getIOService()
+    asio::io_context& getIOService()
     {
         return ioService_;
     }

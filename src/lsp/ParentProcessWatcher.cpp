@@ -46,15 +46,23 @@ struct ParentProcessWatcher::ParentProcessWatcherData : std::enable_shared_from_
         std::thread([self]() {
                         int status = std::system(self->command.c_str());
                         int exit_code = -1;
+
+                        if (status == -1) {
+                            // system call failed entirely
+                            self->_log.log(lsp::Log::Level::WARNING,
+                                           "System call failed for command: '" + self->command + "'.");
+                            exit_code = 2; // treat as generic error >1 to re-arm timer
+                        } else {
 #ifdef _WIN32
-                        // On Windows, system() returns the program exit code directly
-                        exit_code = status;
-#else
-                        if (WIFEXITED(status))
-                            exit_code = WEXITSTATUS(status);
-                        else
+                            // On Windows, system() returns the program exit code directly
                             exit_code = status;
+#else
+                            if (WIFEXITED(status))
+                                exit_code = WEXITSTATUS(status);
+                            else
+                                exit_code = status;
 #endif
+                        }
 
                         // now dispatch back into ASIO so timer and on_exit run in the right context
                         asio::post(self->asio_io.getIOService(), [self, exit_code]() {

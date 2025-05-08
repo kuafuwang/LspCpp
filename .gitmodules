@@ -7,3 +7,6 @@
 [submodule "third_party/filesystem"]
 	path = third_party/filesystem
 	url = git@github.com:gulrak/filesystem.git
+[submodule "third_party/ixwebsocket"]
+	path = third_party/ixwebsocket
+	url = https://github.com/machinezone/IXWebSocket.git

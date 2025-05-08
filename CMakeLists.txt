@@ -304,19 +304,9 @@ target_compile_definitions(asio_lib INTERFACE ASIO_STANDALONE)
 target_link_libraries(asio_lib INTERFACE Threads::Threads)
 
 #################################################
-# ——— Add WebSocket++ as INTERFACE target ———
+# ——— Add ixwebsocket ———
 #################################################
-add_library(websocketpp_lib INTERFACE)
-# point at the web socket headers
-set(WEB_SOCKET_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/websocketpp)
-# attach WebSocket++ headers
-target_include_directories(websocketpp_lib
-        INTERFACE
-        $<BUILD_INTERFACE:${WEB_SOCKET_INCLUDE_DIRS}>
-        $<INSTALL_INTERFACE:include>
-)
-# WebSocket++ needs ASIO_STANDALONE too
-target_compile_definitions(websocketpp_lib INTERFACE ASIO_STANDALONE)
+add_subdirectory(third_party/ixwebsocket)
 
 ###########################################################
 # boost library
@@ -375,13 +365,12 @@ add_library(lspcpp STATIC)
 set (LSP_INCLUDE_LIST ${LSPCPP_INCLUDE_DIR}
         ${RapidJSON_INCLUDE_DIRS}
         ${ASIO_INCLUDE_DIRS}
-        ${WEB_SOCKET_INCLUDE_DIRS}
         ${GHC_FS_INCLUDE_DIRS}
         ${Uri_SOURCE_DIR}/include)
 ### Includes
 target_include_directories(lspcpp PRIVATE ${LSP_INCLUDE_LIST})
 
-target_link_libraries(lspcpp PUBLIC network-uri asio_lib websocketpp_lib tl::optional ghc_filesystem)
+target_link_libraries(lspcpp PUBLIC network-uri asio_lib ixwebsocket tl::optional ghc_filesystem)
 
 set(LSPCPP_THIRD_PARTY_DIR_LIST
         ${LSPCPP_THIRD_PARTY_DIR}/utfcpp/source
