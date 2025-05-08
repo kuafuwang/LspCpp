@@ -1,13 +1,16 @@
 #include "LibLsp/lsp/ParentProcessWatcher.h"
 #include <algorithm>
-#include <boost/process.hpp>
-
-#ifdef _WIN32
-#include <boost/process/v1/windows.hpp>
-#endif
-
+#include <cstdlib>              // for std::system
+#include <thread>
+#include <chrono>
 #include <asio.hpp>
 #include <iostream>
+
+#ifdef _WIN32
+#include <windows.h>          // for Windows-specific system exit codes if needed
+#else
+#include <sys/wait.h>         // for WIFEXITED / WEXITSTATUS
+#endif
 
 #include "LibLsp/lsp/ProcessIoService.h"
 #include "LibLsp/lsp/SimpleTimer.h"
@@ -21,12 +24,9 @@ struct ParentProcessWatcher::ParentProcessWatcherData : std::enable_shared_from_
     lsp::Log& _log;
     std::function<void()> on_exit;
     lsp::ProcessIoService asio_io;
-    std::shared_ptr<boost::process::opstream> write_to_service;
-    std::shared_ptr<boost::process::ipstream> read_from_service;
     int pid;
-    int const _poll_delay_secs /*= 10*/;
+    int const _poll_delay_secs;
     std::string command;
-    std::shared_ptr<boost::process::child> c;
 
     ParentProcessWatcherData(lsp::Log& log, int _pid, std::function<void()> const&& callback, uint32_t poll_delay_secs)
         : _log(log), on_exit(callback), pid(_pid), _poll_delay_secs(poll_delay_secs)
@@ -41,59 +41,53 @@ struct ParentProcessWatcher::ParentProcessWatcherData : std::enable_shared_from_
 
     void run()
     {
-        write_to_service = std::make_shared<boost::process::opstream>();
-        read_from_service = std::make_shared<boost::process::ipstream>();
-
-        //              const uint32_t POLL_DELAY_SECS = _poll_delay_secs;
-        auto self(shared_from_this());
-        std::error_code ec;
-        namespace bp = boost::process;
-        c = std::make_shared<bp::child>(
-            asio_io.getIOService(), command, ec,
+        auto self = shared_from_this();
+        // launch the check in a detached thread so we don't block the ASIO event loop
+        std::thread([self]() {
+                        int status = std::system(self->command.c_str());
+                        int exit_code = -1;
 #ifdef _WIN32
-            bp::windows::hide,
+                        // On Windows, system() returns the program exit code directly
+                        exit_code = status;
+#else
+                        if (WIFEXITED(status))
+                            exit_code = WEXITSTATUS(status);
+                        else
+                            exit_code = status;
 #endif
-            bp::std_out > *read_from_service, bp::std_in < *write_to_service,
-            bp::on_exit(
-                [self](int exit_code, std::error_code const&)
-                {
-                    // the tasklist command should return 0 (parent process exists) or 1 (parent process doesn't exist)
-                    if (exit_code == 1) //
-                    {
-                        if (self->on_exit)
-                        {
 
-                            std::thread(
-                                [=]()
-                                {
-                                    std::this_thread::sleep_for(std::chrono::seconds(3));
-                                    self->on_exit();
-                                }
-                            ).detach();
-                        }
-                    }
-                    else
-                    {
-                        if (exit_code > 1)
-                        {
-                            self->_log.log(
-                                lsp::Log::Level::WARNING,
-                                "The tasklist command: '" + self->command + "' returns " + std::to_string(exit_code)
-                            );
-                        }
-
-                        self->timer = std::make_unique<SimpleTimer<std::chrono::seconds>>(
-                            self->_poll_delay_secs, [=]() { self->run(); }
-                        );
-                    }
-                }
-            )
-        );
-        if (ec)
-        {
-            // fail
-            _log.log(lsp::Log::Level::SEVERE, "Start parent process watcher failed.");
-        }
+                        // now dispatch back into ASIO so timer and on_exit run in the right context
+                        asio::post(self->asio_io.getIOService(), [self, exit_code]() {
+                                       if (exit_code == 1)  // parent process not found
+                                       {
+                                           if (self->on_exit)
+                                           {
+                                               // small delay before notifying
+                                               std::thread([self]() {
+                                                               std::this_thread::sleep_for(std::chrono::seconds(3));
+                                                               asio::post(self->asio_io.getIOService(), [self]() {
+                                                                              self->on_exit();
+                                                                          });
+                                                           }).detach();
+                                           }
+                                       }
+                                       else
+                                       {
+                                           if (exit_code > 1)
+                                           {
+                                               self->_log.log(
+                                                   lsp::Log::Level::WARNING,
+                                                   "The tasklist command: '" + self->command + "' returned " + std::to_string(exit_code)
+                                               );
+                                           }
+                                           // re‑arm the poll timer
+                                           self->timer = std::make_unique<SimpleTimer<std::chrono::seconds>>(
+                                               self->_poll_delay_secs,
+                                               [self]() { self->run(); }
+                                           );
+                                       }
+                                   });
+                    }).detach();
     }
 };
 
