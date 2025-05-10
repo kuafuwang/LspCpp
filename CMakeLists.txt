@@ -77,6 +77,7 @@ option_if_not_defined(LSPCPP_ASAN "Build lsp with address sanitizer" OFF)
 option_if_not_defined(LSPCPP_MSAN "Build lsp with memory sanitizer" OFF)
 option_if_not_defined(LSPCPP_TSAN "Build lsp with thread sanitizer" OFF)
 option_if_not_defined(LSPCPP_INSTALL "Create lsp install target" OFF)
+option_if_not_defined(LSPCPP_STANDALONE_ASIO "Use standalone asio" OFF)
 option_if_not_defined(LSPCPP_SUPPORT_BOEHM_GC "\
 Enable support for Boehm GC. GC must be specified LSPCPP_GC_DOWNLOADED_ROOT, if downloaded or by
 find_package(BDWgc CONFIG REQUIRED) or pkg_config." OFF)
@@ -222,6 +223,10 @@ function(lspcpp_set_target_options target)
     #     target_compile_options(${target} PRIVATE "-Wl,--no-undefined")
     # endif()
 
+    if(LSPCPP_STANDALONE_ASIO)
+        target_compile_definitions(${target} PUBLIC LSPCPP_USE_STANDALONE_ASIO)
+    endif()
+
     if (LSPCPP_SUPPORT_BOEHM_GC)
         if (LSPCPP_GC_DOWNLOADED_ROOT)
             message(STATUS "Using manually downloaded GC")
@@ -311,27 +316,32 @@ add_subdirectory(third_party/ixwebsocket)
 ###########################################################
 # boost library
 ###########################################################
-#if (CMAKE_GENERATOR MATCHES "Visual Studio.*")
-#    INSTALL_NUGET(boost 1.76.0.0)
-#    INSTALL_NUGET(boost_chrono-vc141 1.76.0.0)
-#    INSTALL_NUGET(boost_date_time-vc141 1.76.0.0)
-#    INSTALL_NUGET(boost_filesystem-vc141 1.76.0.0)
-#    INSTALL_NUGET(boost_program_options-vc141 1.76.0.0)
-#    INSTALL_NUGET(boost_system-vc141 1.76.0.0)
-#    INSTALL_NUGET(boost_thread-vc141 1.76.0.0)
-#else()
-#
-#    find_package(Boost CONFIG COMPONENTS date_time  chrono filesystem system thread program_options)
-#    if(NOT Boost_FOUND)
-#        if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-#            message(FATAL_ERROR "Can't find boost,lease build boost and install it or install boost with : brew install boost")
-#        elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-#            message(FATAL_ERROR "Can't find boost,please build boost and install it. or install boost with : sudo apt-get install libboost-dev")
-#        else()
-#            message(FATAL_ERROR "Boost not found. Please ensure boost is available for CMake.")
-#        endif()
-#    endif()
-#endif()
+if(LSPCPP_STANDALONE_ASIO)
+
+else()
+if (CMAKE_GENERATOR MATCHES "Visual Studio.*")
+    INSTALL_NUGET(boost 1.76.0.0)
+    INSTALL_NUGET(boost_chrono-vc141 1.76.0.0)
+    INSTALL_NUGET(boost_date_time-vc141 1.76.0.0)
+    INSTALL_NUGET(boost_filesystem-vc141 1.76.0.0)
+    INSTALL_NUGET(boost_program_options-vc141 1.76.0.0)
+    INSTALL_NUGET(boost_system-vc141 1.76.0.0)
+    INSTALL_NUGET(boost_thread-vc141 1.76.0.0)
+else()
+
+#    find_package(Boost CONFIG COMPONENTS date_time chrono filesystem system thread program_options)
+    find_package(Boost COMPONENTS filesystem program_options)
+    if(NOT Boost_FOUND)
+        if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+            message(FATAL_ERROR "Can't find boost,lease build boost and install it or install boost with : brew install boost")
+        elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+            message(FATAL_ERROR "Can't find boost,please build boost and install it. or install boost with : sudo apt-get install libboost-dev")
+        else()
+            message(FATAL_ERROR "Boost not found. Please ensure boost is available for CMake.")
+        endif()
+    endif()
+endif()
+endif()
 
 
 ###########################################################
@@ -364,6 +374,7 @@ endif()
 add_library(lspcpp STATIC)
 set (LSP_INCLUDE_LIST ${LSPCPP_INCLUDE_DIR}
         ${RapidJSON_INCLUDE_DIRS}
+        ${Boost_INCLUDE_DIRS}
         ${ASIO_INCLUDE_DIRS}
         ${GHC_FS_INCLUDE_DIRS}
         ${Uri_SOURCE_DIR}/include)

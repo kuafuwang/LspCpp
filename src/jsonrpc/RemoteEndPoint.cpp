@@ -15,8 +15,14 @@
 #include "LibLsp/JsonRpc/stream.h"
 #include <atomic>
 #include <optional>
+#ifdef LSPCPP_USE_STANDALONE_ASIO
 #include <asio/thread_pool.hpp>
 #include <asio/post.hpp>
+#else
+#include <boost/asio/thread_pool.hpp>
+#include <boost/asio/post.hpp>
+namespace asio = boost::asio;
+#endif
 
 #include "LibLsp/JsonRpc/GCThreadContext.h"
 
