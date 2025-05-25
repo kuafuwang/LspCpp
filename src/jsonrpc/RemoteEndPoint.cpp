@@ -659,6 +659,11 @@ void RemoteEndPoint::startProcessingMessages(std::shared_ptr<lsp::istream> r, st
 
 void RemoteEndPoint::stop()
 {
+    if (message_producer_thread_ && message_producer_thread_->joinable())
+    {
+        message_producer_thread_->detach();
+        message_producer_thread_ = nullptr;
+    }
     d_ptr->clear();
 }
 
