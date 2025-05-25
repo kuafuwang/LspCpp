@@ -371,10 +371,10 @@ RemoteEndPoint::RemoteEndPoint(
 RemoteEndPoint::~RemoteEndPoint()
 {
     d_ptr->quit.store(true, std::memory_order_relaxed);
-    if (this->message_producer_thread_ && this->message_producer_thread_->joinable())
-    {
-        this->message_producer_thread_->join();
-    }
+//    if (this->message_producer_thread_ && this->message_producer_thread_->joinable())
+//    {
+//        this->message_producer_thread_->join();
+//    }
     delete d_ptr;
     d_ptr = nullptr;
 }
