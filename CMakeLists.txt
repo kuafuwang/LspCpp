@@ -270,6 +270,16 @@ endif()
 set(Uri_BUILD_TESTS OFF)
 add_subdirectory(third_party/uri)
 
+function(check_submodule dir)
+    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${dir}/CMakeLists.txt")
+        message(WARNING "Missing submodule: ${dir}. Run `git submodule update --init --recursive`.")
+    endif()
+endfunction()
+
+check_submodule(third_party/optional)
+
+
+
 ################################################
 # ——— Optional Library ———
 ################################################

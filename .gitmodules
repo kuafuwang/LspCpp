@@ -1,12 +1,16 @@
 [submodule "third_party/asio"]
 	path = third_party/asio
-	url = https://github.com/chriskohlhoff/asio.git
+	url = git@github.com:chriskohlhoff/asio.git
+	shallow=true
 [submodule "third_party/optional"]
 	path = third_party/optional
-	url = https://github.com/TartanLlama/optional.git
+	url = git@github.com:TartanLlama/optional.git
+	shallow=true
 [submodule "third_party/filesystem"]
 	path = third_party/filesystem
 	url = git@github.com:gulrak/filesystem.git
+	shallow=true
 [submodule "third_party/ixwebsocket"]
 	path = third_party/ixwebsocket
-	url = https://github.com/machinezone/IXWebSocket.git
+	url = git@github.com:machinezone/IXWebSocket.git
+	shallow=true
