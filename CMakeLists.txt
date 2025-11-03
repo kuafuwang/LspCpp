@@ -81,7 +81,7 @@ option_if_not_defined(LSPCPP_STANDALONE_ASIO "Use standalone asio" OFF)
 option_if_not_defined(LSPCPP_SUPPORT_BOEHM_GC "\
 Enable support for Boehm GC. GC must be specified LSPCPP_GC_DOWNLOADED_ROOT, if downloaded or by
 find_package(BDWgc CONFIG REQUIRED) or pkg_config." OFF)
-option_if_not_defined(LSPCPP_USE_CPP17 "Use C++17 for compilation. Setting this to off requires boost-optional." OFF)
+option_if_not_defined(LSPCPP_USE_CPP17 "Use C++17 for compilation. Setting this to off requires boost-optional." ON)
 
 set(LSPCPP_GC_DOWNLOADED_ROOT "" CACHE STRING "\
 If using downloaded gc root from https://www.hboehm.info/gc/, extract its contents and set this setting to
