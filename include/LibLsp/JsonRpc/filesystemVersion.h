@@ -1,11 +1,11 @@
-#if __cplusplus < 201703L
-
-#include <ghc/filesystem.hpp>
-namespace filesystem = ghc::filesystem;
+#pragma once
+#if __cplusplus >= 201703L || (defined(_MSVC_LANG) && _MSVC_LANG >= 201703L)
+#include <filesystem>
+namespace filesystem = std::filesystem;
 
 #else
 
-#include <filesystem>
-namespace filesystem = std::filesystem;
+#include <ghc/filesystem.hpp>
+namespace filesystem = ghc::filesystem;
 
 #endif
