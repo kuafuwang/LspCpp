@@ -6,7 +6,3 @@
 	path = third_party/filesystem
 	url = git@github.com:gulrak/filesystem.git
 	shallow=true
-[submodule "third_party/ixwebsocket"]
-	path = third_party/ixwebsocket
-	url = git@github.com:machinezone/IXWebSocket.git
-	shallow=true
