@@ -1,3 +1,4 @@
+#pragma once
 #ifndef boost
 #if __cplusplus < 201703L
 
