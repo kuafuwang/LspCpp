@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstdint>
 #include <cstddef>
 #include <iterator>
 #include <memory>
@@ -772,14 +773,13 @@ void SplitString(
 )
 {
     std::size_t start = Source.find_first_not_of(Delimiters, 0);
-    while (start != std::string::npos) {
+    while (start != std::string::npos)
+    {
         // find the end of this token
         std::size_t end = Source.find_first_of(Delimiters, start);
 
         // compute length (if no more delimiters, consume to end of string)
-        std::size_t length = (end == std::string::npos)
-                                 ? (Source.size() - start)
-                                 : (end - start);
+        std::size_t length = (end == std::string::npos) ? (Source.size() - start) : (end - start);
 
         // emplace a non‑owning reference into the original buffer
         OutFragments.emplace_back(Source.data() + start, length);
