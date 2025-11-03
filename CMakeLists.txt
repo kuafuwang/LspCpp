@@ -97,6 +97,12 @@ https://learn.microsoft.com/en-us/cpp/porting/modifying-winver-and-win32-winnt?v
 
 set(LSPCPP_EXTERNAL_LIBS)
 
+option_if_not_defined(
+        USE_EXTERNAL_IXWEBSOCKET
+        "Instead of using git submodules for ixwebsocket, use system or vcpkg dependency."
+        OFF
+)
+
 ###########################################################
 # Boehm GC
 ###########################################################
@@ -328,7 +334,14 @@ target_link_libraries(asio_lib INTERFACE Threads::Threads)
 #################################################
 # ——— Add ixwebsocket ———
 #################################################
-add_subdirectory(third_party/ixwebsocket)
+
+if (USE_EXTERNAL_IXWEBSOCKET)
+    find_package(ixwebsocket CONFIG REQUIRED)
+    list(APPEND LSPCPP_EXTERNAL_LIBS ixwebsocket::ixwebsocket)
+else ()
+    add_subdirectory(third_party/ixwebsocket)
+    list(APPEND LSPCPP_EXTERNAL_LIBS ixwebsocket)
+endif ()
 
 ###########################################################
 # boost library
@@ -400,7 +413,7 @@ target_include_directories(lspcpp PRIVATE ${LSP_INCLUDE_LIST})
 
 target_link_libraries(
         lspcpp
-        PUBLIC ${LSPCPP_EXTERNAL_LIBS} network-uri asio_lib ixwebsocket
+        PUBLIC ${LSPCPP_EXTERNAL_LIBS} network-uri asio_lib
 )
 
 set(LSPCPP_THIRD_PARTY_DIR_LIST
