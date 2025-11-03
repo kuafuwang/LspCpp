@@ -95,6 +95,8 @@ set(LSPCPP_WIN32_WINNT_VALUE "0x0A00" CACHE STRING
 https://learn.microsoft.com/en-us/cpp/porting/modifying-winver-and-win32-winnt?view=msvc-170"
 )
 
+set(LSPCPP_EXTERNAL_LIBS)
+
 ###########################################################
 # Boehm GC
 ###########################################################
@@ -276,15 +278,17 @@ function(check_submodule dir)
     endif()
 endfunction()
 
-check_submodule(third_party/optional)
-
-
 
 ################################################
 # ——— Optional Library ———
 ################################################
 # bring in the tl::optional interface library
-add_subdirectory(third_party/optional)
+
+if (NOT LSPCPP_USE_CPP17)
+    check_submodule(third_party/optional)
+    add_subdirectory(third_party/optional)
+    list(APPEND LSPCPP_EXTERNAL_LIBS tl::optional)
+endif ()
 
 ################################################
 # ——— Add filesystem as INTERFACE target ———
@@ -391,7 +395,10 @@ set (LSP_INCLUDE_LIST ${LSPCPP_INCLUDE_DIR}
 ### Includes
 target_include_directories(lspcpp PRIVATE ${LSP_INCLUDE_LIST})
 
-target_link_libraries(lspcpp PUBLIC network-uri asio_lib ixwebsocket tl::optional ghc_filesystem)
+target_link_libraries(
+        lspcpp
+        PUBLIC ${LSPCPP_EXTERNAL_LIBS} network-uri asio_lib ixwebsocket ghc_filesystem
+)
 
 set(LSPCPP_THIRD_PARTY_DIR_LIST
         ${LSPCPP_THIRD_PARTY_DIR}/utfcpp/source
