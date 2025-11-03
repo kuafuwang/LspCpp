@@ -293,15 +293,18 @@ endif ()
 ################################################
 # ——— Add filesystem as INTERFACE target ———
 ################################################
-add_library(ghc_filesystem INTERFACE)
-# point at the ghc filesystem headers
-set(GHC_FS_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/filesystem/include)
-# attach that include‑dir to our INTERFACE target
-target_include_directories(ghc_filesystem
-        INTERFACE
-        $<BUILD_INTERFACE:${GHC_FS_INCLUDE_DIRS}>
-        $<INSTALL_INTERFACE:include>
-)
+if (NOT LSPCPP_USE_CPP17)
+    add_library(ghc_filesystem INTERFACE)
+    # point at the ghc filesystem headers
+    set(GHC_FS_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/filesystem/include)
+    # attach that include‑dir to our INTERFACE target
+    target_include_directories(ghc_filesystem
+            INTERFACE
+            $<BUILD_INTERFACE:${GHC_FS_INCLUDE_DIRS}>
+            $<INSTALL_INTERFACE:include>
+    )
+    list(APPEND LSPCPP_EXTERNAL_LIBS ghc_filesystem)
+endif ()
 
 ################################################
 # ——— Add Asio as INTERFACE target ———
@@ -397,7 +400,7 @@ target_include_directories(lspcpp PRIVATE ${LSP_INCLUDE_LIST})
 
 target_link_libraries(
         lspcpp
-        PUBLIC ${LSPCPP_EXTERNAL_LIBS} network-uri asio_lib ixwebsocket ghc_filesystem
+        PUBLIC ${LSPCPP_EXTERNAL_LIBS} network-uri asio_lib ixwebsocket
 )
 
 set(LSPCPP_THIRD_PARTY_DIR_LIST
