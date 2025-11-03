@@ -81,7 +81,7 @@ option_if_not_defined(LSPCPP_STANDALONE_ASIO "Use standalone asio" OFF)
 option_if_not_defined(LSPCPP_SUPPORT_BOEHM_GC "\
 Enable support for Boehm GC. GC must be specified LSPCPP_GC_DOWNLOADED_ROOT, if downloaded or by
 find_package(BDWgc CONFIG REQUIRED) or pkg_config." OFF)
-option_if_not_defined(LSPCPP_USE_CPP17 "Use C++17 for compilation. Setting this to off requires boost-optional." OFF)
+option_if_not_defined(LSPCPP_USE_CPP17 "Use C++17 for compilation. Setting this to off requires boost-optional." ON)
 
 set(LSPCPP_GC_DOWNLOADED_ROOT "" CACHE STRING "\
 If using downloaded gc root from https://www.hboehm.info/gc/, extract its contents and set this setting to
@@ -93,6 +93,19 @@ option_if_not_defined(LSPCPP_GC_STATIC "Compiling with static gc library. Only u
 set(LSPCPP_WIN32_WINNT_VALUE "0x0A00" CACHE STRING
         "Value to specify for _WIN32_WINNT macro when compiling on windows. See
 https://learn.microsoft.com/en-us/cpp/porting/modifying-winver-and-win32-winnt?view=msvc-170"
+)
+
+set(LSPCPP_EXTERNAL_LIBS)
+
+option_if_not_defined(
+        USE_EXTERNAL_IXWEBSOCKET
+        "Instead of using git submodules for ixwebsocket, use system or vcpkg dependency."
+        OFF
+)
+option_if_not_defined(
+        USE_EXTERNAL_ASIO
+        "Instead of using git submodules for asio, use system or vcpkg dependency."
+        OFF
 )
 
 ###########################################################
@@ -276,81 +289,106 @@ function(check_submodule dir)
     endif()
 endfunction()
 
-check_submodule(third_party/optional)
-
-
 
 ################################################
 # ——— Optional Library ———
 ################################################
 # bring in the tl::optional interface library
-add_subdirectory(third_party/optional)
+
+if (NOT LSPCPP_USE_CPP17)
+    check_submodule(third_party/optional)
+    add_subdirectory(third_party/optional)
+    list(APPEND LSPCPP_EXTERNAL_LIBS tl::optional)
+endif ()
 
 ################################################
 # ——— Add filesystem as INTERFACE target ———
 ################################################
-add_library(ghc_filesystem INTERFACE)
-# point at the ghc filesystem headers
-set(GHC_FS_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/filesystem/include)
-# attach that include‑dir to our INTERFACE target
-target_include_directories(ghc_filesystem
-        INTERFACE
-        $<BUILD_INTERFACE:${GHC_FS_INCLUDE_DIRS}>
-        $<INSTALL_INTERFACE:include>
-)
+if (NOT LSPCPP_USE_CPP17)
+    add_library(ghc_filesystem INTERFACE)
+    # point at the ghc filesystem headers
+    set(GHC_FS_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/filesystem/include)
+    # attach that include‑dir to our INTERFACE target
+    target_include_directories(ghc_filesystem
+            INTERFACE
+            $<BUILD_INTERFACE:${GHC_FS_INCLUDE_DIRS}>
+            $<INSTALL_INTERFACE:include>
+    )
+    list(APPEND LSPCPP_EXTERNAL_LIBS ghc_filesystem)
+endif ()
 
 ################################################
 # ——— Add Asio as INTERFACE target ———
 ################################################
-# threading (Asio needs this)
-find_package(Threads REQUIRED)
-add_library(asio_lib INTERFACE)
-# point at the standalone Asio headers
-set(ASIO_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/asio/asio/include)
-# attach that include‑dir to our INTERFACE target
-target_include_directories(asio_lib
-        INTERFACE
-        $<BUILD_INTERFACE:${ASIO_INCLUDE_DIRS}>
-        $<INSTALL_INTERFACE:include>         # if you ever install
-)
-# define ASIO_STANDALONE for any consumer
-target_compile_definitions(asio_lib INTERFACE ASIO_STANDALONE)
-# link OS threads
-target_link_libraries(asio_lib INTERFACE Threads::Threads)
+
+if (LSPCPP_STANDALONE_ASIO)
+    if (USE_EXTERNAL_ASIO)
+        find_package(asio CONFIG)
+        if (NOT asio_FOUND)
+            # fallback to pkg-config
+            message(STATUS "CMake config for asio not found; falling back to pkg-config")
+            find_package(PkgConfig REQUIRED)
+            pkg_check_modules(asio REQUIRED IMPORTED_TARGET asio)
+            list(APPEND LSPCPP_EXTERNAL_LIBS PkgConfig::asio)
+        else ()
+            list(APPEND LSPCPP_EXTERNAL_LIBS asio::asio)
+        endif ()
+    else ()
+        # threading (Asio needs this)
+        find_package(Threads REQUIRED)
+        add_library(asio_lib INTERFACE)
+        # point at the standalone Asio headers
+        set(ASIO_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/asio/asio/include)
+        # attach that include‑dir to our INTERFACE target
+        target_include_directories(asio_lib
+                INTERFACE
+                $<BUILD_INTERFACE:${ASIO_INCLUDE_DIRS}>
+                $<INSTALL_INTERFACE:include>         # if you ever install
+        )
+        # define ASIO_STANDALONE for any consumer
+        target_compile_definitions(asio_lib INTERFACE ASIO_STANDALONE)
+        # link OS threads
+        target_link_libraries(asio_lib INTERFACE Threads::Threads)
+        list(APPEND LSPCPP_EXTERNAL_LIBS asio_lib)
+    endif ()
+endif ()
 
 #################################################
 # ——— Add ixwebsocket ———
 #################################################
-add_subdirectory(third_party/ixwebsocket)
+
+if (USE_EXTERNAL_IXWEBSOCKET)
+    find_package(ixwebsocket CONFIG REQUIRED)
+    list(APPEND LSPCPP_EXTERNAL_LIBS ixwebsocket::ixwebsocket)
+else ()
+    add_subdirectory(third_party/ixwebsocket)
+    list(APPEND LSPCPP_EXTERNAL_LIBS ixwebsocket)
+endif ()
 
 ###########################################################
 # boost library
 ###########################################################
-if(LSPCPP_STANDALONE_ASIO)
-
-else()
-if (CMAKE_GENERATOR MATCHES "Visual Studio.*")
-    INSTALL_NUGET(boost 1.76.0.0)
-    INSTALL_NUGET(boost_chrono-vc141 1.76.0.0)
-    INSTALL_NUGET(boost_date_time-vc141 1.76.0.0)
-    INSTALL_NUGET(boost_filesystem-vc141 1.76.0.0)
-    INSTALL_NUGET(boost_program_options-vc141 1.76.0.0)
-    INSTALL_NUGET(boost_system-vc141 1.76.0.0)
-    INSTALL_NUGET(boost_thread-vc141 1.76.0.0)
-else()
-
-#    find_package(Boost CONFIG COMPONENTS date_time chrono filesystem system thread program_options)
-    find_package(Boost COMPONENTS filesystem program_options)
-    if(NOT Boost_FOUND)
-        if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-            message(FATAL_ERROR "Can't find boost,lease build boost and install it or install boost with : brew install boost")
-        elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-            message(FATAL_ERROR "Can't find boost,please build boost and install it. or install boost with : sudo apt-get install libboost-dev")
-        else()
-            message(FATAL_ERROR "Boost not found. Please ensure boost is available for CMake.")
-        endif()
-    endif()
-endif()
+if (NOT LSPCPP_STANDALONE_ASIO)
+    if (CMAKE_GENERATOR MATCHES "Visual Studio.*")
+        INSTALL_NUGET(boost 1.76.0.0)
+        INSTALL_NUGET(boost_chrono-vc141 1.76.0.0)
+        INSTALL_NUGET(boost_date_time-vc141 1.76.0.0)
+        INSTALL_NUGET(boost_filesystem-vc141 1.76.0.0)
+        INSTALL_NUGET(boost_program_options-vc141 1.76.0.0)
+        INSTALL_NUGET(boost_system-vc141 1.76.0.0)
+        INSTALL_NUGET(boost_thread-vc141 1.76.0.0)
+    else ()
+        find_package(Boost COMPONENTS asio)
+        if (NOT Boost_FOUND)
+            if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+                message(FATAL_ERROR "Can't find boost,lease build boost and install it or install boost with : brew install boost")
+            elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+                message(FATAL_ERROR "Can't find boost,please build boost and install it. or install boost with : sudo apt-get install libboost-dev")
+            else ()
+                message(FATAL_ERROR "Boost not found. Please ensure boost is available for CMake.")
+            endif ()
+        endif ()
+    endif ()
 endif()
 
 
@@ -391,7 +429,10 @@ set (LSP_INCLUDE_LIST ${LSPCPP_INCLUDE_DIR}
 ### Includes
 target_include_directories(lspcpp PRIVATE ${LSP_INCLUDE_LIST})
 
-target_link_libraries(lspcpp PUBLIC network-uri asio_lib ixwebsocket tl::optional ghc_filesystem)
+target_link_libraries(
+        lspcpp
+        PUBLIC ${LSPCPP_EXTERNAL_LIBS} network-uri asio_lib
+)
 
 set(LSPCPP_THIRD_PARTY_DIR_LIST
         ${LSPCPP_THIRD_PARTY_DIR}/utfcpp/source

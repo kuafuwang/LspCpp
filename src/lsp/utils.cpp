@@ -17,6 +17,8 @@
 #include "utf8.h"
 #ifdef _WIN32
 #include <Windows.h>
+#else
+#include <unistd.h>
 #endif
 
 // DEFAULT_RESOURCE_DIRECTORY is passed with quotes for non-MSVC compilers, ie,
@@ -337,7 +339,7 @@ bool IsDirectory(std::string const& path)
 std::string ws2s(std::wstring const& wstr)
 {
     // BOOST_IF_CONSTEXPR (we'll just compile it, compiler probably will optimize it away)
-    if(sizeof(wchar_t) == 2)
+    if (sizeof(wchar_t) == 2)
     {
         std::string narrow;
         utf8::utf16to8(wstr.begin(), wstr.end(), std::back_inserter(narrow));
@@ -354,7 +356,7 @@ std::wstring s2ws(std::string const& str)
 {
     std::wstring wide;
     // BOOST_IF_CONSTEXPR (we'll just compile it, compiler probably will optimize it away)
-    if(sizeof(wchar_t) == 2)
+    if (sizeof(wchar_t) == 2)
     {
         utf8::utf8to16(str.begin(), str.end(), std::back_inserter(wide));
         return wide;
@@ -366,9 +368,7 @@ std::wstring s2ws(std::string const& str)
     }
 }
 
-#ifdef _WIN32
-
-#else
+#ifndef _WIN32
 // Returns the canonicalized absolute pathname, without expanding symbolic
 // links. This is a variant of realpath(2), C++ rewrite of
 // https://github.com/freebsd/freebsd/blob/master/lib/libc/stdlib/realpath.c
@@ -636,9 +636,11 @@ void scanDirsNoRecursive(std::wstring const& rootPath, std::vector<std::wstring>
     }
 }
 
-void to_lower(std::wstring& input, const std::locale& loc = std::locale()) {
-    const std::ctype<wchar_t>& facet = std::use_facet<std::ctype<wchar_t>>(loc);
-    for (std::size_t i = 0; i < input.size(); ++i) {
+void to_lower(std::wstring& input, std::locale const& loc = std::locale())
+{
+    std::ctype<wchar_t> const& facet = std::use_facet<std::ctype<wchar_t>>(loc);
+    for (std::size_t i = 0; i < input.size(); ++i)
+    {
         input[i] = facet.tolower(input[i]);
     }
 }
