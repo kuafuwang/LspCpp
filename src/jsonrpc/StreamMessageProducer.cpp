@@ -138,7 +138,7 @@ void LSPStreamMessageProducer::listen(MessageConsumer callBack)
                 if (newLine)
                 {
                     // Two consecutive newlines have been read, which signals the start of the message content
-                    if (headers.contentLength <= 0)
+                    if (headers.contentLength < 0)
                     {
                         string info = "Unexpected token:" + debugBuilder;
                         info += "  (expected Content-Length: sequence);";
@@ -186,8 +186,11 @@ bool LSPStreamMessageProducer::handleMessage(Headers& headers, MessageConsumer c
     // Read content.
     auto content_length = headers.contentLength;
     std::string content(content_length, 0);
-    auto data = &content[0];
-    input->read(data, content_length);
+    if (content_length > 0)
+    {
+        auto data = &content[0];
+        input->read(data, content_length);
+    }
     if (input->bad())
     {
         std::string info = "Input stream is bad.";
