@@ -362,6 +362,8 @@ endif ()
 #################################################
 
 if (USE_EXTERNAL_IXWEBSOCKET)
+    find_package(Threads REQUIRED)
+    find_package(ZLIB REQUIRED)
     find_package(ixwebsocket CONFIG REQUIRED)
     list(APPEND LSPCPP_EXTERNAL_LIBS ixwebsocket::ixwebsocket)
 else ()
@@ -405,6 +407,11 @@ if(USE_SYSTEM_RAPIDJSON)
     if(NOT DEFINED RapidJSON_INCLUDE_DIRS AND DEFINED RAPIDJSON_INCLUDE_DIRS)
         set(RapidJSON_INCLUDE_DIRS "${RAPIDJSON_INCLUDE_DIRS}")
     endif()
+    if(TARGET rapidjson)
+        list(APPEND LSPCPP_EXTERNAL_LIBS rapidjson)
+    elseif(TARGET RapidJSON::RapidJSON)
+        list(APPEND LSPCPP_EXTERNAL_LIBS RapidJSON::RapidJSON)
+    endif()
 endif()
 if(NOT RapidJSON_FOUND)
     if(EXISTS "${PROJECT_SOURCE_DIR}/third_party/rapidjson/include")
@@ -431,7 +438,16 @@ set (LSP_INCLUDE_LIST ${LSPCPP_INCLUDE_DIR}
         ${GHC_FS_INCLUDE_DIRS}
         ${Uri_SOURCE_DIR}/include)
 ### Includes
-target_include_directories(lspcpp PRIVATE ${LSP_INCLUDE_LIST})
+target_include_directories(lspcpp
+        PUBLIC
+        $<BUILD_INTERFACE:${LSPCPP_INCLUDE_DIR}>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+        PRIVATE
+        ${RapidJSON_INCLUDE_DIRS}
+        ${Boost_INCLUDE_DIRS}
+        ${ASIO_INCLUDE_DIRS}
+        ${GHC_FS_INCLUDE_DIRS}
+        ${Uri_SOURCE_DIR}/include)
 
 target_link_libraries(
         lspcpp
@@ -545,15 +561,17 @@ if(LSPCPP_INSTALL)
             "${pkgconfig}"
             @ONLY)
 
+    if(TARGET asio_lib)
+        install(TARGETS asio_lib
+                EXPORT ${targets_export_name})
+    endif()
+
     install(TARGETS network-uri
-            EXPORT NetworkURITargets
+            EXPORT ${targets_export_name}
             LIBRARY DESTINATION lib
             ARCHIVE DESTINATION lib
             RUNTIME DESTINATION bin
             INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-    install(EXPORT NetworkURITargets
-            FILE NetworkURITargets.cmake
-            DESTINATION lib/cmake/NetworkURI)
 
     install(DIRECTORY ${LSPCPP_INCLUDE_DIR}/LibLsp
             DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}

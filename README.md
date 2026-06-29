@@ -82,6 +82,17 @@ cmake --build --preset ci/default -j
 ctest --preset ci/default
 ```
 
+An overlay vcpkg port is available under `ports/lspcpp` for local validation:
+
+```shell
+vcpkg install lspcpp --overlay-ports=ports
+```
+
+This overlay port is structured like an upstream vcpkg port, but it uses this
+checkout as the source tree. Before submitting it to the official vcpkg registry,
+switch the source acquisition to the tagged GitHub release and fill in the
+archive SHA512 expected by `vcpkg_from_github`.
+
 ### Windows
 
 Generate a Visual Studio solution and build:
