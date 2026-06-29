@@ -46,6 +46,8 @@ public:
     void clear() override;
 
     std::string what() override;
+
+    void interrupt() override;
 };
 
 /// The top-level class of the HTTP server.

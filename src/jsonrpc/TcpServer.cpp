@@ -3,6 +3,7 @@
 
 #include "LibLsp/JsonRpc/TcpServer.h"
 #include <signal.h>
+#include <cstdio>
 #include <utility>
 #include <LibLsp/lsp/asio.h>
 #include "LibLsp/JsonRpc/MessageIssue.h"
@@ -42,14 +43,24 @@ public:
         memcpy(str, some.data(), some.size());
         for (std::streamsize i = some.size(); i < count; ++i)
         {
-            str[i] = static_cast<char>(get());
+            int const c = get();
+            if (c == EOF)
+            {
+                break;
+            }
+            str[i] = static_cast<char>(c);
         }
 
         return *this;
     }
     int get() override
     {
-        return on_request.Dequeue();
+        if (request_waiter->Wait(quit, &on_request))
+        {
+            return EOF;
+        }
+        auto item = on_request.TryDequeue(false);
+        return item ? static_cast<unsigned char>(*item) : EOF;
     }
 
     bool bad() override;
@@ -75,6 +86,11 @@ public:
     bool need_to_clear_the_state() override
     {
         return false;
+    }
+    void interrupt() override
+    {
+        quit.store(true, std::memory_order_relaxed);
+        request_waiter->cv.notify_all();
     }
 };
 struct tcp_connect_session : std::enable_shared_from_this<tcp_connect_session>
@@ -102,6 +118,7 @@ struct tcp_connect_session : std::enable_shared_from_this<tcp_connect_session>
                                                          return;
                                                      }
                                                      proxy_->error_message = ec.message();
+                                                     proxy_->interrupt();
                                                  }
                                              )
         );
@@ -122,19 +139,21 @@ struct tcp_connect_session : std::enable_shared_from_this<tcp_connect_session>
                         return;
                     }
                     proxy_->error_message = ec.message();
+                    proxy_->interrupt();
                 }
             )
         );
     }
 };
 
-tcp_stream_wrapper::tcp_stream_wrapper(tcp_connect_session& _w) : session(_w)
+tcp_stream_wrapper::tcp_stream_wrapper(tcp_connect_session& _w)
+    : session(_w), request_waiter(new MultiQueueWaiter()), on_request(request_waiter)
 {
 }
 
 bool tcp_stream_wrapper::bad()
 {
-    return !session.socket_.is_open();
+    return quit.load(std::memory_order_relaxed) || !session.socket_.is_open();
 }
 
 tcp_stream_wrapper& tcp_stream_wrapper::write(std::string const& c)
@@ -284,6 +303,7 @@ void TcpServer::do_accept()
                         std::string desc = "Disconnect previous client "
                                            + d_ptr->_connect_session->socket_.local_endpoint().address().to_string();
                         d_ptr->_log.log(lsp::Log::Level::INFO, desc);
+                        d_ptr->_connect_session->proxy_->interrupt();
                         d_ptr->_connect_session->socket_.close();
                     }
 
@@ -305,6 +325,14 @@ void TcpServer::do_accept()
 void TcpServer::do_stop()
 {
     d_ptr->acceptor_.close();
+    if (d_ptr->_connect_session)
+    {
+        d_ptr->_connect_session->proxy_->interrupt();
+        if (d_ptr->_connect_session->socket_.is_open())
+        {
+            d_ptr->_connect_session->socket_.close();
+        }
+    }
 
     point.stop();
 }

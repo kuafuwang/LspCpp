@@ -113,7 +113,7 @@ void LSPStreamMessageProducer::listen(MessageConsumer callBack)
                     if (headers.contentLength <= 0)
                     {
                         string info = "Unexpected token:" + debugBuilder;
-                        info = +"  (expected Content-Length: sequence);";
+                        info += "  (expected Content-Length: sequence);";
                         MessageIssue issue(info, lsp::Log::Level::WARNING);
                         issueHandler.handle(std::move(issue));
                     }
@@ -191,14 +191,7 @@ bool LSPStreamMessageProducer::handleMessage(Headers& headers, MessageConsumer c
         }
         MessageIssue issue(info, lsp::Log::Level::WARNING);
         issueHandler.handle(std::move(issue));
-        if (input->need_to_clear_the_state())
-        {
-            input->clear();
-        }
-        else
-        {
-            return false;
-        }
+        return false;
     }
 
     callBack(std::move(content));
@@ -287,9 +280,22 @@ void DelimitedStreamMessageProducer::listen(MessageConsumer callBack)
     auto getMessage = [&](std::string& json) -> bool
     {
         std::string_ref lineBuilder;
+        auto trimWhitespace = [](std::string_ref& line)
+        {
+            while (!line.empty() && (line.front() == ' ' || line.front() == '\t' || line.front() == '\r' ||
+                                     line.front() == '\n'))
+            {
+                line.erase(line.begin());
+            }
+            while (!line.empty() && (line.back() == ' ' || line.back() == '\t' || line.back() == '\r' ||
+                                     line.back() == '\n'))
+            {
+                line.pop_back();
+            }
+        };
         while (readLine(lineBuilder))
         {
-            lineBuilder.trim();
+            trimWhitespace(lineBuilder);
             if (lineBuilder.start_with("//"))
             {
                 // Found a delimiter for the message.
@@ -298,7 +304,11 @@ void DelimitedStreamMessageProducer::listen(MessageConsumer callBack)
                     return true;
                 }
             }
-            json += lineBuilder;
+            else
+            {
+                json += lineBuilder;
+            }
+            lineBuilder.clear();
         }
         return false;
     };

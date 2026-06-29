@@ -1,5 +1,6 @@
 #include "LibLsp/JsonRpc/MessageIssue.h"
 #include "LibLsp/JsonRpc/WebSocketServer.h"
+#include <cstdio>
 #include <iostream>
 #include <signal.h>
 #include <utility>
@@ -11,8 +12,8 @@
 // namespace beast = boost::beast; // from <boost/beast.hpp>
 // namespace http = beast::http; // from <boost/beast/http.hpp>
 // namespace websocket = beast::websocket; // from <boost/beast/websocket.hpp>
-namespace net = asio; // from <boost/asio.hpp>
-using tcp = asio::ip::tcp; // from <boost/asio/ip/tcp.hpp>
+namespace net = asio;
+using tcp = asio::ip::tcp;
 namespace lsp
 {
 
@@ -22,7 +23,7 @@ struct WebSocketServer::Data {
     ix::WebSocketServer server;
     std::shared_ptr<MessageJsonHandler> handler;
     std::shared_ptr<Endpoint> endpoint;
-    RemoteEndPoint point;
+    RemoteEndPoint& point;
     lsp::Log& log;
 
     Data(const std::string& ua,
@@ -31,11 +32,11 @@ struct WebSocketServer::Data {
          std::shared_ptr<MessageJsonHandler> h,
          std::shared_ptr<Endpoint> ep,
          lsp::Log& lg,
-         uint32_t max_workers)
-        : server(port)
+         RemoteEndPoint& remote_endpoint)
+        : server(port, addr)
           , handler(std::move(h))
           , endpoint(std::move(ep))
-          , point(handler, endpoint, lg, lsp::JSONStreamStyle::Standard, static_cast<uint8_t>(max_workers))
+          , point(remote_endpoint)
           , log(lg)
     {
         server.setOnConnectionCallback(
@@ -62,6 +63,10 @@ websocket_stream_wrapper::websocket_stream_wrapper(std::shared_ptr<ix::WebSocket
             }
             else if (msg->type == ix::WebSocketMessageType::Error) {
                 error_message = msg->str;
+                interrupt();
+            }
+            else if (msg->type == ix::WebSocketMessageType::Close) {
+                interrupt();
             }
         }
     );
@@ -88,19 +93,29 @@ websocket_stream_wrapper& websocket_stream_wrapper::read(char* str, std::streams
     memcpy(str, some.data(), some.size());
     for (std::streamsize i = some.size(); i < count; ++i)
     {
-        str[i] = static_cast<char>(get());
+        int const c = get();
+        if (c == EOF)
+        {
+            break;
+        }
+        str[i] = static_cast<char>(c);
     }
     return *this;
 }
 
 int websocket_stream_wrapper::get()
 {
-    return on_request.Dequeue();
+    if (request_waiter->Wait(quit, &on_request))
+    {
+        return EOF;
+    }
+    auto item = on_request.TryDequeue(false);
+    return item ? static_cast<unsigned char>(*item) : EOF;
 }
 
 bool websocket_stream_wrapper::bad()
 {
-    return ws_->getReadyState() != ix::ReadyState::Open;
+    return quit.load(std::memory_order_relaxed);
 }
 
 websocket_stream_wrapper& websocket_stream_wrapper::write(std::string const& c)
@@ -126,6 +141,12 @@ void websocket_stream_wrapper::clear()
 {
 }
 
+void websocket_stream_wrapper::interrupt()
+{
+    quit.store(true, std::memory_order_relaxed);
+    request_waiter->cv.notify_all();
+}
+
 std::string websocket_stream_wrapper::what()
 {
     if (!error_message.empty())
@@ -133,7 +154,8 @@ std::string websocket_stream_wrapper::what()
         return error_message;
     }
 
-    if (ws_->getReadyState() != ix::ReadyState::Open)
+    auto const state = ws_->getReadyState();
+    if (state == ix::ReadyState::Closing || state == ix::ReadyState::Closed)
     {
         return "Socket is not open.";
     }
@@ -151,7 +173,7 @@ WebSocketServer::WebSocketServer(
     uint32_t _max_workers
 )
     : point(json_handler, localEndPoint, log, lsp::JSONStreamStyle::Standard, static_cast<uint8_t>(_max_workers)),
-      d_ptr(new Data(user_agent, address, std::stoi(port), json_handler, localEndPoint, log, _max_workers))
+      d_ptr(new Data(user_agent, address, std::stoi(port), json_handler, localEndPoint, log, point))
 
 {
 
@@ -160,13 +182,19 @@ WebSocketServer::WebSocketServer(
 void WebSocketServer::run()
 {
     ix::initNetSystem();
-    d_ptr->server.listen();
+    auto const listen_result = d_ptr->server.listen();
+    if (!listen_result.first)
+    {
+        d_ptr->log.log(lsp::Log::Level::SEVERE, listen_result.second);
+        return;
+    }
     d_ptr->server.start();
 }
 
 void WebSocketServer::stop()
 {
     d_ptr->server.stop();
+    point.stop();
 }
 
 } // namespace lsp

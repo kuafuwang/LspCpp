@@ -215,7 +215,14 @@ public:
 
             return true;
         };
-        internalSendRequest(request, cb);
+        if (!internalSendRequest(request, cb))
+        {
+            Rsp_Error error;
+            error.id = request.id;
+            error.error.code = lsErrorCodes::InternalError;
+            error.error.message = "Failed to send request.";
+            onError(error);
+        }
     }
 
     template<typename F, typename NotifyType = ParamType<F, 0>>
@@ -270,7 +277,14 @@ public:
             }
             return true;
         };
-        internalSendRequest(request, cb);
+        if (!internalSendRequest(request, cb))
+        {
+            Rsp_Error error;
+            error.id = request.id;
+            error.error.code = lsErrorCodes::InternalError;
+            error.error.message = "Failed to send request.";
+            promise->set_value(lsp::ResponseOrError<Response>(std::move(error)));
+        }
         return promise->get_future();
     }
 
@@ -287,6 +301,7 @@ public:
             auto state = future_rsp.wait_for(std::chrono::milliseconds(time_out));
             if (lsp::future_status::timeout == state)
             {
+                removeRequestInfo(request.id);
                 return {};
             }
         }
@@ -339,6 +354,7 @@ public:
 
 private:
     CancelMonitor getCancelMonitor(lsRequestId const&);
+    void removeRequestInfo(lsRequestId const&);
     void sendMsg(LspMessage& msg);
     void mainLoop(std::unique_ptr<LspMessage>);
     bool dispatch(std::string const&);
