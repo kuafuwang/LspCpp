@@ -100,10 +100,17 @@ Generate a Visual Studio solution and build:
 ```shell
 mkdir _build
 cd _build
-cmake -DUri_BUILD_TESTS=OFF -DUri_USE_STATIC_CRT=OFF ..
+cmake -DUri_BUILD_TESTS=OFF ..
 ```
 
 Open the generated solution in Visual Studio, or build from the command line with `cmake --build .`.
+
+To request the static CRT (`/MT`, `/MTd`), pass `-DLSPCPP_USE_STATIC_CRT=ON`.
+This keeps bundled dependencies such as `network-uri` and `ixwebsocket` on the same
+runtime so you do not need to override `/MD` manually. If a toolchain already sets
+`CMAKE_MSVC_RUNTIME_LIBRARY`, LspCpp follows that runtime for bundled dependencies.
+When using vcpkg for external dependencies, build with a matching CRT triplet (for
+example `x64-windows-static`).
 
 To build tests on Windows, use vcpkg with the `tests` feature (see section 4 above).
 
@@ -119,6 +126,7 @@ To build tests on Windows, use vcpkg with the `tests` feature (see section 4 abo
 | `USE_SYSTEM_RAPIDJSON` | `OFF` | Use system RapidJSON instead of the submodule |
 | `USE_EXTERNAL_ASIO` | `OFF` | Use vcpkg/system Asio instead of the submodule |
 | `USE_EXTERNAL_IXWEBSOCKET` | `OFF` | Use vcpkg/system IXWebSocket instead of the submodule |
+| `LSPCPP_USE_STATIC_CRT` | `OFF` | Request static MSVC runtime linking (`/MT`, `/MTd`; Windows only) |
 
 ## Examples
 
