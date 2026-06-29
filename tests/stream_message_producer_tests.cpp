@@ -70,6 +70,71 @@ void TestMissingContentLengthReportsWarning()
         "missing Content-Length issue must mention Content-Length");
 }
 
+void TestInvalidContentLengthReportsWarning()
+{
+    auto input = std::make_shared<StringIStream>("Content-Length: not-a-number\r\n\r\n{}");
+    CollectingIssueHandler issues;
+    LSPStreamMessageProducer producer(issues, input);
+
+    std::vector<std::string> messages;
+    producer.listen(
+        [&](std::string&& content)
+        {
+            messages.push_back(std::move(content));
+        });
+
+    Expect(messages.empty(), "invalid Content-Length must not invoke callback");
+    Expect(!issues.issues.empty(), "invalid Content-Length must report an issue");
+}
+
+void TestMalformedContentLengthsAreRejected()
+{
+    std::vector<std::string> const values = {
+        "-1",
+        "4x",
+        "999999999999999999999999999999",
+    };
+
+    for (auto const& value : values)
+    {
+        auto input = std::make_shared<StringIStream>("Content-Length: " + value + "\r\n\r\n{}");
+        CollectingIssueHandler issues;
+        LSPStreamMessageProducer producer(issues, input);
+
+        std::vector<std::string> messages;
+        producer.listen(
+            [&](std::string&& content)
+            {
+                messages.push_back(std::move(content));
+            });
+
+        Expect(messages.empty(), "malformed Content-Length must not invoke callback");
+        Expect(!issues.issues.empty(), "malformed Content-Length must report an issue");
+    }
+}
+
+void TestContentLengthAllowsWhitespace()
+{
+    std::string const body = R"({"jsonrpc":"2.0","method":"test","params":{}})";
+    auto input = std::make_shared<StringIStream>(
+        "Content-Length: \t" + std::to_string(body.size()) + "  \r\n\r\n" + body);
+    CollectingIssueHandler issues;
+    LSPStreamMessageProducer producer(issues, input);
+
+    std::vector<std::string> messages;
+    producer.listen(
+        [&](std::string&& content)
+        {
+            messages.push_back(std::move(content));
+        });
+
+    Expect(messages.size() == 1, "Content-Length parser must allow surrounding whitespace");
+    if (!messages.empty())
+    {
+        Expect(messages[0] == body, "whitespace Content-Length body mismatch");
+    }
+}
+
 void TestShortBodyExitsWithoutDeliveringMessage()
 {
     std::string const body = R"({"jsonrpc":"2.0"})";
@@ -164,6 +229,9 @@ int main()
     TestValidFrameDeliversBody();
     TestMultipleFramesDeliverBothBodies();
     TestMissingContentLengthReportsWarning();
+    TestInvalidContentLengthReportsWarning();
+    TestMalformedContentLengthsAreRejected();
+    TestContentLengthAllowsWhitespace();
     TestShortBodyExitsWithoutDeliveringMessage();
     TestBadStreamExitsCleanly();
     TestDelimitedProducerDeliversDelimitedJsonBlocks();
