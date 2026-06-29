@@ -75,7 +75,18 @@ void TestRequestIdStringRoundTrip()
 
     Expect(id.type == lsRequestId::kString, "string request id must stay string type");
     Expect(id.k_string == "abc-123", "string request id value mismatch");
+    Expect(id.value == -1, "string request id must not derive a numeric value");
     Expect(SerializeRequestIdToJson(id) == "\"abc-123\"", "string request id must serialize as JSON string");
+}
+
+void TestNumericStringRequestIdDoesNotBecomeInteger()
+{
+    lsRequestId const id = ParseRequestIdFromJson("\"123\"");
+
+    Expect(id.type == lsRequestId::kString, "numeric-looking string request id must stay string type");
+    Expect(id.k_string == "123", "numeric-looking string request id text mismatch");
+    Expect(id.value == -1, "numeric-looking string request id must not populate integer value");
+    Expect(SerializeRequestIdToJson(id) == "\"123\"", "numeric-looking string id must serialize as JSON string");
 }
 
 void TestRequestIdNullAndInvalid()
@@ -108,6 +119,19 @@ void TestLspMessageWriteFraming()
     Expect(static_cast<size_t>(content_length) == body.size(), "Content-Length must match JSON body size");
     Expect(body.find("\"id\":42") != std::string::npos, "framed body must contain serialized request id");
 }
+
+void TestRequestSwapSwapsMethod()
+{
+    td_initialize::request first;
+    td_initialize::request second;
+    first.SetMethodType("first");
+    second.SetMethodType("second");
+
+    first.swap(second);
+
+    Expect(first.method == "second", "request swap must take the other method");
+    Expect(second.method == "first", "request swap must give the original method to the other request");
+}
 } // namespace
 
 int main()
@@ -115,8 +139,10 @@ int main()
     TestRequestIdOrderingKeepsTypesDistinct();
     TestRequestIdOrderingKeepsLargeIntegersDistinct();
     TestRequestIdStringRoundTrip();
+    TestNumericStringRequestIdDoesNotBecomeInteger();
     TestRequestIdNullAndInvalid();
     TestLspMessageWriteFraming();
+    TestRequestSwapSwapsMethod();
 
     return test::Failures() == 0 ? 0 : 1;
 }

@@ -5,6 +5,7 @@
 
 #include <cstdio>
 #include <iostream>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -159,10 +160,17 @@ public:
         return data_;
     }
 
+    std::string snapshot() const
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return data_;
+    }
+
     lsp::ostream& write(std::string const& value) override
     {
         if (!bad_)
         {
+            std::lock_guard<std::mutex> lock(mutex_);
             data_ += value;
         }
         return *this;
@@ -210,6 +218,7 @@ public:
     }
 
 private:
+    mutable std::mutex mutex_;
     std::string data_;
     bool fail_ = false;
     bool bad_ = false;

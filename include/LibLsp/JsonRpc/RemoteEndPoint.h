@@ -149,7 +149,7 @@ public:
             RequestType::kMethodInfo,
             [=](std::unique_ptr<LspMessage> msg)
             {
-                auto req = reinterpret_cast<RequestType const*>(msg.get());
+                auto req = static_cast<RequestType const*>(msg.get());
                 lsp::ResponseOrError<ResponseType> res(handler(*req));
                 if (res.is_error)
                 {
@@ -262,7 +262,7 @@ public:
             }
             auto result = msg.get();
 
-            if (reinterpret_cast<ResponseInMessage*>(result)->IsErrorType())
+            if (static_cast<ResponseInMessage*>(result)->IsErrorType())
             {
                 Rsp_Error* rsp_error = static_cast<Rsp_Error*>(result);
                 Rsp_Error temp;

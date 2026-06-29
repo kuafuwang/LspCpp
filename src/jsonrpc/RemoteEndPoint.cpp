@@ -525,7 +525,7 @@ bool RemoteEndPoint::dispatch(std::string const& content)
         {
             info += "request";
         }
-        if (_kind == LspMessage::RESPONCE_MESSAGE)
+        else if (_kind == LspMessage::RESPONCE_MESSAGE)
         {
             info += "response";
         }
@@ -624,9 +624,18 @@ void RemoteEndPoint::mainLoop(std::unique_ptr<LspMessage> msg)
     if (_kind == LspMessage::REQUEST_MESSAGE)
     {
         auto req = static_cast<RequestInMessage*>(msg.get());
+        auto const request_id = req->id;
+        auto const method = std::string(req->GetMethodType());
         // Calls can be canceled by the client. Add cancellation context.
-        WithContext WithCancel(d_ptr->cancelableRequestContext(req->id));
-        local_endpoint->onRequest(std::move(msg));
+        WithContext WithCancel(d_ptr->cancelableRequestContext(request_id));
+        if (!local_endpoint->onRequest(std::move(msg)))
+        {
+            Rsp_Error error;
+            error.id = request_id;
+            error.error.code = lsErrorCodes::MethodNotFound;
+            error.error.message = "Method not found: " + method;
+            send(error);
+        }
     }
 
     else if (_kind == LspMessage::RESPONCE_MESSAGE)

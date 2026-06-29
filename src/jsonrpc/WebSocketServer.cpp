@@ -2,6 +2,7 @@
 #include "LibLsp/JsonRpc/WebSocketServer.h"
 #include <cstdio>
 #include <iostream>
+#include <mutex>
 #include <signal.h>
 #include <utility>
 #include "LibLsp/JsonRpc/stream.h"
@@ -25,6 +26,8 @@ struct WebSocketServer::Data {
     std::shared_ptr<Endpoint> endpoint;
     RemoteEndPoint& point;
     lsp::Log& log;
+    std::mutex connection_mutex;
+    std::shared_ptr<websocket_stream_wrapper> active_stream;
 
     Data(const std::string& ua,
        const std::string& addr,
@@ -45,6 +48,15 @@ struct WebSocketServer::Data {
                 auto ws = wp.lock();
                 if(!ws) return;
                 auto wrapper = std::make_shared<websocket_stream_wrapper>(ws);
+                {
+                    std::lock_guard<std::mutex> lock(connection_mutex);
+                    if (active_stream)
+                    {
+                        active_stream->interrupt();
+                        point.stop();
+                    }
+                    active_stream = wrapper;
+                }
                 point.startProcessingMessages(wrapper, wrapper);
             }
         );
@@ -194,6 +206,14 @@ void WebSocketServer::run()
 void WebSocketServer::stop()
 {
     d_ptr->server.stop();
+    {
+        std::lock_guard<std::mutex> lock(d_ptr->connection_mutex);
+        if (d_ptr->active_stream)
+        {
+            d_ptr->active_stream->interrupt();
+            d_ptr->active_stream.reset();
+        }
+    }
     point.stop();
 }
 

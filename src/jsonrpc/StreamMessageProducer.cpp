@@ -1,6 +1,9 @@
 
 #include "LibLsp/JsonRpc/StreamMessageProducer.h"
 #include <cassert>
+#include <cerrno>
+#include <climits>
+#include <cstdlib>
 
 #include "LibLsp/JsonRpc/stream.h"
 #include "LibLsp/lsp/Markup/string_ref.h"
@@ -24,22 +27,47 @@ string CONTENT_TYPE_HEADER = "Content-Type";
 string JSON_MIME_TYPE = "application/json";
 string CRLF = "\r\n";
 
+bool parseContentLength(std::string const& value, int& contentLength)
+{
+    errno = 0;
+    char* end = nullptr;
+    long const parsed = std::strtol(value.c_str(), &end, 10);
+    if (end == value.c_str() || errno == ERANGE || parsed < 0 || parsed > INT_MAX)
+    {
+        return false;
+    }
+    while (*end == ' ' || *end == '\t')
+    {
+        ++end;
+    }
+    if (*end != '\0')
+    {
+        return false;
+    }
+    contentLength = static_cast<int>(parsed);
+    return true;
+}
+
 } // namespace
 
 void LSPStreamMessageProducer::parseHeader(std::string& line, LSPStreamMessageProducer::Headers& headers)
 {
-    int sepIndex = line.find(':');
-    if (sepIndex >= 0)
+    std::string::size_type const sepIndex = line.find(':');
+    if (sepIndex != std::string::npos)
     {
         auto key = line.substr(0, sepIndex);
         if (key == CONTENT_LENGTH_HEADER)
         {
-            headers.contentLength = atoi(line.substr(sepIndex + 1).data());
+            int contentLength = -1;
+            if (parseContentLength(line.substr(sepIndex + 1), contentLength))
+            {
+                headers.contentLength = contentLength;
+            }
         }
         else if (key == CONTENT_TYPE_HEADER)
         {
-            int charsetIndex = line.find("charset=");
-            if (charsetIndex >= 0)
+            std::string::size_type const charsetIndex = line.find("charset=");
+            if (charsetIndex != std::string::npos)
             {
                 headers.charset = line.substr(charsetIndex + 8);
             }

@@ -45,7 +45,7 @@ void Reflect(Reader& visitor, lsRequestId& value)
     {
         value.type = lsRequestId::kString;
         value.k_string = visitor.GetString();
-        value.value = atoi(value.k_string.c_str());
+        value.value = -1;
     }
     else
     {
