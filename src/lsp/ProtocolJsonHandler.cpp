@@ -26,10 +26,13 @@
 #include "LibLsp/lsp/textDocument/resolveCodeLens.h"
 #include "LibLsp/lsp/textDocument/colorPresentation.h"
 #include "LibLsp/lsp/textDocument/foldingRange.h"
+#include "LibLsp/lsp/textDocument/inlayHint.h"
 #include "LibLsp/lsp/textDocument/prepareRename.h"
 #include "LibLsp/lsp/textDocument/resolveTypeHierarchy.h"
 #include "LibLsp/lsp/textDocument/callHierarchy.h"
 #include "LibLsp/lsp/textDocument/selectionRange.h"
+#include "LibLsp/lsp/textDocument/SemanticTokens.h"
+#include "LibLsp/lsp/protocol_3_18.h"
 #include "LibLsp/lsp/extention/jdtls/classFileContents.h"
 #include "LibLsp/lsp/extention/jdtls/buildWorkspace.h"
 #include "LibLsp/lsp/extention/jdtls/listOverridableMethods.h"
@@ -347,6 +350,141 @@ void AddStadardResponseJsonRpcMethod(MessageJsonHandler& handler)
         }
 
         return td_selectionRange::response::ReflectReader(visitor);
+    };
+    handler.method2response[td_semanticTokens_full::request::kMethodInfo] = [](Reader& visitor)
+    {
+        if (visitor.HasMember("error"))
+        {
+            return Rsp_Error::ReflectReader(visitor);
+        }
+
+        return td_semanticTokens_full::response::ReflectReader(visitor);
+    };
+    handler.method2response[td_semanticTokens_full_delta::request::kMethodInfo] = [](Reader& visitor)
+    {
+        if (visitor.HasMember("error"))
+        {
+            return Rsp_Error::ReflectReader(visitor);
+        }
+
+        return td_semanticTokens_full_delta::response::ReflectReader(visitor);
+    };
+    handler.method2response[td_inlayHint::request::kMethodInfo] = [](Reader& visitor)
+    {
+        if (visitor.HasMember("error"))
+        {
+            return Rsp_Error::ReflectReader(visitor);
+        }
+
+        return td_inlayHint::response::ReflectReader(visitor);
+    };
+    handler.method2response[td_inlayHintResolve::request::kMethodInfo] = [](Reader& visitor)
+    {
+        if (visitor.HasMember("error"))
+        {
+            return Rsp_Error::ReflectReader(visitor);
+        }
+
+        return td_inlayHintResolve::response::ReflectReader(visitor);
+    };
+    handler.method2response[td_diagnostic::request::kMethodInfo] = [](Reader& visitor)
+    {
+        if (visitor.HasMember("error"))
+        {
+            return Rsp_Error::ReflectReader(visitor);
+        }
+
+        return td_diagnostic::response::ReflectReader(visitor);
+    };
+    handler.method2response[workspace_diagnostic::request::kMethodInfo] = [](Reader& visitor)
+    {
+        if (visitor.HasMember("error"))
+        {
+            return Rsp_Error::ReflectReader(visitor);
+        }
+
+        return workspace_diagnostic::response::ReflectReader(visitor);
+    };
+    handler.method2response[td_inlineValue::request::kMethodInfo] = [](Reader& visitor)
+    {
+        if (visitor.HasMember("error"))
+        {
+            return Rsp_Error::ReflectReader(visitor);
+        }
+
+        return td_inlineValue::response::ReflectReader(visitor);
+    };
+    handler.method2response[td_inlineCompletion::request::kMethodInfo] = [](Reader& visitor)
+    {
+        if (visitor.HasMember("error"))
+        {
+            return Rsp_Error::ReflectReader(visitor);
+        }
+
+        return td_inlineCompletion::response::ReflectReader(visitor);
+    };
+    handler.method2response[td_rangesFormatting::request::kMethodInfo] = [](Reader& visitor)
+    {
+        if (visitor.HasMember("error"))
+        {
+            return Rsp_Error::ReflectReader(visitor);
+        }
+
+        return td_rangesFormatting::response::ReflectReader(visitor);
+    };
+    handler.method2response[workspace_textDocumentContent::request::kMethodInfo] = [](Reader& visitor)
+    {
+        if (visitor.HasMember("error"))
+        {
+            return Rsp_Error::ReflectReader(visitor);
+        }
+
+        return workspace_textDocumentContent::response::ReflectReader(visitor);
+    };
+    handler.method2response[workspace_textDocumentContent_refresh::request::kMethodInfo] = [](Reader& visitor)
+    {
+        if (visitor.HasMember("error"))
+        {
+            return Rsp_Error::ReflectReader(visitor);
+        }
+
+        return workspace_textDocumentContent_refresh::response::ReflectReader(visitor);
+    };
+    handler.method2response[workspace_foldingRange_refresh::request::kMethodInfo] = [](Reader& visitor)
+    {
+        if (visitor.HasMember("error"))
+        {
+            return Rsp_Error::ReflectReader(visitor);
+        }
+
+        return workspace_foldingRange_refresh::response::ReflectReader(visitor);
+    };
+    handler.method2response[workspace_inlineValue_refresh::request::kMethodInfo] = [](Reader& visitor)
+    {
+        if (visitor.HasMember("error"))
+        {
+            return Rsp_Error::ReflectReader(visitor);
+        }
+
+        return workspace_inlineValue_refresh::response::ReflectReader(visitor);
+    };
+    handler.method2response[codeAction_resolve::request::kMethodInfo] = [](Reader& visitor)
+    {
+        if (visitor.HasMember("error"))
+        {
+            return Rsp_Error::ReflectReader(visitor);
+        }
+
+        return codeAction_resolve::response::ReflectReader(visitor);
+    };
+    handler.method2response[workspaceSymbol_resolve::request::kMethodInfo] = [](Reader& visitor)
+    {
+        if (visitor.HasMember("error"))
+        {
+            return Rsp_Error::ReflectReader(visitor);
+        }
+
+        return workspaceSymbol_resolve::response::ReflectReader(visitor);
     };
     handler.method2response[td_didRenameFiles::request::kMethodInfo] = [](Reader& visitor)
     {
@@ -689,6 +827,36 @@ void AddStandardRequestJsonRpcMethod(MessageJsonHandler& handler)
 
     handler.method2request[td_implementation::request::kMethodInfo] = [](Reader& visitor)
     { return td_implementation::request::ReflectReader(visitor); };
+    handler.method2request[td_semanticTokens_full::request::kMethodInfo] = [](Reader& visitor)
+    { return td_semanticTokens_full::request::ReflectReader(visitor); };
+    handler.method2request[td_semanticTokens_full_delta::request::kMethodInfo] = [](Reader& visitor)
+    { return td_semanticTokens_full_delta::request::ReflectReader(visitor); };
+    handler.method2request[td_inlayHint::request::kMethodInfo] = [](Reader& visitor)
+    { return td_inlayHint::request::ReflectReader(visitor); };
+    handler.method2request[td_inlayHintResolve::request::kMethodInfo] = [](Reader& visitor)
+    { return td_inlayHintResolve::request::ReflectReader(visitor); };
+    handler.method2request[td_diagnostic::request::kMethodInfo] = [](Reader& visitor)
+    { return td_diagnostic::request::ReflectReader(visitor); };
+    handler.method2request[workspace_diagnostic::request::kMethodInfo] = [](Reader& visitor)
+    { return workspace_diagnostic::request::ReflectReader(visitor); };
+    handler.method2request[td_inlineValue::request::kMethodInfo] = [](Reader& visitor)
+    { return td_inlineValue::request::ReflectReader(visitor); };
+    handler.method2request[td_inlineCompletion::request::kMethodInfo] = [](Reader& visitor)
+    { return td_inlineCompletion::request::ReflectReader(visitor); };
+    handler.method2request[td_rangesFormatting::request::kMethodInfo] = [](Reader& visitor)
+    { return td_rangesFormatting::request::ReflectReader(visitor); };
+    handler.method2request[workspace_textDocumentContent::request::kMethodInfo] = [](Reader& visitor)
+    { return workspace_textDocumentContent::request::ReflectReader(visitor); };
+    handler.method2request[workspace_textDocumentContent_refresh::request::kMethodInfo] = [](Reader& visitor)
+    { return workspace_textDocumentContent_refresh::request::ReflectReader(visitor); };
+    handler.method2request[workspace_foldingRange_refresh::request::kMethodInfo] = [](Reader& visitor)
+    { return workspace_foldingRange_refresh::request::ReflectReader(visitor); };
+    handler.method2request[workspace_inlineValue_refresh::request::kMethodInfo] = [](Reader& visitor)
+    { return workspace_inlineValue_refresh::request::ReflectReader(visitor); };
+    handler.method2request[codeAction_resolve::request::kMethodInfo] = [](Reader& visitor)
+    { return codeAction_resolve::request::ReflectReader(visitor); };
+    handler.method2request[workspaceSymbol_resolve::request::kMethodInfo] = [](Reader& visitor)
+    { return workspaceSymbol_resolve::request::ReflectReader(visitor); };
 
     handler.method2request[td_didRenameFiles::request::kMethodInfo] = [](Reader& visitor)
     { return td_didRenameFiles::request::ReflectReader(visitor); };

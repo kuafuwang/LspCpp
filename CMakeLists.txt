@@ -595,6 +595,8 @@ if(LSPCPP_BUILD_TESTS)
     lspcpp_add_test_executable(lspcpp_remote_endpoint_tests remote_endpoint_tests.cpp)
     lspcpp_add_test_executable(lspcpp_endpoint_serializer_tests endpoint_serializer_tests.cpp)
     lspcpp_add_test_executable(lspcpp_infrastructure_tests infrastructure_tests.cpp)
+    lspcpp_add_test_executable(lspcpp_lsp_3_18_tests lsp_3_18_tests.cpp)
+    lspcpp_add_test_executable(lspcpp_lsp_3_16_17_tests lsp_3_16_17_tests.cpp)
 
     add_test(NAME lspcpp.jsonrpc
             COMMAND $<TARGET_FILE:lspcpp_jsonrpc_tests>)
@@ -606,6 +608,10 @@ if(LSPCPP_BUILD_TESTS)
             COMMAND $<TARGET_FILE:lspcpp_endpoint_serializer_tests>)
     add_test(NAME lspcpp.infrastructure
             COMMAND $<TARGET_FILE:lspcpp_infrastructure_tests>)
+    add_test(NAME lspcpp.lsp_3_18
+            COMMAND $<TARGET_FILE:lspcpp_lsp_3_18_tests>)
+    add_test(NAME lspcpp.lsp_3_16_17
+            COMMAND $<TARGET_FILE:lspcpp_lsp_3_16_17_tests>)
 endif()
 
 # examples
