@@ -135,6 +135,85 @@ void TestContentLengthAllowsWhitespace()
     }
 }
 
+void TestContentLengthZeroDeliversEmptyBody()
+{
+    auto input = std::make_shared<StringIStream>("Content-Length: 0\r\n\r\n");
+    CollectingIssueHandler issues;
+    LSPStreamMessageProducer producer(issues, input);
+
+    std::vector<std::string> messages;
+    producer.listen(
+        [&](std::string&& content)
+        {
+            messages.push_back(std::move(content));
+        });
+
+    Expect(messages.size() == 1, "Content-Length zero must deliver one empty message");
+    if (!messages.empty())
+    {
+        Expect(messages[0].empty(), "Content-Length zero must deliver empty body");
+    }
+}
+
+void TestContentTypeCharsetIsParsed()
+{
+    auto input = std::make_shared<StringIStream>(
+        "Content-Length: 2\r\nContent-Type: application/json; charset=utf-8\r\n\r\n{}");
+    CollectingIssueHandler issues;
+    LSPStreamMessageProducer producer(issues, input);
+
+    std::vector<std::string> messages;
+    producer.listen(
+        [&](std::string&& content)
+        {
+            messages.push_back(std::move(content));
+        });
+
+    Expect(messages.size() == 1, "Content-Type charset header must not block delivery");
+    if (!messages.empty())
+    {
+        Expect(messages[0] == "{}", "Content-Type charset body mismatch");
+    }
+}
+
+void TestMultipleHeaderLinesParsedCorrectly()
+{
+    std::string const body = R"({"jsonrpc":"2.0","method":"headers"})";
+    auto input = std::make_shared<StringIStream>(
+        "Content-Type: application/json\r\nContent-Length: " + std::to_string(body.size()) + "\r\n\r\n" + body);
+    CollectingIssueHandler issues;
+    LSPStreamMessageProducer producer(issues, input);
+
+    std::vector<std::string> messages;
+    producer.listen(
+        [&](std::string&& content)
+        {
+            messages.push_back(std::move(content));
+        });
+
+    Expect(messages.size() == 1, "multiple headers must still deliver the message");
+    if (!messages.empty())
+    {
+        Expect(messages[0] == body, "multiple headers body mismatch");
+    }
+}
+
+void TestPartialHeaderThenEofExitsCleanly()
+{
+    auto input = std::make_shared<StringIStream>("Content-Len");
+    CollectingIssueHandler issues;
+    LSPStreamMessageProducer producer(issues, input);
+
+    std::vector<std::string> messages;
+    producer.listen(
+        [&](std::string&& content)
+        {
+            messages.push_back(std::move(content));
+        });
+
+    Expect(messages.empty(), "partial header at EOF must not invoke callback");
+}
+
 void TestShortBodyExitsWithoutDeliveringMessage()
 {
     std::string const body = R"({"jsonrpc":"2.0"})";
@@ -222,6 +301,59 @@ void TestDelimitedProducerDropsUnterminatedTrailingBlock()
 
     Expect(messages.empty(), "unterminated delimited block must not be emitted");
 }
+
+void TestDelimitedProducerIgnoresEmptyLines()
+{
+    auto input = std::make_shared<StringIStream>(
+        "\n"
+        "{\"jsonrpc\":\"2.0\",\"method\":\"one\"}\n"
+        "\n"
+        "// -----\n"
+        "\n"
+        "{\"jsonrpc\":\"2.0\",\"method\":\"two\"}\n"
+        "\n"
+        "// -----\n");
+    CollectingIssueHandler issues;
+    DelimitedStreamMessageProducer producer(issues, input);
+
+    std::vector<std::string> messages;
+    producer.listen(
+        [&](std::string&& content)
+        {
+            messages.push_back(std::move(content));
+        });
+
+    Expect(messages.size() == 2, "empty lines must be ignored in delimited input");
+    if (messages.size() == 2)
+    {
+        Expect(messages[0] == "{\"jsonrpc\":\"2.0\",\"method\":\"one\"}", "first empty-line message mismatch");
+        Expect(messages[1] == "{\"jsonrpc\":\"2.0\",\"method\":\"two\"}", "second empty-line message mismatch");
+    }
+}
+
+void TestDelimitedProducerTrimsWhitespace()
+{
+    auto input = std::make_shared<StringIStream>(
+        " \t {\"jsonrpc\":\"2.0\",\"method\":\"trimmed\"} \t \n"
+        " \t // ----- \t \n");
+    CollectingIssueHandler issues;
+    DelimitedStreamMessageProducer producer(issues, input);
+
+    std::vector<std::string> messages;
+    producer.listen(
+        [&](std::string&& content)
+        {
+            messages.push_back(std::move(content));
+        });
+
+    Expect(messages.size() == 1, "whitespace-trimmed delimited input must emit one message");
+    if (!messages.empty())
+    {
+        Expect(
+            messages[0] == "{\"jsonrpc\":\"2.0\",\"method\":\"trimmed\"}",
+            "delimited producer must trim whitespace around JSON lines");
+    }
+}
 } // namespace
 
 int main()
@@ -232,10 +364,16 @@ int main()
     TestInvalidContentLengthReportsWarning();
     TestMalformedContentLengthsAreRejected();
     TestContentLengthAllowsWhitespace();
+    TestContentLengthZeroDeliversEmptyBody();
+    TestContentTypeCharsetIsParsed();
+    TestMultipleHeaderLinesParsedCorrectly();
+    TestPartialHeaderThenEofExitsCleanly();
     TestShortBodyExitsWithoutDeliveringMessage();
     TestBadStreamExitsCleanly();
     TestDelimitedProducerDeliversDelimitedJsonBlocks();
     TestDelimitedProducerDropsUnterminatedTrailingBlock();
+    TestDelimitedProducerIgnoresEmptyLines();
+    TestDelimitedProducerTrimsWhitespace();
 
     return test::Failures() == 0 ? 0 : 1;
 }

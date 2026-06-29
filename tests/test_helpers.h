@@ -3,7 +3,9 @@
 #include "LibLsp/JsonRpc/MessageIssue.h"
 #include "LibLsp/JsonRpc/stream.h"
 
+#include <condition_variable>
 #include <cstdio>
+#include <deque>
 #include <iostream>
 #include <mutex>
 #include <sstream>
@@ -145,6 +147,103 @@ private:
     bool bad_ = false;
     bool eof_ = false;
     std::string what_;
+};
+
+class FeedableIStream : public lsp::istream
+{
+public:
+    void append(std::string const& data)
+    {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            for (char c : data)
+            {
+                data_.push_back(c);
+            }
+        }
+        cv_.notify_all();
+    }
+
+    void interrupt() override
+    {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            interrupted_ = true;
+        }
+        cv_.notify_all();
+    }
+
+    int get() override
+    {
+        std::unique_lock<std::mutex> lock(mutex_);
+        cv_.wait(
+            lock,
+            [&]()
+            {
+                return interrupted_ || !data_.empty();
+            });
+        if (data_.empty())
+        {
+            eof_ = true;
+            return EOF;
+        }
+        auto const c = static_cast<unsigned char>(data_.front());
+        data_.pop_front();
+        return c;
+    }
+
+    lsp::istream& read(char* str, std::streamsize count) override
+    {
+        for (std::streamsize i = 0; i < count; ++i)
+        {
+            int const c = get();
+            if (c == EOF)
+            {
+                break;
+            }
+            str[i] = static_cast<char>(c);
+        }
+        return *this;
+    }
+
+    bool fail() override
+    {
+        return false;
+    }
+
+    bool bad() override
+    {
+        return false;
+    }
+
+    bool eof() override
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return eof_;
+    }
+
+    bool good() override
+    {
+        return !eof();
+    }
+
+    void clear() override
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        eof_ = false;
+    }
+
+    std::string what() override
+    {
+        return {};
+    }
+
+private:
+    std::mutex mutex_;
+    std::condition_variable cv_;
+    std::deque<char> data_;
+    bool interrupted_ = false;
+    bool eof_ = false;
 };
 
 class StringOStream : public lsp::ostream
