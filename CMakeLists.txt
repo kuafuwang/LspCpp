@@ -80,6 +80,7 @@ option_if_not_defined(LSPCPP_SUPPORT_BOEHM_GC "\
 Enable support for Boehm GC. GC must be specified LSPCPP_GC_DOWNLOADED_ROOT, if downloaded or by
 find_package(BDWgc CONFIG REQUIRED) or pkg_config." OFF)
 option_if_not_defined(LSPCPP_USE_CPP17 "Use C++17 for compilation. Setting this to off requires boost-optional." ON)
+option_if_not_defined(LSPCPP_USE_STATIC_CRT "Link against the static MSVC runtime library (/MT, /MTd) when building with MSVC." OFF)
 
 if(LSPCPP_BUILD_TESTS)
     include(CTest)
@@ -282,7 +283,17 @@ endfunction()
 # Libraries
 
 if (MSVC)
+    if (LSPCPP_USE_STATIC_CRT)
+        set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    endif()
+
     set(Uri_USE_STATIC_CRT OFF)
+    if (LSPCPP_USE_STATIC_CRT OR
+            (DEFINED CMAKE_MSVC_RUNTIME_LIBRARY AND
+             CMAKE_MSVC_RUNTIME_LIBRARY MATCHES "MultiThreaded" AND
+             NOT CMAKE_MSVC_RUNTIME_LIBRARY MATCHES "DLL"))
+        set(Uri_USE_STATIC_CRT ON)
+    endif()
 endif()
 set(Uri_BUILD_TESTS OFF)
 add_subdirectory(third_party/uri)
