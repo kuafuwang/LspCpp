@@ -8,15 +8,12 @@ if(POLICY CMP0054)
     cmake_policy(SET CMP0054 NEW)
 endif()
 
-set(LIB_MAJOR_VERSION "1")
-set(LIB_MINOR_VERSION "0")
-set(LIB_PATCH_VERSION "0")
-set(LIB_TWEAK_VERSION "0")
-set(LIB_VERSION_STRING "${LIB_MAJOR_VERSION}.${LIB_MINOR_VERSION}.${LIB_PATCH_VERSION}.${LIB_TWEAK_VERSION}")
+set(LSPCPP_VERSION "1.0.1" CACHE STRING "LspCpp package version. Keep this in sync with vcpkg.json.")
 
 # Without this, paths are not relative in the sources list
 cmake_policy(SET CMP0076 NEW)
-project(lspcpp VERSION "${LIB_VERSION_STRING}" LANGUAGES CXX C)
+project(lspcpp VERSION "${LSPCPP_VERSION}" LANGUAGES CXX C)
+set(LIB_VERSION_STRING "${PROJECT_VERSION}")
 
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
 SET(GOOGLETEST_VERSION "0.00")
@@ -71,6 +68,7 @@ endfunction()
 option_if_not_defined(USE_SYSTEM_RAPIDJSON "Use system RapidJSON instead of the git submodule if exists" OFF)
 option_if_not_defined(LSPCPP_WARNINGS_AS_ERRORS "Treat warnings as errors" OFF)
 option_if_not_defined(LSPCPP_BUILD_EXAMPLES "Build example applications" OFF)
+option_if_not_defined(LSPCPP_BUILD_TESTS "Build and register tests with CTest" OFF)
 option_if_not_defined(LSPCPP_BUILD_FUZZER "Build fuzzer" OFF)
 option_if_not_defined(LSPCPP_BUILD_WEBSOCKETS "Build websocket server" ON)
 option_if_not_defined(LSPCPP_ASAN "Build lsp with address sanitizer" OFF)
@@ -82,6 +80,12 @@ option_if_not_defined(LSPCPP_SUPPORT_BOEHM_GC "\
 Enable support for Boehm GC. GC must be specified LSPCPP_GC_DOWNLOADED_ROOT, if downloaded or by
 find_package(BDWgc CONFIG REQUIRED) or pkg_config." OFF)
 option_if_not_defined(LSPCPP_USE_CPP17 "Use C++17 for compilation. Setting this to off requires boost-optional." ON)
+
+if(LSPCPP_BUILD_TESTS)
+    include(CTest)
+    enable_testing()
+    set(LSPCPP_BUILD_EXAMPLES ON)
+endif()
 
 set(LSPCPP_GC_DOWNLOADED_ROOT "" CACHE STRING "\
 If using downloaded gc root from https://www.hboehm.info/gc/, extract its contents and set this setting to
@@ -575,6 +579,32 @@ if(LSPCPP_INSTALL)
     install(FILES "${pkgconfig}" DESTINATION "${LSPCPP_PKGCONFIG_DIR}")
 endif()
 
+# tests
+if(LSPCPP_BUILD_TESTS)
+    function(lspcpp_add_test_executable target source)
+        add_executable(${target} "${CMAKE_CURRENT_SOURCE_DIR}/tests/${source}")
+        target_include_directories(${target} PRIVATE
+                ${LSP_INCLUDE_LIST}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests")
+        lspcpp_set_target_options(${target})
+        target_link_libraries(${target} PRIVATE lspcpp)
+    endfunction()
+
+    lspcpp_add_test_executable(lspcpp_jsonrpc_tests jsonrpc_tests.cpp)
+    lspcpp_add_test_executable(lspcpp_stream_message_producer_tests stream_message_producer_tests.cpp)
+    lspcpp_add_test_executable(lspcpp_remote_endpoint_tests remote_endpoint_tests.cpp)
+    lspcpp_add_test_executable(lspcpp_endpoint_serializer_tests endpoint_serializer_tests.cpp)
+
+    add_test(NAME lspcpp.jsonrpc
+            COMMAND $<TARGET_FILE:lspcpp_jsonrpc_tests>)
+    add_test(NAME lspcpp.stream_message_producer
+            COMMAND $<TARGET_FILE:lspcpp_stream_message_producer_tests>)
+    add_test(NAME lspcpp.remote_endpoint
+            COMMAND $<TARGET_FILE:lspcpp_remote_endpoint_tests>)
+    add_test(NAME lspcpp.endpoint_serializer
+            COMMAND $<TARGET_FILE:lspcpp_endpoint_serializer_tests>)
+endif()
+
 # examples
 if(LSPCPP_BUILD_EXAMPLES)
 
@@ -589,6 +619,14 @@ if(LSPCPP_BUILD_EXAMPLES)
         set(LSPCPP_OS_LIBS)
     endif()
 
+    find_package(Boost REQUIRED COMPONENTS filesystem program_options system)
+    set(LSPCPP_EXAMPLE_LIBS
+            ${LSPCPP_OS_LIBS}
+            Boost::filesystem
+            Boost::program_options
+            Boost::system
+            )
+
     function(build_example target)
         add_executable(${target} "${CMAKE_CURRENT_SOURCE_DIR}/examples/${target}.cpp")
         target_include_directories(${target} PRIVATE ${LSP_INCLUDE_LIST})
@@ -596,7 +634,7 @@ if(LSPCPP_BUILD_EXAMPLES)
                 FOLDER "Examples"
                 )
         lspcpp_set_target_options(${target})
-        target_link_libraries(${target}  PRIVATE lspcpp "${LSPCPP_OS_LIBS}")
+        target_link_libraries(${target} PRIVATE lspcpp ${LSPCPP_EXAMPLE_LIBS})
     endfunction(build_example)
 
     set(EXAMPLES
@@ -609,6 +647,20 @@ if(LSPCPP_BUILD_EXAMPLES)
     foreach (example ${EXAMPLES})
         build_example(${example})
     endforeach()
+
+    if(LSPCPP_BUILD_TESTS)
+        add_test(NAME lspcpp.tcp_server_example
+                COMMAND $<TARGET_FILE:TcpServerExample>)
+        set_tests_properties(lspcpp.tcp_server_example PROPERTIES TIMEOUT 30)
+
+        add_test(NAME lspcpp.stdio_client_server_example
+                COMMAND $<TARGET_FILE:StdIOClientExample> --execPath $<TARGET_FILE:StdIOServerExample>)
+        set_tests_properties(lspcpp.stdio_client_server_example PROPERTIES TIMEOUT 30)
+
+        add_test(NAME lspcpp.websocket_example
+                COMMAND $<TARGET_FILE:WebsocketExample>)
+        set_tests_properties(lspcpp.websocket_example PROPERTIES TIMEOUT 30)
+    endif()
 endif()
 
 # Add a distclean target to the Makefile

@@ -19,6 +19,7 @@
         "USE_EXTERNAL_IXWEBSOCKET": "true",
         "USE_EXTERNAL_ASIO": "true",
         "LSPCPP_STANDALONE_ASIO": "true",
+        "LSPCPP_BUILD_TESTS": "true",
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
       },
       "binaryDir": "${sourceDir}/cmake-build-ci"
@@ -28,6 +29,15 @@
     {
       "name": "ci/default",
       "configurePreset": "ci/default"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "ci/default",
+      "configurePreset": "ci/default",
+      "output": {
+        "outputOnFailure": true
+      }
     }
   ]
 }

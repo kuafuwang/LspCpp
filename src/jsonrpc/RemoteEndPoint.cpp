@@ -15,6 +15,8 @@
 #include "LibLsp/JsonRpc/stream.h"
 #include <atomic>
 #include <optional>
+#include <thread>
+#include <vector>
 #ifdef LSPCPP_USE_STANDALONE_ASIO
 #include <asio/thread_pool.hpp>
 #include <asio/post.hpp>
@@ -132,21 +134,32 @@ optional<CancelMonitor> getCancelledMonitor(lsRequestId const& id, Context const
 } // namespace lsp
 
 using namespace lsp;
+using PendingResponseHandler = std::function<bool(std::unique_ptr<LspMessage>&)>;
+
 class PendingRequestInfo
 {
-    using RequestCallBack = std::function<bool(std::unique_ptr<LspMessage>)>;
-
 public:
-    PendingRequestInfo(std::string const& md, RequestCallBack const& callback);
+    PendingRequestInfo(std::string const& md, PendingResponseHandler const& callback);
     PendingRequestInfo(std::string const& md);
     PendingRequestInfo()
     {
     }
     std::string method;
-    RequestCallBack futureInfo;
+    PendingResponseHandler futureInfo;
+    bool complete(std::unique_ptr<LspMessage>& msg)
+    {
+        if (completed.exchange(true, std::memory_order_acq_rel))
+        {
+            return true;
+        }
+        return futureInfo ? futureInfo(msg) : false;
+    }
+
+private:
+    std::atomic<bool> completed {false};
 };
 
-PendingRequestInfo::PendingRequestInfo(std::string const& _md, RequestCallBack const& callback)
+PendingRequestInfo::PendingRequestInfo(std::string const& _md, PendingResponseHandler const& callback)
     : method(_md), futureInfo(callback)
 {
 }
@@ -234,7 +247,7 @@ struct RemoteEndPoint::Data
 
     std::mutex m_requestInfo;
 
-    bool pendingRequest(RequestInMessage& info, GenericResponseHandler&& handler)
+    bool pendingRequest(RequestInMessage& info, PendingResponseHandler&& handler)
     {
         bool ret = true;
         std::lock_guard<std::mutex> lock(m_requestInfo);
@@ -247,13 +260,13 @@ struct RemoteEndPoint::Data
         {
             if (_client_request_futures.find(info.id) != _client_request_futures.end())
             {
-                ret = false;
+                return false;
             }
         }
         _client_request_futures[info.id] = std::make_shared<PendingRequestInfo>(info.method, handler);
         return ret;
     }
-    std::shared_ptr<PendingRequestInfo const> const getRequestInfo(lsRequestId const& _id)
+    std::shared_ptr<PendingRequestInfo> const getRequestInfo(lsRequestId const& _id)
     {
         std::lock_guard<std::mutex> lock(m_requestInfo);
         auto findIt = _client_request_futures.find(_id);
@@ -273,17 +286,45 @@ struct RemoteEndPoint::Data
             _client_request_futures.erase(findIt);
         }
     }
-    void clear()
+    void failPendingRequests()
     {
+        std::vector<std::pair<lsRequestId, std::shared_ptr<PendingRequestInfo>>> pending;
         {
             std::lock_guard<std::mutex> lock(m_requestInfo);
+            pending.reserve(_client_request_futures.size());
+            for (auto& it : _client_request_futures)
+            {
+                pending.emplace_back(it.first, it.second);
+            }
             _client_request_futures.clear();
         }
+
+        for (auto& it : pending)
+        {
+            std::unique_ptr<LspMessage> msg(new Rsp_Error());
+            auto error = static_cast<Rsp_Error*>(msg.get());
+            error->id = it.first;
+            error->error.code = lsErrorCodes::InternalError;
+            error->error.message = "Remote endpoint stopped.";
+            it.second->complete(msg);
+        }
+    }
+    void clear()
+    {
+        quit.store(true, std::memory_order_relaxed);
+        if (message_producer)
+        {
+            message_producer->keepRunning = false;
+        }
+        if (input)
+        {
+            input->interrupt();
+        }
+        failPendingRequests();
         if (tp)
         {
             tp->stop();
         }
-        quit.store(true, std::memory_order_relaxed);
     }
 
     int getNextRequestId()
@@ -376,11 +417,7 @@ RemoteEndPoint::RemoteEndPoint(
 
 RemoteEndPoint::~RemoteEndPoint()
 {
-    d_ptr->quit.store(true, std::memory_order_relaxed);
-//    if (this->message_producer_thread_ && this->message_producer_thread_->joinable())
-//    {
-//        this->message_producer_thread_->join();
-//    }
+    stop();
     delete d_ptr;
     d_ptr = nullptr;
 }
@@ -515,12 +552,15 @@ bool RemoteEndPoint::internalSendRequest(RequestInMessage& info, GenericResponse
         d_ptr->log.log(Log::Level::WARNING, desc);
         return false;
     }
-    if (!d_ptr->pendingRequest(info, std::move(handler)))
+    PendingResponseHandler pending_handler = [handler = std::move(handler)](std::unique_ptr<LspMessage>& msg) mutable
+    { return handler(std::move(msg)); };
+    if (!d_ptr->pendingRequest(info, std::move(pending_handler)))
     {
         std::string desc = "Duplicate id  which of request:";
         desc += info.ToJson();
         desc += "\n";
         d_ptr->log.log(Log::Level::WARNING, desc);
+        return false;
     }
     WriterMsg(d_ptr->output, info);
     return true;
@@ -546,18 +586,32 @@ bool RemoteEndPoint::cancelRequest(lsRequestId const& id)
     }
     return false;
 }
+
+void RemoteEndPoint::removeRequestInfo(lsRequestId const& id)
+{
+    d_ptr->removeRequestInfo(id);
+}
+
 std::unique_ptr<LspMessage> RemoteEndPoint::internalWaitResponse(RequestInMessage& request, unsigned time_out)
 {
     auto eventFuture = std::make_shared<Condition<LspMessage>>();
-    internalSendRequest(
+    if (!internalSendRequest(
         request,
         [=](std::unique_ptr<LspMessage> data)
         {
             eventFuture->notify(std::move(data));
             return true;
         }
-    );
-    return eventFuture->wait(time_out);
+    ))
+    {
+        return {};
+    }
+    auto response = eventFuture->wait(time_out);
+    if (!response)
+    {
+        d_ptr->removeRequestInfo(request.id);
+    }
+    return response;
 }
 
 void RemoteEndPoint::mainLoop(std::unique_ptr<LspMessage> msg)
@@ -587,14 +641,11 @@ void RemoteEndPoint::mainLoop(std::unique_ptr<LspMessage> msg)
         else
         {
             bool needLocal = true;
-            if (msgInfo->futureInfo)
+            if (msgInfo->complete(msg))
             {
-                if (msgInfo->futureInfo(std::move(msg)))
-                {
-                    needLocal = false;
-                }
+                needLocal = false;
             }
-            if (needLocal)
+            if (needLocal && msg)
             {
                 local_endpoint->onResponse(msgInfo->method, std::move(msg));
             }
@@ -665,12 +716,23 @@ void RemoteEndPoint::startProcessingMessages(std::shared_ptr<lsp::istream> r, st
 
 void RemoteEndPoint::stop()
 {
-    if (message_producer_thread_ && message_producer_thread_->joinable())
+    if (!d_ptr)
     {
-        message_producer_thread_->detach();
-        message_producer_thread_ = nullptr;
+        return;
     }
     d_ptr->clear();
+    if (message_producer_thread_ && message_producer_thread_->joinable())
+    {
+        if (message_producer_thread_->get_id() == std::this_thread::get_id())
+        {
+            message_producer_thread_->detach();
+        }
+        else
+        {
+            message_producer_thread_->join();
+        }
+    }
+    message_producer_thread_ = nullptr;
 }
 
 void RemoteEndPoint::sendMsg(LspMessage& msg)

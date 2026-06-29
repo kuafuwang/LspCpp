@@ -17,6 +17,9 @@ public:
     {
         return false;
     }
+    virtual void interrupt()
+    {
+    }
 
     bool operator!()
     {

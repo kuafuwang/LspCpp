@@ -18,11 +18,10 @@
 #include "LibLsp/lsp/workspace/execute_command.h"
 #include <boost/process.hpp>
 #include <boost/filesystem.hpp>
-#include <boost/asio.hpp>
+#include <cstdlib>
 #include <iostream>
 #include <thread>
 
-using namespace boost::asio::ip;
 using namespace std;
 class DummyLog :public lsp::Log
 {
@@ -66,7 +65,6 @@ public:
 
                 remote_end_point_.registerHandler([&](Notify_Exit::notify& notify)
                         {
-                remote_end_point_.stop();
                                 esc_event.notify(std::make_unique<bool>(true));
                         });
                 remote_end_point_.registerHandler([&](const td_definition::request& req,
@@ -155,7 +153,7 @@ int main(int argc, char* argv[])
         StdIOServer server;
         server.esc_event.wait();
 
-        return 0;
+        std::_Exit(0);
 }
 
 
