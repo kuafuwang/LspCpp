@@ -8,7 +8,7 @@ if(POLICY CMP0054)
     cmake_policy(SET CMP0054 NEW)
 endif()
 
-set(LSPCPP_VERSION "1.0.1" CACHE STRING "LspCpp package version. Keep this in sync with vcpkg.json.")
+set(LSPCPP_VERSION "1.0.2" CACHE STRING "LspCpp package version. Keep this in sync with vcpkg.json.")
 
 # Without this, paths are not relative in the sources list
 cmake_policy(SET CMP0076 NEW)

@@ -563,6 +563,121 @@ void TestPendingCancelArrivingBeforeRequestIsNotLost()
     Expect(output.find("\"id\":501") != std::string::npos, "request with pending cancel must still receive a response");
 }
 
+void TestLateCancelAfterCompletedRequestDoesNotCancelReusedId()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    std::vector<bool> saw_cancel;
+
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 2);
+    point.registerHandler(
+        [&](td_initialize::request const& req, CancelMonitor const& monitor) -> lsp::ResponseOrError<td_initialize::response>
+        {
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                saw_cancel.push_back(monitor && monitor());
+            }
+            cv.notify_all();
+            td_initialize::response rsp;
+            rsp.id = req.id;
+            return rsp;
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":710,"method":"initialize","params":{}})"));
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        cv.wait_for(
+            lock,
+            std::chrono::milliseconds(1000),
+            [&]()
+            {
+                return saw_cancel.size() >= 1;
+            });
+    }
+
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":710}})"));
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":710,"method":"initialize","params":{}})"));
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        bool const handled_reused_id = cv.wait_for(
+            lock,
+            std::chrono::milliseconds(1000),
+            [&]()
+            {
+                return saw_cancel.size() >= 2;
+            });
+        Expect(handled_reused_id, "reused request id must be handled after a late cancel");
+    }
+    point.stop();
+
+    Expect(saw_cancel.size() == 2, "both original and reused request ids must be handled");
+    if (saw_cancel.size() >= 2)
+    {
+        Expect(!saw_cancel[0], "original request must not be pre-cancelled");
+        Expect(!saw_cancel[1], "late cancel for completed request must not cancel reused id");
+    }
+}
+
+void TestStopClearsPendingCancelRequests()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto output_stream = std::make_shared<StringOStream>();
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool handler_called = false;
+    bool handler_saw_cancel = false;
+
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 1);
+    point.registerHandler(
+        [&](td_initialize::request const& req, CancelMonitor const& monitor) -> lsp::ResponseOrError<td_initialize::response>
+        {
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                handler_called = true;
+                handler_saw_cancel = monitor && monitor();
+            }
+            cv.notify_all();
+            td_initialize::response rsp;
+            rsp.id = req.id;
+            return rsp;
+        });
+
+    auto first_input = std::make_shared<StringIStream>(
+        test::MakeLspFrame(R"({"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":720}})"));
+    point.startProcessingMessages(first_input, output_stream);
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    point.stop();
+
+    auto second_input = std::make_shared<StringIStream>(
+        test::MakeLspFrame(R"({"jsonrpc":"2.0","id":720,"method":"initialize","params":{}})"));
+    point.startProcessingMessages(second_input, output_stream);
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        bool const handled = cv.wait_for(
+            lock,
+            std::chrono::milliseconds(1000),
+            [&]()
+            {
+                return handler_called;
+            });
+        Expect(handled, "request after restart must be handled");
+    }
+    point.stop();
+
+    Expect(!handler_saw_cancel, "pending cancel from a previous run must be cleared on stop");
+}
+
 void TestRunningRequestObservesCancellation()
 {
     DummyLog log;
@@ -875,6 +990,8 @@ int main()
     TestCreateRequestAssignsMonotonicIds();
     TestCancelRequestSendsCancelNotification();
     TestPendingCancelArrivingBeforeRequestIsNotLost();
+    TestLateCancelAfterCompletedRequestDoesNotCancelReusedId();
+    TestStopClearsPendingCancelRequests();
     TestRunningRequestObservesCancellation();
     TestBurstRequestsAreAllDispatchedAndResponded();
     TestMultipleWorkersProcessRequestsConcurrently();

@@ -1,6 +1,6 @@
 {
   "name": "lspcpp",
-  "version-semver": "1.0.1",
+  "version-semver": "1.0.2",
   "description": "C++ library for building Language Server Protocol servers.",
   "homepage": "https://github.com/kuafuwang/LspCpp",
   "license": "MIT",
