@@ -42,14 +42,14 @@ int GetCachedOffsetForPosition(WorkingFile const& file, lsPosition position)
 WorkingFile::WorkingFile(WorkingFiles& _parent, AbsolutePath const& filename, std::string const& buffer_content)
     : filename(filename), directory(filename), parent(_parent), counter(0), buffer_content(buffer_content)
 {
-    directory = Directory(GetDirName(filename.path));
+    directory = Directory(AbsolutePath::FromNormalized(GetDirName(filename.path())));
     this->RebuildLineOffsets();
 }
 
 WorkingFile::WorkingFile(WorkingFiles& _parent, AbsolutePath const& filename, std::string&& buffer_content)
     : filename(filename), directory(filename), parent(_parent), counter(0), buffer_content(buffer_content)
 {
-    directory = Directory(GetDirName(filename.path));
+    directory = Directory(AbsolutePath::FromNormalized(GetDirName(filename.path())));
     this->RebuildLineOffsets();
 }
 
@@ -124,6 +124,11 @@ std::shared_ptr<WorkingFile> WorkingFiles::GetFileByFilename(AbsolutePath const&
 
 std::shared_ptr<WorkingFile> WorkingFiles::GetFileByFilenameNoLock(AbsolutePath const& filename)
 {
+    if (!filename.valid())
+    {
+        return nullptr;
+    }
+
     auto const findIt = d_ptr->files.find(filename);
     if (findIt != d_ptr->files.end())
     {
@@ -137,6 +142,10 @@ std::shared_ptr<WorkingFile> WorkingFiles::OnOpen(lsTextDocumentItem& open)
     std::lock_guard<std::mutex> lock(d_ptr->files_mutex);
 
     AbsolutePath filename = open.uri.GetAbsolutePath();
+    if (!filename.valid())
+    {
+        return {};
+    }
 
     // The file may already be open.
     if (auto file = GetFileByFilenameNoLock(filename))
@@ -158,6 +167,10 @@ std::shared_ptr<WorkingFile> WorkingFiles::OnChange(lsTextDocumentDidChangeParam
     std::lock_guard<std::mutex> lock(d_ptr->files_mutex);
 
     AbsolutePath filename = change.textDocument.uri.GetAbsolutePath();
+    if (!filename.valid())
+    {
+        return {};
+    }
     auto file = GetFileByFilenameNoLock(filename);
     if (!file)
     {
@@ -198,6 +211,10 @@ bool WorkingFiles::OnClose(lsTextDocumentIdentifier const& close)
     std::lock_guard<std::mutex> lock(d_ptr->files_mutex);
 
     AbsolutePath filename = close.uri.GetAbsolutePath();
+    if (!filename.valid())
+    {
+        return false;
+    }
     auto const findIt = d_ptr->files.find(filename);
     if (findIt != d_ptr->files.end())
     {
@@ -212,11 +229,15 @@ std::shared_ptr<WorkingFile> WorkingFiles::OnSave(lsTextDocumentIdentifier const
     std::lock_guard<std::mutex> lock(d_ptr->files_mutex);
 
     AbsolutePath filename = _save.uri.GetAbsolutePath();
+    if (!filename.valid())
+    {
+        return {};
+    }
     auto const findIt = d_ptr->files.find(filename);
     if (findIt != d_ptr->files.end())
     {
         std::shared_ptr<WorkingFile>& file = findIt->second;
-        lsp::WriteToFile(file->filename, file->GetContentNoLock());
+        lsp::WriteToFile(file->filename.path(), file->GetContentNoLock());
         return findIt->second;
     }
     return {};

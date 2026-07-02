@@ -15,7 +15,7 @@ using test::Expect;
 
 AbsolutePath MakePath(std::string const& name)
 {
-    return AbsolutePath("/tmp/lspcpp-working-files-suite/" + name, false);
+    return AbsolutePath("/tmp/lspcpp-working-files-suite/" + name);
 }
 
 std::shared_ptr<WorkingFile> OpenFile(WorkingFiles& files, AbsolutePath const& path, std::string text, int version = 1)
@@ -142,7 +142,7 @@ void TestLifecycleOpenCloseClearAndDirectories()
     Expect(!files.GetFileBufferContent(first, closed_content), "closed file lookup by path must fail");
     Expect(!files.OnClose(close), "OnClose must report false for already-closed file");
 
-    files.CloseFilesInDirectory({Directory(AbsolutePath("/tmp/lspcpp-working-files-suite/lifecycle/", false))});
+    files.CloseFilesInDirectory({Directory(AbsolutePath("/tmp/lspcpp-working-files-suite/lifecycle/"))});
     Expect(!files.GetFileBufferContent(second, closed_content), "CloseFilesInDirectory must remove matching files");
 
     AbsolutePath const clear_path = MakePath("clear.cpp");
@@ -154,8 +154,8 @@ void TestLifecycleOpenCloseClearAndDirectories()
 void TestOnSaveWritesCurrentContent()
 {
     WorkingFiles files;
-    AbsolutePath const path("/tmp/lspcpp-working-files-save-test.txt", false);
-    std::remove(path.path.c_str());
+    AbsolutePath const path("/tmp/lspcpp-working-files-save-test.txt");
+    std::remove(path.path().c_str());
     auto file = OpenFile(files, path, "saved content");
 
     lsTextDocumentIdentifier save;
@@ -169,7 +169,30 @@ void TestOnSaveWritesCurrentContent()
     {
         Expect(*disk_content == "saved content", "OnSave must write the current buffer content");
     }
-    std::remove(path.path.c_str());
+    std::remove(path.path().c_str());
+}
+
+void TestNonFileUrisDoNotEnterWorkingFiles()
+{
+    WorkingFiles files;
+
+    lsTextDocumentItem open;
+    open.uri.raw_uri_ = "untitled:Untitled-1";
+    open.languageId = "cpp";
+    open.version = 1;
+    open.text = "scratch";
+    Expect(!files.OnOpen(open), "non-file URIs must not be tracked as working files");
+
+    lsTextDocumentDidChangeParams change;
+    change.textDocument.uri.raw_uri_ = "untitled:Untitled-1";
+    change.contentChanges.push_back(lsTextDocumentContentChangeEvent());
+    change.contentChanges.back().text = "changed";
+    Expect(!files.OnChange(change), "non-file URI changes must not create working files");
+
+    lsTextDocumentIdentifier close;
+    close.uri.raw_uri_ = "untitled:Untitled-1";
+    Expect(!files.OnClose(close), "non-file URI closes must be ignored");
+    Expect(!files.OnSave(close), "non-file URI saves must be ignored");
 }
 
 void TestConcurrentReadSnapshotsDuringChanges()
@@ -233,6 +256,7 @@ int main()
     TestFullReplaceAndDocumentBoundaryEdits();
     TestLifecycleOpenCloseClearAndDirectories();
     TestOnSaveWritesCurrentContent();
+    TestNonFileUrisDoNotEnterWorkingFiles();
     TestConcurrentReadSnapshotsDuringChanges();
     return test::Failures() == 0 ? 0 : 1;
 }
