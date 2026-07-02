@@ -1,6 +1,8 @@
 #include "LibLsp/JsonRpc/StreamMessageProducer.h"
 #include "test_helpers.h"
 
+#include <algorithm>
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <vector>
@@ -11,6 +13,196 @@ using test::CollectingIssueHandler;
 using test::Expect;
 using test::MakeLspFrame;
 using test::StringIStream;
+
+class ChunkedIStream : public lsp::istream
+{
+public:
+    ChunkedIStream(std::string data, size_t chunk_size) : data_(std::move(data)), chunk_size_(chunk_size)
+    {
+    }
+
+    int get() override
+    {
+        if (pos_ >= data_.size())
+        {
+            eof_ = true;
+            return EOF;
+        }
+        return static_cast<unsigned char>(data_[pos_++]);
+    }
+
+    lsp::istream& read(char* str, std::streamsize count) override
+    {
+        ++read_calls_;
+        read_bytes_requested_ += static_cast<size_t>(count);
+        for (std::streamsize i = 0; i < count; ++i)
+        {
+            int const c = get();
+            if (c == EOF)
+            {
+                break;
+            }
+            str[i] = static_cast<char>(c);
+        }
+        return *this;
+    }
+
+    std::streamsize read_some(char* str, std::streamsize count) override
+    {
+        ++read_some_calls_;
+        if (pos_ >= data_.size())
+        {
+            eof_ = true;
+            return 0;
+        }
+        auto const remaining = data_.size() - pos_;
+        auto const n = std::min<size_t>({remaining, static_cast<size_t>(count), chunk_size_});
+        std::copy(data_.begin() + static_cast<std::ptrdiff_t>(pos_),
+                  data_.begin() + static_cast<std::ptrdiff_t>(pos_ + n),
+                  str);
+        pos_ += n;
+        return static_cast<std::streamsize>(n);
+    }
+
+    size_t readCalls() const
+    {
+        return read_calls_;
+    }
+
+    size_t readBytesRequested() const
+    {
+        return read_bytes_requested_;
+    }
+
+    size_t readSomeCalls() const
+    {
+        return read_some_calls_;
+    }
+
+    bool fail() override
+    {
+        return false;
+    }
+
+    bool bad() override
+    {
+        return false;
+    }
+
+    bool eof() override
+    {
+        return eof_;
+    }
+
+    bool good() override
+    {
+        return !eof_;
+    }
+
+    void clear() override
+    {
+        eof_ = false;
+    }
+
+    std::string what() override
+    {
+        return {};
+    }
+
+private:
+    std::string data_;
+    size_t pos_ = 0;
+    size_t chunk_size_ = 0;
+    size_t read_calls_ = 0;
+    size_t read_bytes_requested_ = 0;
+    size_t read_some_calls_ = 0;
+    bool eof_ = false;
+};
+
+// Simulates legacy streams that only override get()/read(); counters prove
+// large message bodies still use the bulk read() path.
+class InstrumentedReadOnlyIStream : public lsp::istream
+{
+public:
+    explicit InstrumentedReadOnlyIStream(std::string data) : data_(std::move(data))
+    {
+    }
+
+    int get() override
+    {
+        ++get_calls_;
+        if (pos_ >= data_.size())
+        {
+            eof_ = true;
+            return EOF;
+        }
+        return static_cast<unsigned char>(data_[pos_++]);
+    }
+
+    lsp::istream& read(char* str, std::streamsize count) override
+    {
+        ++read_calls_;
+        read_bytes_requested_ += static_cast<size_t>(count);
+        for (std::streamsize i = 0; i < count; ++i)
+        {
+            int const c = get();
+            if (c == EOF)
+            {
+                break;
+            }
+            str[i] = static_cast<char>(c);
+        }
+        return *this;
+    }
+
+    bool fail() override
+    {
+        return false;
+    }
+
+    bool bad() override
+    {
+        return false;
+    }
+
+    bool eof() override
+    {
+        return eof_;
+    }
+
+    bool good() override
+    {
+        return !eof_;
+    }
+
+    void clear() override
+    {
+        eof_ = false;
+    }
+
+    std::string what() override
+    {
+        return {};
+    }
+
+    size_t readCalls() const
+    {
+        return read_calls_;
+    }
+
+    size_t readBytesRequested() const
+    {
+        return read_bytes_requested_;
+    }
+
+private:
+    std::string data_;
+    size_t pos_ = 0;
+    size_t get_calls_ = 0;
+    size_t read_calls_ = 0;
+    size_t read_bytes_requested_ = 0;
+    bool eof_ = false;
+};
 
 void TestValidFrameDeliversBody()
 {
@@ -48,6 +240,91 @@ void TestMultipleFramesDeliverBothBodies()
     Expect(messages.size() == 2, "multiple frames must invoke callback twice");
     Expect(messages[0] == body1, "first frame body mismatch");
     Expect(messages[1] == body2, "second frame body mismatch");
+}
+
+void TestChunkedReadSomeDeliversMultipleBufferedFrames()
+{
+    // Verifies the fast buffered path: multiple small frames should be
+    // delivered from read_some() without falling back to body read().
+    std::string const body1 = R"({"jsonrpc":"2.0","method":"one"})";
+    std::string const body2 = R"({"jsonrpc":"2.0","method":"two"})";
+    auto input = std::make_shared<ChunkedIStream>(MakeLspFrame(body1) + MakeLspFrame(body2), 4096);
+    CollectingIssueHandler issues;
+    LSPStreamMessageProducer producer(issues, input);
+
+    std::vector<std::string> messages;
+    producer.listen(
+        [&](std::string&& content)
+        {
+            messages.push_back(std::move(content));
+        });
+
+    Expect(messages.size() == 2, "buffered parser must deliver multiple frames from one input chunk");
+    if (messages.size() == 2)
+    {
+        Expect(messages[0] == body1, "first buffered frame body mismatch");
+        Expect(messages[1] == body2, "second buffered frame body mismatch");
+    }
+    Expect(input->readCalls() == 0, "fully buffered small frames must not fall back to body read()");
+    Expect(input->readSomeCalls() == 2, "chunked stream should read all small frames in one chunk plus EOF check");
+}
+
+void TestBulkBodyReadFallbackStreamDeliversLargeBody()
+{
+    // Guards legacy custom streams: headers may use byte-at-a-time read_some(),
+    // but large bodies must still be read correctly through bulk read().
+    std::string large_body = R"({"jsonrpc":"2.0","method":"big","params":")";
+    large_body.append(9000, 'x');
+    large_body += "\"}";
+
+    std::string const trailer = R"({"jsonrpc":"2.0","method":"after"})";
+    auto input = std::make_shared<StringIStream>(MakeLspFrame(large_body) + MakeLspFrame(trailer));
+    CollectingIssueHandler issues;
+    LSPStreamMessageProducer producer(issues, input);
+
+    std::vector<std::string> messages;
+    producer.listen(
+        [&](std::string&& content)
+        {
+            messages.push_back(std::move(content));
+        });
+
+    Expect(messages.size() == 2, "byte-at-a-time stream must deliver large body then trailing frame");
+    if (messages.size() == 2)
+    {
+        Expect(messages[0] == large_body, "large body read via bulk read() must match exactly");
+        Expect(messages[1] == trailer, "frame after large bulk-read body must be intact");
+    }
+}
+
+void TestFallbackStreamUsesSingleBulkReadForLargeBody()
+{
+    // Regression guard for performance: a large body on a legacy stream must
+    // request the remaining Content-Length bytes with exactly one read() call.
+    std::string large_body = R"({"jsonrpc":"2.0","method":"big","params":")";
+    large_body.append(9000, 'x');
+    large_body += "\"}";
+
+    auto input = std::make_shared<InstrumentedReadOnlyIStream>(MakeLspFrame(large_body));
+    CollectingIssueHandler issues;
+    LSPStreamMessageProducer producer(issues, input);
+
+    std::vector<std::string> messages;
+    producer.listen(
+        [&](std::string&& content)
+        {
+            messages.push_back(std::move(content));
+        });
+
+    Expect(messages.size() == 1, "instrumented fallback stream must deliver one large message");
+    if (!messages.empty())
+    {
+        Expect(messages[0] == large_body, "instrumented fallback stream large body mismatch");
+    }
+    Expect(input->readCalls() == 1, "large fallback body must be read with one bulk read() call");
+    Expect(
+        input->readBytesRequested() == large_body.size(),
+        "bulk read() must request exactly the remaining Content-Length body bytes");
 }
 
 void TestMissingContentLengthReportsWarning()
@@ -360,6 +637,9 @@ int main()
 {
     TestValidFrameDeliversBody();
     TestMultipleFramesDeliverBothBodies();
+    TestChunkedReadSomeDeliversMultipleBufferedFrames();
+    TestBulkBodyReadFallbackStreamDeliversLargeBody();
+    TestFallbackStreamUsesSingleBulkReadForLargeBody();
     TestMissingContentLengthReportsWarning();
     TestInvalidContentLengthReportsWarning();
     TestMalformedContentLengthsAreRejected();

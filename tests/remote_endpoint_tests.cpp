@@ -2,14 +2,19 @@
 #include "LibLsp/JsonRpc/Condition.h"
 #include "LibLsp/JsonRpc/RemoteEndPoint.h"
 #include "LibLsp/lsp/ProtocolJsonHandler.h"
+#include "LibLsp/lsp/general/exit.h"
 #include "LibLsp/lsp/general/initialize.h"
 #include "test_helpers.h"
 
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdlib>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <thread>
+#include <vector>
 
 namespace
 {
@@ -32,6 +37,59 @@ std::string WaitForOutputContaining(std::shared_ptr<StringOStream> const& output
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     return output;
+}
+
+std::string WaitForOutputContainingAll(std::shared_ptr<StringOStream> const& output_stream, std::vector<std::string> const& needles)
+{
+    std::string output;
+    for (int i = 0; i < 100; ++i)
+    {
+        output = output_stream->snapshot();
+        bool found_all = true;
+        for (auto const& needle : needles)
+        {
+            if (output.find(needle) == std::string::npos)
+            {
+                found_all = false;
+                break;
+            }
+        }
+        if (found_all)
+        {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return output;
+}
+
+std::vector<std::string> ExtractFrameBodies(std::string const& output)
+{
+    std::vector<std::string> bodies;
+    size_t pos = 0;
+    while (pos < output.size())
+    {
+        size_t const header_end = output.find("\r\n\r\n", pos);
+        if (header_end == std::string::npos)
+        {
+            break;
+        }
+        size_t const length_start = output.find("Content-Length:", pos);
+        if (length_start == std::string::npos || length_start > header_end)
+        {
+            break;
+        }
+        size_t const value_start = length_start + std::string("Content-Length:").size();
+        int const length = std::atoi(output.substr(value_start, header_end - value_start).c_str());
+        size_t const body_start = header_end + 4;
+        if (length < 0 || body_start + static_cast<size_t>(length) > output.size())
+        {
+            break;
+        }
+        bodies.push_back(output.substr(body_start, static_cast<size_t>(length)));
+        pos = body_start + static_cast<size_t>(length);
+    }
+    return bodies;
 }
 
 std::string ProcessSingleInput(std::string const& input, std::string const& wait_for = "")
@@ -364,6 +422,73 @@ void TestSendRequestAndReceiveErrorResponse()
     point.stop();
 }
 
+void TestSendRequestAndReceiveSuccessResponseWithStringId()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    RemoteEndPoint point(json_handler, endpoint, log);
+    point.startProcessingMessages(input_stream, output_stream);
+
+    td_initialize::request req;
+    req.id.set("client-alpha");
+    auto future = point.send(req);
+    WaitForOutputContaining(output_stream, R"("id":"client-alpha")");
+
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":"client-alpha","result":{"capabilities":{}}})"));
+
+    auto const status = future.wait_for(std::chrono::milliseconds(1000));
+    Expect(status == lsp::future_status::ready, "string-id success response must complete the request future");
+    if (status == lsp::future_status::ready)
+    {
+        auto result = future.get();
+        Expect(!result.is_error, "string-id success response must produce a non-error result");
+        Expect(result.response.id == req.id, "string-id response must preserve the original request id");
+    }
+    point.stop();
+}
+
+void TestLateResponseAfterTimeoutIsIgnored()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    RemoteEndPoint point(json_handler, endpoint, log);
+    point.startProcessingMessages(input_stream, output_stream);
+
+    td_initialize::request timed_out;
+    timed_out.id.set(404);
+    auto const timed_out_response = point.waitResponse(timed_out, 20);
+    Expect(timed_out_response == nullptr, "waitResponse must time out before the late response arrives");
+
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":404,"result":{"capabilities":{}}})"));
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    td_initialize::request retry;
+    retry.id.set(404);
+    auto retry_future = point.send(retry);
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":404,"result":{"capabilities":{"hoverProvider":true}}})"));
+
+    auto const status = retry_future.wait_for(std::chrono::milliseconds(1000));
+    Expect(status == lsp::future_status::ready, "request id must remain reusable after a late timed-out response");
+    if (status == lsp::future_status::ready)
+    {
+        auto result = retry_future.get();
+        Expect(!result.is_error, "retry after late response must receive the new success response");
+        Expect(
+            result.response.result.capabilities.hoverProvider &&
+                *result.response.result.capabilities.hoverProvider == true,
+            "retry response must be the second response, not the ignored late response");
+    }
+    point.stop();
+}
+
 void TestCreateRequestAssignsMonotonicIds()
 {
     DummyLog log;
@@ -406,8 +531,153 @@ void TestCancelRequestSendsCancelNotification()
     point.stop();
 }
 
+void TestPendingCancelArrivingBeforeRequestIsNotLost()
+{
+    // Covers the scheduling race where $/cancelRequest is dispatched before the
+    // target request has registered its canceler.
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+
+    std::string const cancel = R"({"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":501}})";
+    std::string const request = R"({"jsonrpc":"2.0","id":501,"method":"initialize","params":{}})";
+    auto input_stream = std::make_shared<StringIStream>(test::MakeLspFrame(cancel) + test::MakeLspFrame(request));
+    auto output_stream = std::make_shared<StringOStream>();
+
+    bool handler_saw_cancel = false;
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 1);
+    point.registerHandler(
+        [&](td_initialize::request const& req, CancelMonitor const& monitor) -> lsp::ResponseOrError<td_initialize::response>
+        {
+            handler_saw_cancel = monitor && monitor();
+            td_initialize::response rsp;
+            rsp.id = req.id;
+            return rsp;
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    std::string const output = WaitForOutputContaining(output_stream, "\"id\":501");
+    point.stop();
+
+    Expect(handler_saw_cancel, "cancel notification that arrives before request registration must be applied");
+    Expect(output.find("\"id\":501") != std::string::npos, "request with pending cancel must still receive a response");
+}
+
+void TestRunningRequestObservesCancellation()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool handler_entered = false;
+    std::atomic<bool> handler_saw_cancel {false};
+
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 2);
+    point.registerHandler(
+        [&](td_initialize::request const& req, CancelMonitor const& monitor) -> lsp::ResponseOrError<td_initialize::response>
+        {
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                handler_entered = true;
+            }
+            cv.notify_all();
+
+            for (int i = 0; i < 200; ++i)
+            {
+                if (monitor && monitor())
+                {
+                    handler_saw_cancel.store(true, std::memory_order_relaxed);
+                    Rsp_Error error;
+                    error.id = req.id;
+                    error.error.code = lsErrorCodes::RequestCancelled;
+                    error.error.message = "cancelled";
+                    return error;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            }
+
+            td_initialize::response rsp;
+            rsp.id = req.id;
+            return rsp;
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":620,"method":"initialize","params":{}})"));
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        bool const entered = cv.wait_for(
+            lock,
+            std::chrono::milliseconds(1000),
+            [&]()
+            {
+                return handler_entered;
+            });
+        Expect(entered, "request handler must start before cancellation is sent");
+    }
+
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":620}})"));
+    std::string const output = WaitForOutputContaining(output_stream, "\"code\":-32800");
+    point.stop();
+
+    Expect(handler_saw_cancel.load(std::memory_order_relaxed), "running request handler must observe cancellation");
+    Expect(output.find("\"code\":-32800") != std::string::npos, "cancelled request must report RequestCancelled");
+}
+
+void TestBurstRequestsAreAllDispatchedAndResponded()
+{
+    // Feeds a burst of framed requests at once to guard the producer-to-worker
+    // scheduling path against dropped dispatches.
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+
+    std::string input;
+    std::vector<std::string> response_ids;
+    for (int i = 0; i < 24; ++i)
+    {
+        int const id = 800 + i;
+        input += test::MakeLspFrame(
+            std::string(R"({"jsonrpc":"2.0","id":)") + std::to_string(id) + R"(,"method":"initialize","params":{}})");
+        response_ids.push_back("\"id\":" + std::to_string(id));
+    }
+
+    auto input_stream = std::make_shared<StringIStream>(input);
+    auto output_stream = std::make_shared<StringOStream>();
+    std::mutex mutex;
+    std::set<int> handled_ids;
+
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 4);
+    point.registerHandler(
+        [&](td_initialize::request const& req) -> lsp::ResponseOrError<td_initialize::response>
+        {
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                handled_ids.insert(req.id.value);
+            }
+            td_initialize::response rsp;
+            rsp.id = req.id;
+            return rsp;
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    std::string const output = WaitForOutputContainingAll(output_stream, response_ids);
+    point.stop();
+
+    Expect(handled_ids.size() == response_ids.size(), "RemoteEndPoint must dispatch every request in a burst");
+    for (auto const& id : response_ids)
+    {
+        Expect(output.find(id) != std::string::npos, "RemoteEndPoint burst dispatch must produce every response");
+    }
+}
+
 void TestMultipleWorkersProcessRequestsConcurrently()
 {
+    // Confirms max_workers is effective by blocking handlers until at least two
+    // have entered concurrently.
     DummyLog log;
     auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
     auto endpoint = std::make_shared<GenericEndpoint>(log);
@@ -473,6 +743,90 @@ void TestMultipleWorkersProcessRequestsConcurrently()
     Expect(output.find("\"id\":202") != std::string::npos, "second concurrent request must get a response");
 }
 
+void TestConcurrentSendWritesCompleteFrames()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    RemoteEndPoint point(json_handler, endpoint, log);
+    point.startProcessingMessages(input_stream, output_stream);
+
+    std::vector<lsp::future<lsp::ResponseOrError<td_initialize::response>>> futures;
+    std::mutex futures_mutex;
+    std::vector<std::thread> senders;
+    for (int i = 0; i < 16; ++i)
+    {
+        senders.emplace_back(
+            [&, i]()
+            {
+                td_initialize::request req;
+                req.id.set(3000 + i);
+                auto future = point.send(req);
+                std::lock_guard<std::mutex> lock(futures_mutex);
+                futures.push_back(std::move(future));
+            });
+    }
+    for (auto& sender : senders)
+    {
+        sender.join();
+    }
+
+    std::vector<std::string> needles;
+    for (int i = 0; i < 16; ++i)
+    {
+        needles.push_back("\"id\":" + std::to_string(3000 + i));
+    }
+    std::string const output = WaitForOutputContainingAll(output_stream, needles);
+    auto const bodies = ExtractFrameBodies(output);
+    point.stop();
+
+    Expect(bodies.size() == 16, "concurrent send must produce one complete frame per request");
+    for (int i = 0; i < 16; ++i)
+    {
+        bool found = false;
+        for (auto const& body : bodies)
+        {
+            if (body.find("\"id\":" + std::to_string(3000 + i)) != std::string::npos &&
+                body.find(R"("method":"initialize")") != std::string::npos)
+            {
+                found = true;
+                break;
+            }
+        }
+        Expect(found, "concurrent send output must contain every request body exactly as a frame");
+    }
+}
+
+void TestNotificationHandlerReceivesNotification()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+    std::atomic<bool> notified {false};
+
+    RemoteEndPoint point(json_handler, endpoint, log);
+    point.registerHandler(
+        [&](Notify_Exit::notify const&)
+        {
+            notified.store(true, std::memory_order_relaxed);
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","method":"exit","params":{}})"));
+    for (int i = 0; i < 100 && !notified.load(std::memory_order_relaxed); ++i)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    point.stop();
+
+    Expect(notified.load(std::memory_order_relaxed), "registered notification handler must receive notifications");
+}
+
 void TestConditionTimedWaitReturnsNotifiedValue()
 {
     Condition<LspMessage> condition;
@@ -516,9 +870,16 @@ int main()
     TestMessageWithNoMethodNoResultIsRejected();
     TestSendRequestAndReceiveSuccessResponse();
     TestSendRequestAndReceiveErrorResponse();
+    TestSendRequestAndReceiveSuccessResponseWithStringId();
+    TestLateResponseAfterTimeoutIsIgnored();
     TestCreateRequestAssignsMonotonicIds();
     TestCancelRequestSendsCancelNotification();
+    TestPendingCancelArrivingBeforeRequestIsNotLost();
+    TestRunningRequestObservesCancellation();
+    TestBurstRequestsAreAllDispatchedAndResponded();
     TestMultipleWorkersProcessRequestsConcurrently();
+    TestConcurrentSendWritesCompleteFrames();
+    TestNotificationHandlerReceivesNotification();
     TestConditionTimedWaitReturnsNotifiedValue();
     TestConditionTimedWaitStillTimesOut();
 

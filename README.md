@@ -15,6 +15,7 @@ These are required to build the `lspcpp` static library:
 | [utfcpp](https://github.com/nemtrif/utfcpp) | Bundled in `third_party/utfcpp` |
 | [network-uri](https://github.com/cpp-netlib/uri) | Bundled in `third_party/uri` |
 | [IXWebSocket](https://github.com/machinezone/IXWebSocket) | Bundled in `third_party/ixwebsocket`, or via vcpkg |
+| [ZLIB](https://zlib.net/) | System package used by bundled IXWebSocket compression support |
 
 Boost is **not** required for the library when `LSPCPP_STANDALONE_ASIO` is enabled (the default).
 
@@ -29,13 +30,7 @@ Boost is **not** required for the library when `LSPCPP_STANDALONE_ASIO` is enabl
 
 Requires CMake 3.16+ and a C++17-capable compiler (`LSPCPP_USE_CPP17=ON` by default).
 
-### 1. Initialize submodules
-
-```shell
-git submodule update --init --recursive
-```
-
-### 2. Build the library (Linux / macOS)
+### 1. Build the library (Linux / macOS)
 
 ```shell
 mkdir _build && cd _build
@@ -45,7 +40,60 @@ cmake --build . -j
 
 This produces `liblspcpp.a` (or `lspcpp.lib` on Windows) without installing Boost.
 
-### 3. Build with examples and tests
+### 2. Quickstart: minimal stdio server
+
+`LibLsp/LspCpp.h` provides a small convenience entry point for new code while the
+existing `RemoteEndPoint` API remains fully supported:
+
+```cpp
+#include "LibLsp/LspCpp.h"
+
+int main() {
+    lsp::LanguageSession server;
+    Condition<bool> exit_requested;
+
+    server.on([](td_initialize::request const& req) {
+        td_initialize::response rsp;
+        rsp.id = req.id;
+        return rsp;
+    });
+
+    server.on([&](Notify_Exit::notify&) {
+        exit_requested.notify(std::make_unique<bool>(true));
+    });
+
+    server.startStdio();
+    exit_requested.wait();
+    server.stop();
+}
+```
+
+The same code is available as `examples/MinimalStdIOServerExample.cpp` and does
+not require Boost:
+
+```shell
+cmake -S . -B _build_minimal -DLSPCPP_BUILD_MINIMAL_EXAMPLE=ON
+cmake --build _build_minimal --target MinimalStdIOServerExample
+```
+
+### 3. Use an installed package
+
+```cmake
+find_package(lspcpp CONFIG REQUIRED)
+
+add_executable(my_language_server main.cpp)
+target_link_libraries(my_language_server PRIVATE lspcpp::lspcpp)
+```
+
+Install from a local checkout with:
+
+```shell
+cmake -S . -B _build -DLSPCPP_INSTALL=ON
+cmake --build _build -j
+cmake --install _build --prefix /path/to/install
+```
+
+### 4. Build with examples and tests
 
 Examples and CTest smoke tests require Boost. Enable them with:
 
@@ -69,7 +117,7 @@ On macOS:
 brew install boost
 ```
 
-### 4. Build with vcpkg (CI configuration)
+### 5. Build with vcpkg (CI configuration)
 
 A `vcpkg.json` manifest is provided for convenience. It is not required for a local build, but matches the CI setup.
 
@@ -112,13 +160,14 @@ runtime so you do not need to override `/MD` manually. If a toolchain already se
 When using vcpkg for external dependencies, build with a matching CRT triplet (for
 example `x64-windows-static`).
 
-To build tests on Windows, use vcpkg with the `tests` feature (see section 4 above).
+To build tests on Windows, use vcpkg with the `tests` feature (see section 5 above).
 
 ### Useful CMake options
 
 | Option | Default | Description |
 |--------|---------|-------------|
 | `LSPCPP_STANDALONE_ASIO` | `ON` | Use standalone Asio instead of Boost.Asio |
+| `LSPCPP_BUILD_MINIMAL_EXAMPLE` | `OFF` | Build the Boost-free minimal stdio example |
 | `LSPCPP_BUILD_WEBSOCKETS` | `ON` | Build WebSocket server support |
 | `LSPCPP_BUILD_EXAMPLES` | `OFF` | Build example applications |
 | `LSPCPP_BUILD_TESTS` | `OFF` | Build and register CTest smoke tests |

@@ -15,6 +15,7 @@
 #include "LibLsp/JsonRpc/stream.h"
 #include <atomic>
 #include <optional>
+#include <set>
 #include <thread>
 #include <vector>
 #ifdef LSPCPP_USE_STANDALONE_ASIO
@@ -194,6 +195,7 @@ struct RemoteEndPoint::Data
     mutable std::mutex request_cancelers_mutex;
 
     std::map<lsRequestId, std::pair<Canceler, /*Cookie*/ unsigned>> requestCancelers;
+    std::set<lsRequestId> pendingCancelRequests;
 
     std::atomic<unsigned> next_request_cookie; // To disambiguate reused IDs, see below.
     void onCancel(Notify_Cancellation::notify* notify)
@@ -203,7 +205,9 @@ struct RemoteEndPoint::Data
         if (it != requestCancelers.end())
         {
             it->second.first(); // Invoke the canceler.
+            return;
         }
+        pendingCancelRequests.insert(notify->params.id);
     }
 
     // We run cancelable requests in a context that does two things:
@@ -221,6 +225,12 @@ struct RemoteEndPoint::Data
             std::lock_guard<std::mutex> Lock(request_cancelers_mutex);
             cookie = next_request_cookie.fetch_add(1, std::memory_order_relaxed);
             requestCancelers[id] = {std::move(task.second), cookie};
+            auto const pending = pendingCancelRequests.find(id);
+            if (pending != pendingCancelRequests.end())
+            {
+                requestCancelers[id].first();
+                pendingCancelRequests.erase(pending);
+            }
         }
         // When the request ends, we can clean up the entry we just added.
         // The cookie lets us check that it hasn't been overwritten due to ID
@@ -705,16 +715,15 @@ void RemoteEndPoint::startProcessingMessages(std::shared_ptr<lsp::istream> r, st
             d_ptr->message_producer->listen(
                 [&](std::string&& content)
                 {
-                    auto const temp = std::make_shared<std::string>(std::move(content));
                     asio::post(
                         *d_ptr->tp,
-                        [this, temp]
+                        [this, content = std::move(content)]
                         {
 #ifdef LSPCPP_USEGC
                             GCThreadContext gcContext;
 #endif
 
-                            dispatch(*temp);
+                            dispatch(content);
                         }
                     );
                 }

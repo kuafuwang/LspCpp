@@ -1,0 +1,89 @@
+#pragma once
+
+#include "LibLsp/JsonRpc/Endpoint.h"
+#include "LibLsp/JsonRpc/MessageIssue.h"
+#include "LibLsp/JsonRpc/RemoteEndPoint.h"
+#include "LibLsp/JsonRpc/stream.h"
+#include "LibLsp/lsp/ProtocolJsonHandler.h"
+
+#include <memory>
+#include <utility>
+
+namespace lsp
+{
+
+class LanguageSession
+{
+public:
+    explicit LanguageSession(
+        Log& log, JSONStreamStyle style = JSONStreamStyle::Standard, uint8_t max_workers = 2
+    )
+        : log_(log),
+          protocol_json_handler_(std::make_shared<ProtocolJsonHandler>()),
+          endpoint_(std::make_shared<GenericEndpoint>(log_)),
+          remote_endpoint_(protocol_json_handler_, endpoint_, log_, style, max_workers)
+    {
+    }
+
+    LanguageSession(JSONStreamStyle style = JSONStreamStyle::Standard, uint8_t max_workers = 2)
+        : LanguageSession(defaultLog(), style, max_workers)
+    {
+    }
+
+    template<typename F>
+    void on(F&& handler)
+    {
+        remote_endpoint_.registerHandler(std::forward<F>(handler));
+    }
+
+    void start(std::shared_ptr<istream> input, std::shared_ptr<ostream> output)
+    {
+        remote_endpoint_.startProcessingMessages(std::move(input), std::move(output));
+    }
+
+    void startStdio()
+    {
+        start(make_stdin_stream(), make_stdout_stream());
+    }
+
+    void stop()
+    {
+        remote_endpoint_.stop();
+    }
+
+    RemoteEndPoint& endpoint()
+    {
+        return remote_endpoint_;
+    }
+
+    RemoteEndPoint const& endpoint() const
+    {
+        return remote_endpoint_;
+    }
+
+    std::shared_ptr<ProtocolJsonHandler> protocolJsonHandler() const
+    {
+        return protocol_json_handler_;
+    }
+
+    std::shared_ptr<GenericEndpoint> localEndpoint() const
+    {
+        return endpoint_;
+    }
+
+private:
+    static Log& defaultLog()
+    {
+        static NullLog log;
+        return log;
+    }
+
+    Log& log_;
+    std::shared_ptr<ProtocolJsonHandler> protocol_json_handler_;
+    std::shared_ptr<GenericEndpoint> endpoint_;
+    RemoteEndPoint remote_endpoint_;
+};
+
+using LanguageServer = LanguageSession;
+
+} // namespace lsp

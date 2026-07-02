@@ -4,6 +4,7 @@
 #include "LibLsp/JsonRpc/TcpServer.h"
 #include <signal.h>
 #include <cstdio>
+#include <deque>
 #include <utility>
 #include <LibLsp/lsp/asio.h>
 #include "LibLsp/JsonRpc/MessageIssue.h"
@@ -53,6 +54,28 @@ public:
 
         return *this;
     }
+    std::streamsize read_some(char* str, std::streamsize count) override
+    {
+        if (count <= 0)
+        {
+            return 0;
+        }
+        auto some = on_request.TryDequeueSome(static_cast<size_t>(count));
+        if (some.empty())
+        {
+            int const c = get();
+            if (c == EOF)
+            {
+                return 0;
+            }
+            str[0] = static_cast<char>(c);
+            some = on_request.TryDequeueSome(static_cast<size_t>(count - 1));
+            memcpy(str + 1, some.data(), some.size());
+            return static_cast<std::streamsize>(some.size() + 1);
+        }
+        memcpy(str, some.data(), some.size());
+        return static_cast<std::streamsize>(some.size());
+    }
     int get() override
     {
         if (request_waiter->Wait(quit, &on_request))
@@ -101,45 +124,72 @@ struct tcp_connect_session : std::enable_shared_from_this<tcp_connect_session>
     /// Strand to ensure the connection's handlers are not called concurrently.
     asio::io_context::strand strand_;
     std::shared_ptr<tcp_stream_wrapper> proxy_;
+    std::deque<std::string> write_queue_;
     explicit tcp_connect_session(asio::io_context& io_context, asio::ip::tcp::socket&& _socket)
         : socket_(std::move(_socket)), strand_(io_context), proxy_(new tcp_stream_wrapper(*this))
+    {
+    }
+    void start()
     {
         do_read();
     }
     void do_write(char const* data, size_t size)
     {
-        socket_.async_write_some(
-            asio::buffer(data, size), asio::bind_executor(
-                                                 strand_,
-                                                 [this](asio_error_code ec, std::size_t)
-                                                 {
-                                                     if (!ec)
-                                                     {
-                                                         return;
-                                                     }
-                                                     proxy_->error_message = ec.message();
-                                                     proxy_->interrupt();
-                                                 }
-                                             )
-        );
+        std::string message(data, size);
+        auto self = shared_from_this();
+        asio::post(
+            strand_,
+            [self, message = std::move(message)]() mutable
+            {
+                bool const write_in_progress = !self->write_queue_.empty();
+                self->write_queue_.push_back(std::move(message));
+                if (!write_in_progress)
+                {
+                    self->do_write_queued();
+                }
+            });
+    }
+    void do_write_queued()
+    {
+        auto self = shared_from_this();
+        asio::async_write(
+            socket_,
+            asio::buffer(write_queue_.front()),
+            asio::bind_executor(
+                strand_,
+                [self](asio_error_code ec, std::size_t)
+                {
+                    if (ec)
+                    {
+                        self->proxy_->error_message = ec.message();
+                        self->proxy_->interrupt();
+                        return;
+                    }
+                    self->write_queue_.pop_front();
+                    if (!self->write_queue_.empty())
+                    {
+                        self->do_write_queued();
+                    }
+                }));
     }
     void do_read()
     {
+        auto self = shared_from_this();
         socket_.async_read_some(
             asio::buffer(buffer_),
             asio::bind_executor(
                 strand_,
-                [this](asio_error_code ec, size_t bytes_transferred)
+                [self](asio_error_code ec, size_t bytes_transferred)
                 {
                     if (!ec)
                     {
-                        std::vector<char> elements(buffer_.data(), buffer_.data() + bytes_transferred);
-                        proxy_->on_request.EnqueueAll(std::move(elements), false);
-                        do_read();
+                        std::vector<char> elements(self->buffer_.data(), self->buffer_.data() + bytes_transferred);
+                        self->proxy_->on_request.EnqueueAll(std::move(elements), false);
+                        self->do_read();
                         return;
                     }
-                    proxy_->error_message = ec.message();
-                    proxy_->interrupt();
+                    self->proxy_->error_message = ec.message();
+                    self->proxy_->interrupt();
                 }
             )
         );
@@ -316,6 +366,7 @@ void TcpServer::do_accept()
                 d_ptr->_connect_session = std::make_shared<tcp_connect_session>(d_ptr->io_context_, std::move(socket));
 
                 point.startProcessingMessages(d_ptr->_connect_session->proxy_, d_ptr->_connect_session->proxy_);
+                d_ptr->_connect_session->start();
                 do_accept();
             }
         }

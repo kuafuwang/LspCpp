@@ -1,6 +1,7 @@
 
 #include "LibLsp/JsonRpc/StreamMessageProducer.h"
 #include <cassert>
+#include <array>
 #include <cerrno>
 #include <climits>
 #include <cstdlib>
@@ -48,6 +49,103 @@ bool parseContentLength(std::string const& value, int& contentLength)
     return true;
 }
 
+bool reportInputState(std::shared_ptr<lsp::istream> const& input, MessageIssueHandler& issueHandler)
+{
+    if (input->bad())
+    {
+        std::string info = "Input stream is bad.";
+        auto what = input->what();
+        if (what.size())
+        {
+            info += "Reason:";
+            info += input->what();
+        }
+        MessageIssue issue(info, lsp::Log::Level::SEVERE);
+        issueHandler.handle(std::move(issue));
+        return false;
+    }
+    if (input->fail())
+    {
+        std::string info = "Input fail.";
+        auto what = input->what();
+        if (what.size())
+        {
+            info += "Reason:";
+            info += input->what();
+        }
+        MessageIssue issue(info, lsp::Log::Level::WARNING);
+        issueHandler.handle(std::move(issue));
+        if (input->need_to_clear_the_state())
+        {
+            input->clear();
+            return true;
+        }
+        return false;
+    }
+    return true;
+}
+
+bool readMore(std::shared_ptr<lsp::istream> const& input, std::string& buffer)
+{
+    std::array<char, 4096> chunk {};
+    auto const read = input->read_some(chunk.data(), static_cast<std::streamsize>(chunk.size()));
+    if (read <= 0)
+    {
+        return false;
+    }
+    buffer.append(chunk.data(), static_cast<size_t>(read));
+    return true;
+}
+
+std::string::size_type findHeaderEnd(std::string const& buffer, size_t& delimiterSize)
+{
+    auto const crlf = buffer.find("\r\n\r\n");
+    auto const lf = buffer.find("\n\n");
+    if (crlf == std::string::npos)
+    {
+        if (lf == std::string::npos)
+        {
+            return std::string::npos;
+        }
+        delimiterSize = 2;
+        return lf;
+    }
+    if (lf == std::string::npos || crlf < lf)
+    {
+        delimiterSize = 4;
+        return crlf;
+    }
+    delimiterSize = 2;
+    return lf;
+}
+
+void parseHeaderBlock(std::string const& block, LSPStreamMessageProducer& producer, LSPStreamMessageProducer::Headers& headers)
+{
+    size_t start = 0;
+    while (start <= block.size())
+    {
+        auto end = block.find('\n', start);
+        if (end == std::string::npos)
+        {
+            end = block.size();
+        }
+        auto line = block.substr(start, end - start);
+        if (!line.empty() && line.back() == '\r')
+        {
+            line.pop_back();
+        }
+        if (!line.empty())
+        {
+            producer.parseHeader(line, headers);
+        }
+        if (end == block.size())
+        {
+            break;
+        }
+        start = end + 1;
+    }
+}
+
 } // namespace
 
 void LSPStreamMessageProducer::parseHeader(std::string& line, LSPStreamMessageProducer::Headers& headers)
@@ -83,95 +181,109 @@ void LSPStreamMessageProducer::listen(MessageConsumer callBack)
     }
 
     keepRunning = true;
-    bool newLine = false;
-    Headers headers;
-    string headerBuilder;
-    string debugBuilder;
-    // Read the content length. It is terminated by the "\r\n" sequence.
+    std::string buffer;
     while (keepRunning)
     {
-        if (input->bad())
+        if (!reportInputState(input, issueHandler))
         {
-            std::string info = "Input stream is bad.";
-            auto what = input->what();
-            if (what.size())
-            {
-                info += "Reason:";
-                info += input->what();
-            }
-            MessageIssue issue(info, lsp::Log::Level::SEVERE);
-            issueHandler.handle(std::move(issue));
             return;
         }
-        if (input->fail())
+
+        size_t delimiterSize = 0;
+        auto headerEnd = findHeaderEnd(buffer, delimiterSize);
+        while (headerEnd == std::string::npos && keepRunning)
         {
-            std::string info = "Input fail.";
-            auto what = input->what();
-            if (what.size())
+            if (!readMore(input, buffer))
             {
-                info += "Reason:";
-                info += input->what();
+                keepRunning = false;
+                if (!buffer.empty())
+                {
+                    MessageIssue issue("No more input when reading message headers", lsp::Log::Level::INFO);
+                    issueHandler.handle(std::move(issue));
+                }
+                return;
             }
-            MessageIssue issue(info, lsp::Log::Level::WARNING);
-            issueHandler.handle(std::move(issue));
-            if (input->need_to_clear_the_state())
-            {
-                input->clear();
-            }
-            else
+            if (!reportInputState(input, issueHandler))
             {
                 return;
             }
+            headerEnd = findHeaderEnd(buffer, delimiterSize);
         }
-        int c = input->get();
-        if (c == EOF)
+        if (!keepRunning)
         {
-            // End of input stream has been reached
+            return;
+        }
+
+        Headers headers;
+        auto headerBlock = buffer.substr(0, headerEnd);
+        parseHeaderBlock(headerBlock, *this, headers);
+        buffer.erase(0, headerEnd + delimiterSize);
+
+        if (headers.contentLength < 0)
+        {
+            string info = "Unexpected token:" + headerBlock;
+            info += "  (expected Content-Length: sequence);";
+            MessageIssue issue(info, lsp::Log::Level::WARNING);
+            issueHandler.handle(std::move(issue));
+            continue;
+        }
+
+        auto const contentLength = static_cast<size_t>(headers.contentLength);
+        if (buffer.size() < contentLength)
+        {
+            // Bulk-read the remaining body with a single istream::read() call.
+            // Header scanning uses read_some (fast for standard_istream, and a
+            // safe byte-by-byte fallback for custom streams), but the body length
+            // is known here, so this preserves the historical bulk-read behavior
+            // for custom istream implementations that only override read().
+            size_t const already = buffer.size();
+            size_t const needed = contentLength - already;
+            buffer.resize(contentLength);
+            input->read(&buffer[already], static_cast<std::streamsize>(needed));
+
+            if (input->bad())
+            {
+                std::string info = "Input stream is bad.";
+                auto what = input->what();
+                if (!what.empty())
+                {
+                    info += "Reason:";
+                    info += what;
+                }
+                MessageIssue issue(info, lsp::Log::Level::SEVERE);
+                issueHandler.handle(std::move(issue));
+                keepRunning = false;
+                return;
+            }
+            if (input->eof())
+            {
+                MessageIssue issue("No more input when reading content body", lsp::Log::Level::INFO);
+                issueHandler.handle(std::move(issue));
+                keepRunning = false;
+                return;
+            }
+            if (input->fail())
+            {
+                std::string info = "Input fail.";
+                auto what = input->what();
+                if (!what.empty())
+                {
+                    info += "Reason:";
+                    info += what;
+                }
+                MessageIssue issue(info, lsp::Log::Level::WARNING);
+                issueHandler.handle(std::move(issue));
+                keepRunning = false;
+                return;
+            }
+        }
+
+        std::string content = buffer.substr(0, contentLength);
+        buffer.erase(0, contentLength);
+        callBack(std::move(content));
+        if (input->eof() && buffer.empty())
+        {
             keepRunning = false;
-        }
-        else
-        {
-
-            debugBuilder.push_back((char)c);
-            if (c == '\n')
-            {
-                if (newLine)
-                {
-                    // Two consecutive newlines have been read, which signals the start of the message content
-                    if (headers.contentLength < 0)
-                    {
-                        string info = "Unexpected token:" + debugBuilder;
-                        info += "  (expected Content-Length: sequence);";
-                        MessageIssue issue(info, lsp::Log::Level::WARNING);
-                        issueHandler.handle(std::move(issue));
-                    }
-                    else
-                    {
-                        bool result = handleMessage(headers, callBack);
-                        if (!result)
-                        {
-                            keepRunning = false;
-                        }
-                        newLine = false;
-                    }
-                    headers.clear();
-                    debugBuilder.clear();
-                }
-                else if (!headerBuilder.empty())
-                {
-                    // A single newline ends a header line
-                    parseHeader(headerBuilder, headers);
-                    headerBuilder.clear();
-                }
-                newLine = true;
-            }
-            else if (c != '\r')
-            {
-                // Add the input to the current header line
-
-                headerBuilder.push_back((char)c);
-                newLine = false;
-            }
         }
     }
 }

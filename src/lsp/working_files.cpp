@@ -12,16 +12,77 @@ struct WorkingFilesData
     std::mutex files_mutex; // Protects |d_ptr->files|.
 };
 
+namespace
+{
+std::vector<size_t> BuildLineOffsets(std::string const& content)
+{
+    std::vector<size_t> offsets;
+    offsets.push_back(0);
+    for (size_t i = 0; i < content.size(); ++i)
+    {
+        if (content[i] == '\n')
+        {
+            offsets.push_back(i + 1);
+        }
+    }
+    return offsets;
+}
+
+void RebuildLineOffsets(WorkingFile& file)
+{
+    file.RebuildLineOffsets();
+}
+
+int GetCachedOffsetForPosition(WorkingFile const& file, lsPosition position)
+{
+    return file.GetOffsetForPosition(position);
+}
+} // namespace
+
 WorkingFile::WorkingFile(WorkingFiles& _parent, AbsolutePath const& filename, std::string const& buffer_content)
     : filename(filename), directory(filename), parent(_parent), counter(0), buffer_content(buffer_content)
 {
     directory = Directory(GetDirName(filename.path));
+    this->RebuildLineOffsets();
 }
 
 WorkingFile::WorkingFile(WorkingFiles& _parent, AbsolutePath const& filename, std::string&& buffer_content)
     : filename(filename), directory(filename), parent(_parent), counter(0), buffer_content(buffer_content)
 {
     directory = Directory(GetDirName(filename.path));
+    this->RebuildLineOffsets();
+}
+
+void WorkingFile::RebuildLineOffsets()
+{
+    line_offsets = BuildLineOffsets(buffer_content);
+}
+
+int WorkingFile::GetOffsetForPosition(lsPosition position) const
+{
+    if (line_offsets.empty())
+    {
+        return ::GetOffsetForPosition(position, buffer_content);
+    }
+
+    size_t i = buffer_content.size();
+    if (position.line < line_offsets.size())
+    {
+        i = line_offsets[position.line];
+    }
+
+    while (position.character > 0 && i < buffer_content.size())
+    {
+        if (uint8_t(buffer_content[i++]) >= 128)
+        {
+            while (i < buffer_content.size() && uint8_t(buffer_content[i]) >= 128 && uint8_t(buffer_content[i]) < 192)
+            {
+                i++;
+            }
+        }
+        position.character--;
+    }
+    return static_cast<int>(i);
 }
 
 WorkingFiles::WorkingFiles() : d_ptr(new WorkingFilesData())
@@ -82,6 +143,7 @@ std::shared_ptr<WorkingFile> WorkingFiles::OnOpen(lsTextDocumentItem& open)
     {
         file->version = open.version;
         file->buffer_content.swap(open.text);
+        RebuildLineOffsets(*file);
 
         return file;
     }
@@ -114,16 +176,18 @@ std::shared_ptr<WorkingFile> WorkingFiles::OnChange(lsTextDocumentDidChangeParam
         if (!diff.range)
         {
             file->buffer_content = diff.text;
+            RebuildLineOffsets(*file);
         }
         else
         {
-            int start_offset = GetOffsetForPosition(diff.range->start, file->buffer_content);
+            int start_offset = GetCachedOffsetForPosition(*file, diff.range->start);
             // Ignore TextDocumentContentChangeEvent.rangeLength which causes trouble
             // when UTF-16 surrogate pairs are used.
-            int end_offset = GetOffsetForPosition(diff.range->end, file->buffer_content);
+            int end_offset = GetCachedOffsetForPosition(*file, diff.range->end);
             file->buffer_content.replace(
                 file->buffer_content.begin() + start_offset, file->buffer_content.begin() + end_offset, diff.text
             );
+            RebuildLineOffsets(*file);
         }
     }
     return file;
