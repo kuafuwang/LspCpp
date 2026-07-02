@@ -9,7 +9,6 @@
 #include "LibLsp/lsp/textDocument/typeHierarchy.h"
 #include "LibLsp/lsp/AbsolutePath.h"
 #include "LibLsp/lsp/textDocument/resolveCompletionItem.h"
-#include <network/uri.hpp>
 #include "LibLsp/JsonRpc/Endpoint.h"
 #include "LibLsp/JsonRpc/stream.h"
 #include "LibLsp/JsonRpc/TcpServer.h"

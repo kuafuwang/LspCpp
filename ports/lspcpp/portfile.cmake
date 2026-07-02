@@ -17,7 +17,6 @@ vcpkg_cmake_configure(
         -DUSE_EXTERNAL_ASIO=ON
         -DUSE_EXTERNAL_IXWEBSOCKET=ON
         -DUSE_SYSTEM_RAPIDJSON=ON
-        -DUri_BUILD_TESTS=OFF
 )
 
 vcpkg_cmake_install()

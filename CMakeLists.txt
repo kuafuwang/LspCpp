@@ -285,21 +285,9 @@ endfunction()
 
 # Libraries
 
-if (MSVC)
-    if (LSPCPP_USE_STATIC_CRT)
-        set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-    endif()
-
-    set(Uri_USE_STATIC_CRT OFF)
-    if (LSPCPP_USE_STATIC_CRT OR
-            (DEFINED CMAKE_MSVC_RUNTIME_LIBRARY AND
-             CMAKE_MSVC_RUNTIME_LIBRARY MATCHES "MultiThreaded" AND
-             NOT CMAKE_MSVC_RUNTIME_LIBRARY MATCHES "DLL"))
-        set(Uri_USE_STATIC_CRT ON)
-    endif()
+if (MSVC AND LSPCPP_USE_STATIC_CRT)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
-set(Uri_BUILD_TESTS OFF)
-add_subdirectory(third_party/uri)
 
 function(check_submodule dir)
     if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${dir}/CMakeLists.txt")
@@ -449,8 +437,7 @@ set (LSP_INCLUDE_LIST ${LSPCPP_INCLUDE_DIR}
         ${RapidJSON_INCLUDE_DIRS}
         ${Boost_INCLUDE_DIRS}
         ${ASIO_INCLUDE_DIRS}
-        ${GHC_FS_INCLUDE_DIRS}
-        ${Uri_SOURCE_DIR}/include)
+        ${GHC_FS_INCLUDE_DIRS})
 ### Includes
 target_include_directories(lspcpp
         PUBLIC
@@ -462,13 +449,12 @@ target_include_directories(lspcpp SYSTEM
         $<BUILD_INTERFACE:${RapidJSON_INCLUDE_DIRS}>
         $<BUILD_INTERFACE:${ASIO_INCLUDE_DIRS}>
         $<BUILD_INTERFACE:${GHC_FS_INCLUDE_DIRS}>
-        $<BUILD_INTERFACE:${Uri_SOURCE_DIR}/include>
         PRIVATE
         ${Boost_INCLUDE_DIRS})
 
 target_link_libraries(
         lspcpp
-        PUBLIC ${LSPCPP_EXTERNAL_LIBS} network-uri
+        PUBLIC ${LSPCPP_EXTERNAL_LIBS}
 )
 
 set(LSPCPP_THIRD_PARTY_DIR_LIST
@@ -587,13 +573,6 @@ if(LSPCPP_INSTALL)
         install(TARGETS asio_lib
                 EXPORT ${targets_export_name})
     endif()
-
-    install(TARGETS network-uri
-            EXPORT ${targets_export_name}
-            LIBRARY DESTINATION lib
-            ARCHIVE DESTINATION lib
-            RUNTIME DESTINATION bin
-            INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
     install(DIRECTORY ${LSPCPP_INCLUDE_DIR}/LibLsp
             DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}

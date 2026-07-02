@@ -13,7 +13,6 @@ These are required to build the `lspcpp` static library:
 | [Asio](https://think-async.com/Asio/) (standalone) | Bundled in `third_party/asio`, or via vcpkg / system package |
 | [RapidJSON](https://github.com/Tencent/rapidjson) | Bundled in `third_party/rapidjson`, or system package |
 | [utfcpp](https://github.com/nemtrif/utfcpp) | Bundled in `third_party/utfcpp` |
-| [network-uri](https://github.com/cpp-netlib/uri) | Bundled in `third_party/uri` |
 | [IXWebSocket](https://github.com/machinezone/IXWebSocket) | Bundled in `third_party/ixwebsocket`, or via vcpkg |
 | [ZLIB](https://zlib.net/) | System package used by bundled IXWebSocket compression support |
 
@@ -34,7 +33,7 @@ Requires CMake 3.16+ and a C++17-capable compiler (`LSPCPP_USE_CPP17=ON` by defa
 
 ```shell
 mkdir _build && cd _build
-cmake -DUri_BUILD_TESTS=OFF ..
+cmake ..
 cmake --build . -j
 ```
 
@@ -98,7 +97,7 @@ cmake --install _build --prefix /path/to/install
 Examples and CTest smoke tests require Boost. Enable them with:
 
 ```shell
-cmake -DUri_BUILD_TESTS=OFF -DLSPCPP_BUILD_TESTS=ON ..
+cmake -DLSPCPP_BUILD_TESTS=ON ..
 cmake --build . -j
 ctest --output-on-failure
 ```
@@ -148,13 +147,13 @@ Generate a Visual Studio solution and build:
 ```shell
 mkdir _build
 cd _build
-cmake -DUri_BUILD_TESTS=OFF ..
+cmake ..
 ```
 
 Open the generated solution in Visual Studio, or build from the command line with `cmake --build .`.
 
 To request the static CRT (`/MT`, `/MTd`), pass `-DLSPCPP_USE_STATIC_CRT=ON`.
-This keeps bundled dependencies such as `network-uri` and `ixwebsocket` on the same
+This keeps bundled dependencies such as `ixwebsocket` on the same
 runtime so you do not need to override `/MD` manually. If a toolchain already sets
 `CMAKE_MSVC_RUNTIME_LIBRARY`, LspCpp follows that runtime for bundled dependencies.
 When using vcpkg for external dependencies, build with a matching CRT triplet (for

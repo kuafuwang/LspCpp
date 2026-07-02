@@ -37,8 +37,6 @@
 #include "LibLsp/JsonRpc/json.h"
 #include "LibLsp/lsp/language/language.h"
 
-#include <network/uri/uri_builder.hpp>
-
 #include "LibLsp/lsp/lsp_completion.h"
 #include "LibLsp/lsp/utils.h"
 #include "LibLsp/lsp/client/registerCapability.h"
@@ -605,16 +603,211 @@ void Reflect(Writer& visitor, SelectionRange* value)
     Reflect(visitor, *value);
 }
 
+namespace
+{
+bool IsWindowsDrivePath(std::string const& path)
+{
+    auto is_drive_letter = [](char c) { return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'); };
+    return path.size() >= 2 && path[1] == ':' && is_drive_letter(path[0]);
+}
+
+bool StartsWithFileScheme(std::string const& uri)
+{
+    auto equal_ignore_case = [](char lhs, char rhs)
+    {
+        if (lhs >= 'A' && lhs <= 'Z')
+        {
+            lhs = static_cast<char>(lhs - 'A' + 'a');
+        }
+        if (rhs >= 'A' && rhs <= 'Z')
+        {
+            rhs = static_cast<char>(rhs - 'A' + 'a');
+        }
+        return lhs == rhs;
+    };
+    return uri.size() >= 7 && equal_ignore_case(uri[0], 'f') && equal_ignore_case(uri[1], 'i') &&
+        equal_ignore_case(uri[2], 'l') && equal_ignore_case(uri[3], 'e') && uri[4] == ':' &&
+        uri[5] == '/' && uri[6] == '/';
+}
+
+bool IsLocalhostAuthority(std::string const& authority)
+{
+    if (authority.size() != 9)
+    {
+        return false;
+    }
+    static char const* localhost = "localhost";
+    for (size_t i = 0; i < authority.size(); ++i)
+    {
+        char c = authority[i];
+        if (c >= 'A' && c <= 'Z')
+        {
+            c = static_cast<char>(c - 'A' + 'a');
+        }
+        if (c != localhost[i])
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool IsHex(char c)
+{
+    return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+}
+
+int HexValue(char c)
+{
+    if (c >= '0' && c <= '9')
+    {
+        return c - '0';
+    }
+    if (c >= 'a' && c <= 'f')
+    {
+        return c - 'a' + 10;
+    }
+    return c - 'A' + 10;
+}
+
+bool IsUnreservedUriPathByte(unsigned char c)
+{
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' ||
+        c == '.' || c == '_' || c == '~';
+}
+
+std::string NormalizePathSeparators(std::string path)
+{
+    for (char& c : path)
+    {
+        if (c == '\\')
+        {
+            c = '/';
+        }
+    }
+    return path;
+}
+
+bool IsAbsoluteFilePath(std::string const& path)
+{
+    return (!path.empty() && path[0] == '/') || IsWindowsDrivePath(path);
+}
+
+std::string StripUriPathSuffix(std::string const& path)
+{
+    size_t const suffix = path.find_first_of("?#");
+    if (suffix == std::string::npos)
+    {
+        return path;
+    }
+    return path.substr(0, suffix);
+}
+
+std::string PercentEncodeFilePath(std::string const& path)
+{
+    static char const* hex = "0123456789ABCDEF";
+    std::string encoded;
+    encoded.reserve(path.size());
+    for (unsigned char c : path)
+    {
+        if (c == '/' || IsUnreservedUriPathByte(c))
+        {
+            encoded.push_back(static_cast<char>(c));
+        }
+        else
+        {
+            encoded.push_back('%');
+            encoded.push_back(hex[c >> 4]);
+            encoded.push_back(hex[c & 0x0F]);
+        }
+    }
+    return encoded;
+}
+
+std::string PercentDecodeFilePath(std::string const& value)
+{
+    std::string decoded;
+    decoded.reserve(value.size());
+    for (size_t i = 0; i < value.size(); ++i)
+    {
+        if (value[i] == '%' && i + 2 < value.size() && IsHex(value[i + 1]) && IsHex(value[i + 2]))
+        {
+            decoded.push_back(static_cast<char>((HexValue(value[i + 1]) << 4) + HexValue(value[i + 2])));
+            i += 2;
+        }
+        else
+        {
+            decoded.push_back(value[i] == '\\' ? '/' : value[i]);
+        }
+    }
+    return decoded;
+}
+
+std::string MakeFileUriFromPath(std::string path)
+{
+    path = NormalizePathSeparators(std::move(path));
+    if (!IsAbsoluteFilePath(path))
+    {
+        path.insert(path.begin(), '/');
+    }
+
+    std::string const encoded_path = PercentEncodeFilePath(path);
+
+    if (IsWindowsDrivePath(path))
+    {
+        return "file:///" + encoded_path;
+    }
+    if (encoded_path.compare(0, 2, "//") == 0)
+    {
+        return "file:" + encoded_path;
+    }
+    return "file://" + encoded_path;
+}
+
+std::string RawPathFromFileUri(std::string const& uri)
+{
+    if (!StartsWithFileScheme(uri))
+    {
+        return uri;
+    }
+
+    size_t const authority_start = 7;
+    size_t const first_delimiter = uri.find_first_of("/?#", authority_start);
+    std::string authority;
+    std::string path;
+    if (first_delimiter == std::string::npos)
+    {
+        authority = uri.substr(authority_start);
+    }
+    else if (uri[first_delimiter] == '/')
+    {
+        authority = uri.substr(authority_start, first_delimiter - authority_start);
+        path = StripUriPathSuffix(uri.substr(first_delimiter));
+    }
+    else
+    {
+        authority = uri.substr(authority_start, first_delimiter - authority_start);
+    }
+
+    if (!authority.empty() && !IsLocalhostAuthority(authority))
+    {
+        return PercentDecodeFilePath("//" + authority + path);
+    }
+
+    std::string decoded = PercentDecodeFilePath(path);
+#if defined(_WIN32)
+    if (decoded.size() >= 3 && decoded[0] == '/' && IsWindowsDrivePath(decoded.substr(1)))
+    {
+        decoded.erase(decoded.begin());
+    }
+#endif
+    return decoded;
+}
+} // namespace
+
 std::string make_file_scheme_uri(std::string const& absolute_path)
 {
-    network::uri_builder builder;
-    builder.scheme("file");
-    builder.host("");
-    builder.path(absolute_path);
-    return builder.uri().string();
-    ////  lsDocumentUri uri;
-    ////  uri.SetPath(absolute_path);
-    ///  return uri.raw_uri_;
+    return MakeFileUriFromPath(absolute_path);
 }
 
 // static
@@ -682,79 +875,12 @@ lsDocumentUri lsDocumentUri::FromPath(AbsolutePath const& path)
 //
 void lsDocumentUri::SetPath(AbsolutePath const& path)
 {
-    // file:///c%3A/Users/jacob/Desktop/superindex/indexer/full_tests
-    raw_uri_ = path;
-
-    size_t index = raw_uri_.find(":");
-    if (index == 1)
-    { // widows drive letters must always be 1 char
-        raw_uri_.replace(raw_uri_.begin() + index, raw_uri_.begin() + index + 1, "%3A");
-    }
-
-    // subset of reserved characters from the URI standard
-    // http://www.ecma-international.org/ecma-262/6.0/#sec-uri-syntax-and-semantics
-    std::string t;
-    t.reserve(8 + raw_uri_.size());
-
-    // TODO: proper fix
-#if defined(_WIN32)
-    t += "file:///";
-#else
-    t += "file://";
-#endif
-
-    // clang-format off
-        for (char c : raw_uri_)
-                switch (c) {
-                case ' ': t += "%20"; break;
-                case '#': t += "%23"; break;
-                case '$': t += "%24"; break;
-                case '&': t += "%26"; break;
-                case '(': t += "%28"; break;
-                case ')': t += "%29"; break;
-                case '+': t += "%2B"; break;
-                case ',': t += "%2C"; break;
-                case ';': t += "%3B"; break;
-                case '?': t += "%3F"; break;
-                case '@': t += "%40"; break;
-                default: t += c; break;
-                }
-    // clang-format on
-    raw_uri_ = std::move(t);
+    raw_uri_ = MakeFileUriFromPath(path.path);
 }
 
 std::string lsDocumentUri::GetRawPath() const
 {
-
-    if (raw_uri_.compare(0, 8, "file:///"))
-    {
-        return raw_uri_;
-    }
-
-    std::string ret;
-#if defined(_WIN32)
-    size_t i = 8;
-#else
-    size_t i = 7;
-#endif
-    auto from_hex = [](unsigned char const& c) -> unsigned int
-    {
-        unsigned char c_from_zero_char = c - '0';
-        return c_from_zero_char < 10 ? c_from_zero_char : (c | 32) - 'a' + 10;
-    };
-    for (; i < raw_uri_.size(); i++)
-    {
-        if (i + 3 <= raw_uri_.size() && raw_uri_[i] == '%')
-        {
-            ret.push_back(static_cast<char>(from_hex(raw_uri_[i + 1]) * 16 + from_hex(raw_uri_[i + 2])));
-            i += 2;
-        }
-        else
-        {
-            ret.push_back(raw_uri_[i] == '\\' ? '/' : raw_uri_[i]);
-        }
-    }
-    return ret;
+    return RawPathFromFileUri(raw_uri_);
 }
 
 lsDocumentUri::lsDocumentUri()
@@ -783,7 +909,7 @@ bool lsDocumentUri::operator==(std::string const& other) const
 AbsolutePath lsDocumentUri::GetAbsolutePath() const
 {
 
-    if (raw_uri_.find("file://") != std::string::npos)
+    if (StartsWithFileScheme(raw_uri_))
     {
         try
         {

@@ -1,6 +1,7 @@
 #include "LibLsp/JsonRpc/json.h"
 #include "LibLsp/lsp/ProtocolJsonHandler.h"
 #include "LibLsp/lsp/AbsolutePath.h"
+#include "LibLsp/lsp/lsDocumentUri.h"
 #include "LibLsp/lsp/general/initialize.h"
 #include "LibLsp/lsp/location_type.h"
 #include "LibLsp/lsp/lsp_completion.h"
@@ -205,7 +206,7 @@ void TestCompletionHoverAndInitializeRoundTrip()
 
 void TestDocumentUriEscapingRoundTrip()
 {
-    AbsolutePath path("/tmp/lspcpp path/with#symbols(a).cpp", false);
+    AbsolutePath path("/tmp/lspcpp space/with#symbols(a).cpp", false);
     lsDocumentUri uri(path);
 
     Expect(uri.raw_uri_.find("%20") != std::string::npos, "document URI must escape spaces");
@@ -215,6 +216,175 @@ void TestDocumentUriEscapingRoundTrip()
 
     lsDocumentUri const uri_copy = RoundTrip(uri);
     Expect(uri_copy == uri, "document URI must round-trip its raw URI");
+}
+
+void TestDocumentUriFromPathAndSimpleFileUri()
+{
+    AbsolutePath path("/tmp/simple.cpp", false);
+    lsDocumentUri from_path = lsDocumentUri::FromPath(path);
+    lsDocumentUri from_ctor(path);
+
+    Expect(from_path == from_ctor, "FromPath must produce the same URI as the path constructor");
+#if defined(_WIN32)
+    Expect(from_path.raw_uri_ == "file:///tmp/simple.cpp", "simple file URI must use the file scheme prefix on Windows");
+#else
+    Expect(from_path.raw_uri_ == "file:///tmp/simple.cpp", "simple file URI must use the file scheme prefix on Unix");
+#endif
+    Expect(from_path.GetRawPath() == path.path, "simple file URI must decode to the original path");
+    Expect(from_path.GetAbsolutePath().path == path.path, "simple file URI absolute path must match the source path");
+    Expect(
+        make_file_scheme_uri(path.path) == from_path.raw_uri_,
+        "make_file_scheme_uri must use the same encoding as lsDocumentUri::SetPath");
+}
+
+void TestDocumentUriReservedCharacterEscaping()
+{
+    AbsolutePath path("/tmp/a b#$&()+,;?@x.cpp", false);
+    lsDocumentUri uri(path);
+
+    Expect(uri.raw_uri_.find("%20") != std::string::npos, "document URI must escape spaces");
+    Expect(uri.raw_uri_.find("%23") != std::string::npos, "document URI must escape #");
+    Expect(uri.raw_uri_.find("%24") != std::string::npos, "document URI must escape $");
+    Expect(uri.raw_uri_.find("%26") != std::string::npos, "document URI must escape &");
+    Expect(uri.raw_uri_.find("%28") != std::string::npos, "document URI must escape (");
+    Expect(uri.raw_uri_.find("%29") != std::string::npos, "document URI must escape )");
+    Expect(uri.raw_uri_.find("%2B") != std::string::npos, "document URI must escape +");
+    Expect(uri.raw_uri_.find("%2C") != std::string::npos, "document URI must escape ,");
+    Expect(uri.raw_uri_.find("%3B") != std::string::npos, "document URI must escape ;");
+    Expect(uri.raw_uri_.find("%3F") != std::string::npos, "document URI must escape ?");
+    Expect(uri.raw_uri_.find("%40") != std::string::npos, "document URI must escape @");
+    Expect(uri.GetRawPath() == path.path, "document URI must decode every escaped reserved character");
+}
+
+void TestDocumentUriPercentAndUtf8Escaping()
+{
+    AbsolutePath percent_path("/tmp/100%done.cpp", false);
+    lsDocumentUri percent_uri(percent_path);
+    Expect(
+        percent_uri.raw_uri_.find("%25") != std::string::npos,
+        "document URI must escape literal percent signs");
+    Expect(
+        percent_uri.GetRawPath() == percent_path.path,
+        "document URI must decode escaped percent signs back to the original path");
+
+    AbsolutePath utf8_path("/tmp/\xE4\xB8\xAD.cpp", false);
+    lsDocumentUri utf8_uri(utf8_path);
+    Expect(
+        utf8_uri.raw_uri_.find("%E4%B8%AD") != std::string::npos,
+        "document URI must percent-encode UTF-8 path bytes");
+    Expect(utf8_uri.GetRawPath() == utf8_path.path, "document URI must decode UTF-8 bytes back to the path");
+}
+
+void TestDocumentUriFileLocalhostAndInvalidPercentDecoding()
+{
+    lsDocumentUri localhost_uri;
+    localhost_uri.raw_uri_ = "file://localhost/tmp/from-client.cpp";
+    Expect(
+        localhost_uri.GetRawPath() == "/tmp/from-client.cpp",
+        "file://localhost URIs must decode to local absolute paths");
+    Expect(
+        localhost_uri.GetAbsolutePath().path == "/tmp/from-client.cpp",
+        "file://localhost URIs must normalize as local file paths");
+
+    lsDocumentUri uppercase_localhost_uri;
+    uppercase_localhost_uri.raw_uri_ = "FILE://LOCALHOST/tmp/upper-client.cpp";
+    Expect(
+        uppercase_localhost_uri.GetRawPath() == "/tmp/upper-client.cpp",
+        "file scheme and localhost authority matching must be case-insensitive");
+
+    lsDocumentUri invalid_percent_uri;
+    invalid_percent_uri.raw_uri_ = "file:///tmp/bad%ZZ.cpp";
+    Expect(
+        invalid_percent_uri.GetRawPath() == "/tmp/bad%ZZ.cpp",
+        "invalid percent escapes must be preserved instead of corrupting the path");
+}
+
+void TestDocumentUriRelativePathAndQueryFragmentGuards()
+{
+    std::string const relative_uri = make_file_scheme_uri("relative/path.cpp");
+    Expect(relative_uri == "file:///relative/path.cpp", "relative paths must not become URI authorities");
+
+    lsDocumentUri relative_document_uri(AbsolutePath("relative/path.cpp", false));
+    Expect(
+        relative_document_uri.raw_uri_ == relative_uri,
+        "lsDocumentUri must use the guarded relative path file URI encoding");
+    Expect(
+        relative_document_uri.GetRawPath() == "/relative/path.cpp",
+        "guarded relative file URI must decode as a local path, not a host authority");
+
+    lsDocumentUri query_uri;
+    query_uri.raw_uri_ = "file:///tmp/name%3Finside.cpp?query=value#fragment";
+    Expect(
+        query_uri.GetRawPath() == "/tmp/name?inside.cpp",
+        "file URI query and fragment must not become part of the decoded file path");
+
+    lsDocumentUri fragment_uri;
+    fragment_uri.raw_uri_ = "file:///tmp/hash%23inside.cpp#fragment";
+    Expect(
+        fragment_uri.GetRawPath() == "/tmp/hash#inside.cpp",
+        "file URI fragment must be stripped while encoded path hashes still decode");
+}
+
+#if defined(_WIN32)
+void TestDocumentUriWindowsDriveLetterEscaping()
+{
+    AbsolutePath path("C:/Users/test/main.cpp", false);
+    lsDocumentUri uri(path);
+
+    Expect(uri.raw_uri_.find("C%3A") != std::string::npos, "Windows drive letters must escape the colon");
+    Expect(uri.GetRawPath() == path.path, "Windows drive letter URI must decode back to the original path");
+}
+#endif
+
+void TestDocumentUriDefaultCopyEqualityAndSwap()
+{
+    lsDocumentUri empty;
+    Expect(empty.raw_uri_.empty(), "default document URI must start empty");
+    Expect(empty == lsDocumentUri(), "default document URIs must compare equal");
+
+    AbsolutePath path("/tmp/equality.cpp", false);
+    lsDocumentUri uri(path);
+    lsDocumentUri copied(uri);
+
+    Expect(copied == uri, "copy constructor must preserve document URI");
+    Expect(uri == uri.raw_uri_, "document URI must compare equal to its raw string form");
+    Expect(!(uri == "file:///other.cpp"), "document URI string comparison must reject different URIs");
+
+    lsDocumentUri other;
+    other.swap(uri);
+    Expect(other == copied, "swap must move the encoded URI to the other object");
+    Expect(uri.raw_uri_.empty(), "swap must leave the previous owner empty");
+}
+
+void TestDocumentUriNonFileSchemePassthrough()
+{
+    lsDocumentUri untitled;
+    untitled.raw_uri_ = "untitled:Untitled-1";
+
+    Expect(
+        untitled.GetRawPath() == "untitled:Untitled-1",
+        "non-file URI GetRawPath must return the raw URI unchanged");
+    Expect(
+        untitled.GetAbsolutePath().path == "untitled:Untitled-1",
+        "non-file URI GetAbsolutePath must preserve the raw URI string");
+
+    lsDocumentUri const untitled_copy = RoundTrip(untitled);
+    Expect(untitled_copy == untitled, "non-file document URI must round-trip through JSON");
+}
+
+void TestDocumentUriJsonDeserialization()
+{
+    rapidjson::Document document;
+    JsonReader reader = MakeReader(document, R"("file:///client/sent.cpp")");
+    lsDocumentUri from_client;
+    Reflect(reader, from_client);
+
+    Expect(
+        from_client.raw_uri_ == "file:///client/sent.cpp",
+        "JSON deserialization must populate raw_uri_ from client-provided strings");
+    Expect(
+        from_client == std::string("file:///client/sent.cpp"),
+        "deserialized document URI must compare equal to the source JSON string");
 }
 
 void TestOptionalFieldsAreOmittedWhenUnsetAndReadFromNull()
@@ -312,6 +482,17 @@ int main()
     TestWorkspaceEditAndDiagnosticRoundTrip();
     TestCompletionHoverAndInitializeRoundTrip();
     TestDocumentUriEscapingRoundTrip();
+    TestDocumentUriFromPathAndSimpleFileUri();
+    TestDocumentUriReservedCharacterEscaping();
+    TestDocumentUriPercentAndUtf8Escaping();
+    TestDocumentUriFileLocalhostAndInvalidPercentDecoding();
+    TestDocumentUriRelativePathAndQueryFragmentGuards();
+#if defined(_WIN32)
+    TestDocumentUriWindowsDriveLetterEscaping();
+#endif
+    TestDocumentUriDefaultCopyEqualityAndSwap();
+    TestDocumentUriNonFileSchemePassthrough();
+    TestDocumentUriJsonDeserialization();
     TestOptionalFieldsAreOmittedWhenUnsetAndReadFromNull();
     TestProtocolJsonHandlerRegistersCoreRequestsAndNotifications();
     return test::Failures() == 0 ? 0 : 1;

@@ -2,6 +2,7 @@
 #include "LibLsp/JsonRpc/StreamMessageProducer.h"
 #include "LibLsp/lsp/ProtocolJsonHandler.h"
 #include "LibLsp/lsp/general/initialize.h"
+#include "LibLsp/lsp/utils.h"
 #include "LibLsp/lsp/working_files.h"
 #include "test_helpers.h"
 
@@ -243,6 +244,71 @@ void PerfWorkingFilesRangeEdits()
     EmitMetric("working_files.range_edits", edits, elapsed_ms);
     WarnIf(elapsed_ms > 3000.0, "working_files.range_edits", "elapsed_ms exceeded smoke threshold", elapsed_ms);
 }
+
+void PerfWorkingFilesOffsetLookupComparison()
+{
+    // Micro-benchmark: same tail position as ranged edit start/end, comparing
+    // utils::GetOffsetForPosition (scan from BOF) vs WorkingFile line_offsets.
+    int const line_count = 20000;
+    int const iterations = 1000;
+    int const lookups_per_iteration = 2;
+
+    std::string text;
+    text.reserve(static_cast<size_t>(line_count) * 16);
+    for (int i = 0; i < line_count; ++i)
+    {
+        text += "line ";
+        text += std::to_string(i);
+        text += "\n";
+    }
+
+    WorkingFiles files;
+    AbsolutePath path("/tmp/lspcpp-working-files-offset-perf.cpp", false);
+    lsTextDocumentItem open;
+    open.uri = lsDocumentUri(path);
+    open.languageId = "cpp";
+    open.version = 1;
+    open.text = text;
+    auto file = files.OnOpen(open);
+
+    lsPosition const start_pos(19999, 5);
+    lsPosition const end_pos(19999, 9);
+
+    int const uncached_start = lsp::GetOffsetForPosition(start_pos, text);
+    int const uncached_end = lsp::GetOffsetForPosition(end_pos, text);
+    int const cached_start = file->GetOffsetForPosition(start_pos);
+    int const cached_end = file->GetOffsetForPosition(end_pos);
+    Expect(uncached_start == cached_start, "perf smoke cached start offset must match uncached");
+    Expect(uncached_end == cached_end, "perf smoke cached end offset must match uncached");
+
+    int const total_lookups = iterations * lookups_per_iteration;
+
+    Timer uncached_timer;
+    for (int i = 0; i < iterations; ++i)
+    {
+        (void)lsp::GetOffsetForPosition(start_pos, text);
+        (void)lsp::GetOffsetForPosition(end_pos, text);
+    }
+    double const uncached_ms = uncached_timer.elapsedMs();
+
+    Timer cached_timer;
+    for (int i = 0; i < iterations; ++i)
+    {
+        (void)file->GetOffsetForPosition(start_pos);
+        (void)file->GetOffsetForPosition(end_pos);
+    }
+    double const cached_ms = cached_timer.elapsedMs();
+
+    EmitMetric("working_files.offset_lookup.uncached", total_lookups, uncached_ms);
+    EmitMetric("working_files.offset_lookup.cached", total_lookups, cached_ms);
+
+    double const speedup = cached_ms > 0.0 ? uncached_ms / cached_ms : 0.0;
+    std::cout << "PERF_COMPARE name=working_files.offset_lookup speedup=" << speedup << "x"
+              << " uncached_ms=" << uncached_ms << " cached_ms=" << cached_ms << std::endl;
+
+    Expect(speedup >= 1.0, "perf smoke cached offset lookup must not be slower than uncached scan");
+    WarnIf(speedup < 5.0, "working_files.offset_lookup", "cached speedup below 5x smoke threshold", speedup);
+}
 } // namespace
 
 int main()
@@ -251,6 +317,7 @@ int main()
     PerfStreamLargeBodies();
     PerfRemoteEndpointDispatch();
     PerfWorkingFilesRangeEdits();
+    PerfWorkingFilesOffsetLookupComparison();
 
 #ifdef LSPCPP_PERF_WARNINGS_AS_ERRORS
     if (PerfWarnings() != 0)
