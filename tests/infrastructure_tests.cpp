@@ -7,13 +7,21 @@
 #include "LibLsp/lsp/working_files.h"
 #include "test_helpers.h"
 
+#include <algorithm>
 #include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <cstddef>
 #include <memory>
+#include <random>
 #include <sstream>
+#include <string>
 #include <thread>
 #include <vector>
+#ifndef _WIN32
+#include <array>
+#include <unistd.h>
+#endif
 
 namespace lsp
 {
@@ -305,9 +313,455 @@ void TestStandardIStreamInterruptStopsFurtherReads()
     Expect(read_after_clear == 1 && buffer == 'a', "clear must make standard istream readable again");
 }
 
+#ifndef _WIN32
+class PipePair
+{
+public:
+    PipePair()
+    {
+        Expect(::pipe(fds_) == 0, "pipe must succeed");
+    }
+
+    ~PipePair()
+    {
+        if (fds_[0] >= 0)
+        {
+            ::close(fds_[0]);
+        }
+        if (fds_[1] >= 0)
+        {
+            ::close(fds_[1]);
+        }
+    }
+
+    int read_fd() const
+    {
+        return fds_[0];
+    }
+
+    void write(std::string const& data)
+    {
+        Expect(!data.empty(), "pipe write must receive data");
+        write(data.data(), data.size());
+    }
+
+    void write(char const* data, size_t size)
+    {
+        Expect(size > 0, "pipe write must receive data");
+        size_t offset = 0;
+        while (offset < size)
+        {
+            ssize_t const written = ::write(fds_[1], data + offset, size - offset);
+            if (written < 0 && errno == EINTR)
+            {
+                continue;
+            }
+            Expect(written > 0, "pipe write must succeed");
+            if (written <= 0)
+            {
+                return;
+            }
+            offset += static_cast<size_t>(written);
+        }
+    }
+
+    void close_write()
+    {
+        if (fds_[1] >= 0)
+        {
+            ::close(fds_[1]);
+            fds_[1] = -1;
+        }
+    }
+
+private:
+    int fds_[2] = {-1, -1};
+};
+
+char PatternByte(size_t index)
+{
+    return static_cast<char>((index * 131 + 17) & 0xff);
+}
+
+std::string MakePattern(size_t size)
+{
+    std::string data(size, '\0');
+    for (size_t i = 0; i < size; ++i)
+    {
+        data[i] = PatternByte(i);
+    }
+    return data;
+}
+
+void ExpectPattern(std::string const& data, size_t offset, char const* message)
+{
+    for (size_t i = 0; i < data.size(); ++i)
+    {
+        if (data[i] != PatternByte(offset + i))
+        {
+            Expect(false, message);
+            return;
+        }
+    }
+}
+
+void TestStdinIStreamReadsAvailableBytes()
+{
+    PipePair pipe;
+    pipe.write("hello");
+    auto input_stream = std::make_shared<lsp::stdin_istream>(pipe.read_fd());
+
+    std::array<char, 16> buffer {};
+    auto const read = input_stream->read_some(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+    Expect(read == 5, "stdin istream read_some must batch-read available pipe bytes");
+    Expect(std::string(buffer.data(), static_cast<size_t>(read)) == "hello", "stdin istream must preserve pipe payload");
+    Expect(input_stream->good(), "stdin istream must stay good after a successful read");
+}
+
+void TestStdinIStreamGetAndReadConsumePipeData()
+{
+    PipePair pipe;
+    pipe.write("hello");
+    auto input_stream = std::make_shared<lsp::stdin_istream>(pipe.read_fd());
+
+    Expect(input_stream->get() == 'h', "stdin istream get must read the first byte");
+
+    std::array<char, 8> buffer {};
+    input_stream->read(buffer.data(), 4);
+    Expect(std::string(buffer.data(), 4) == "ello", "stdin istream read must consume the remaining bytes");
+}
+
+void TestStdinIStreamBufferedSmallReadsPreserveOrder()
+{
+    PipePair pipe;
+    std::string const payload = "abcdefghij";
+    pipe.write(payload);
+    auto input_stream = std::make_shared<lsp::stdin_istream>(pipe.read_fd());
+
+    // First byte triggers one syscall that fills the internal buffer; the rest
+    // must be served from the buffer in order, without blocking.
+    std::string consumed;
+    for (size_t i = 0; i < payload.size(); ++i)
+    {
+        int const c = input_stream->get();
+        Expect(c != EOF, "buffered stdin istream get must not hit EOF while data remains");
+        consumed.push_back(static_cast<char>(c));
+    }
+    Expect(consumed == payload, "buffered stdin istream must preserve byte order across small reads");
+
+    pipe.close_write();
+    Expect(input_stream->get() == EOF, "buffered stdin istream must reach EOF after buffer and pipe drain");
+    Expect(input_stream->eof(), "buffered stdin istream must report eof after draining");
+}
+
+void TestStdinIStreamMixedBufferedAndBulkReads()
+{
+    PipePair pipe;
+    pipe.write("header\r\n\r\nbody-payload");
+    auto input_stream = std::make_shared<lsp::stdin_istream>(pipe.read_fd());
+
+    // Small read buffers the rest internally.
+    std::array<char, 6> head {};
+    auto const head_read = input_stream->read_some(head.data(), static_cast<std::streamsize>(head.size()));
+    Expect(head_read == 6, "stdin istream small read must return requested bytes");
+    Expect(std::string(head.data(), 6) == "header", "stdin istream small read content mismatch");
+
+    // Bulk read() must drain the internal buffer before touching the fd again.
+    std::array<char, 16> rest {};
+    input_stream->read(rest.data(), 16);
+    Expect(
+        std::string(rest.data(), 16) == "\r\n\r\nbody-payload",
+        "stdin istream bulk read must drain buffered bytes before reading the fd");
+}
+
+void TestStdinIStreamStressMixedReads()
+{
+    PipePair pipe;
+    size_t const total_size = 2 * 1024 * 1024;
+    std::string const payload = MakePattern(total_size);
+    auto input_stream = std::make_shared<lsp::stdin_istream>(pipe.read_fd());
+
+    std::thread writer(
+        [&]()
+        {
+            size_t offset = 0;
+            size_t const chunks[] = {1, 17, 257, 4093, 8192, 333};
+            for (size_t i = 0; offset < payload.size(); ++i)
+            {
+                size_t const chunk = std::min(chunks[i % 6], payload.size() - offset);
+                pipe.write(payload.substr(offset, chunk));
+                offset += chunk;
+            }
+            pipe.close_write();
+        });
+
+    std::array<char, 8192> buffer {};
+    size_t offset = 0;
+    size_t const read_some_sizes[] = {1, 7, 64, 4096, 8192};
+    while (offset < total_size)
+    {
+        if (offset % 9973 == 0)
+        {
+            int const c = input_stream->get();
+            Expect(c != EOF, "stdin istream stress get must not hit EOF before payload end");
+            if (c == EOF)
+            {
+                break;
+            }
+            Expect(static_cast<char>(c) == PatternByte(offset), "stdin istream stress get byte mismatch");
+            ++offset;
+            continue;
+        }
+
+        if (offset % 5 == 0)
+        {
+            auto const requested = std::min<size_t>(7000, total_size - offset);
+            input_stream->read(buffer.data(), static_cast<std::streamsize>(requested));
+            ExpectPattern(std::string(buffer.data(), requested), offset, "stdin istream stress read byte mismatch");
+            offset += requested;
+            continue;
+        }
+
+        auto const requested =
+            std::min(read_some_sizes[offset % 5], std::min<size_t>(buffer.size(), total_size - offset));
+        auto const read = input_stream->read_some(buffer.data(), static_cast<std::streamsize>(requested));
+        Expect(read > 0, "stdin istream stress read_some must make progress before payload end");
+        if (read <= 0)
+        {
+            break;
+        }
+        ExpectPattern(std::string(buffer.data(), static_cast<size_t>(read)), offset, "stdin istream stress read_some byte mismatch");
+        offset += static_cast<size_t>(read);
+    }
+
+    writer.join();
+
+    Expect(offset == total_size, "stdin istream stress must consume the whole payload");
+    char tail = 0;
+    Expect(input_stream->read_some(&tail, 1) == 0, "stdin istream stress must reach EOF after payload");
+    Expect(input_stream->eof(), "stdin istream stress must report EOF after pipe close");
+    Expect(!input_stream->fail(), "stdin istream stress must not report fail after clean EOF");
+    Expect(!input_stream->bad(), "stdin istream stress must not report bad after clean EOF");
+}
+
+void TestStdinIStreamPseudoRandomLengthStress()
+{
+    PipePair pipe;
+    size_t const total_size = 3 * 1024 * 1024 + 123;
+    std::string const payload = MakePattern(total_size);
+    auto input_stream = std::make_shared<lsp::stdin_istream>(pipe.read_fd());
+
+    std::thread writer(
+        [&]()
+        {
+            std::mt19937 rng(0xC0FFEEu);
+            std::uniform_int_distribution<size_t> chunk_dist(1, 16384);
+            std::uniform_int_distribution<size_t> large_chunk_dist(1, 131072);
+            size_t offset = 0;
+            while (offset < payload.size())
+            {
+                size_t chunk = chunk_dist(rng);
+                if ((offset & 0xffff) == 0)
+                {
+                    chunk = large_chunk_dist(rng);
+                }
+                chunk = std::min(chunk, payload.size() - offset);
+                pipe.write(payload.data() + offset, chunk);
+                offset += chunk;
+            }
+            pipe.close_write();
+        });
+
+    std::mt19937 rng(0xBAD5EEDu);
+    std::uniform_int_distribution<int> read_kind_dist(0, 10);
+    std::vector<char> buffer(32768);
+    std::uniform_int_distribution<size_t> read_size_dist(1, buffer.size());
+    size_t offset = 0;
+    while (offset < total_size)
+    {
+        int const choice = read_kind_dist(rng);
+        if (choice == 0)
+        {
+            int const c = input_stream->get();
+            Expect(c != EOF, "stdin istream random stress get must not hit EOF before payload end");
+            if (c == EOF)
+            {
+                break;
+            }
+            Expect(static_cast<char>(c) == PatternByte(offset), "stdin istream random stress get byte mismatch");
+            ++offset;
+            continue;
+        }
+
+        size_t requested = read_size_dist(rng);
+        requested = std::min(requested, total_size - offset);
+        if (choice <= 4)
+        {
+            input_stream->read(buffer.data(), static_cast<std::streamsize>(requested));
+            ExpectPattern(
+                std::string(buffer.data(), requested),
+                offset,
+                "stdin istream random stress read byte mismatch");
+            offset += requested;
+        }
+        else
+        {
+            auto const read = input_stream->read_some(buffer.data(), static_cast<std::streamsize>(requested));
+            Expect(read > 0, "stdin istream random stress read_some must make progress before payload end");
+            if (read <= 0)
+            {
+                break;
+            }
+            ExpectPattern(
+                std::string(buffer.data(), static_cast<size_t>(read)),
+                offset,
+                "stdin istream random stress read_some byte mismatch");
+            offset += static_cast<size_t>(read);
+        }
+    }
+
+    writer.join();
+
+    Expect(offset == total_size, "stdin istream random stress must consume the whole payload");
+    char tail = 0;
+    Expect(input_stream->read_some(&tail, 1) == 0, "stdin istream random stress must reach EOF after payload");
+    Expect(input_stream->eof(), "stdin istream random stress must report EOF after pipe close");
+    Expect(!input_stream->fail(), "stdin istream random stress must not report fail after clean EOF");
+    Expect(!input_stream->bad(), "stdin istream random stress must not report bad after clean EOF");
+}
+
+void TestStdinIStreamEofOnClosedPipe()
+{
+    PipePair pipe;
+    pipe.close_write();
+    auto input_stream = std::make_shared<lsp::stdin_istream>(pipe.read_fd());
+
+    char buffer = 0;
+    auto const read = input_stream->read_some(&buffer, 1);
+    Expect(read == 0, "stdin istream must return zero bytes when the pipe is closed");
+    Expect(input_stream->eof(), "stdin istream must report eof when the pipe is closed");
+    Expect(!input_stream->fail(), "stdin istream must not report fail on a clean pipe eof");
+    Expect(!input_stream->bad(), "stdin istream must not report bad on a clean pipe eof");
+}
+
+void TestStdinIStreamRejectsInvalidFileDescriptor()
+{
+    auto input_stream = std::make_shared<lsp::stdin_istream>(-1);
+
+    char buffer = 0;
+    auto const read = input_stream->read_some(&buffer, 1);
+    Expect(read == 0, "stdin istream must not read from an invalid file descriptor");
+    Expect(input_stream->bad(), "stdin istream must report bad on an invalid file descriptor");
+    Expect(!input_stream->fail(), "stdin istream invalid file descriptor must not look like interrupt");
+    Expect(!input_stream->what().empty(), "stdin istream invalid file descriptor must explain the error");
+}
+
+void TestStdinIStreamInterruptWhileBlockedInSelect()
+{
+    PipePair pipe;
+    auto input_stream = std::make_shared<lsp::stdin_istream>(pipe.read_fd());
+
+    std::atomic<bool> reader_started {false};
+    std::atomic<bool> reader_done {false};
+    std::streamsize read_count = -1;
+    char buffer = 0;
+
+    std::thread reader(
+        [&]()
+        {
+            reader_started.store(true, std::memory_order_release);
+            read_count = input_stream->read_some(&buffer, 1);
+            reader_done.store(true, std::memory_order_release);
+        });
+
+    for (int i = 0; i < 200 && !reader_started.load(std::memory_order_acquire); ++i)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    Expect(reader_started.load(std::memory_order_acquire), "stdin istream reader must start blocking in select");
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    input_stream->interrupt();
+    reader.join();
+
+    Expect(reader_done.load(std::memory_order_acquire), "stdin istream reader must finish after interrupt");
+    Expect(read_count == 0, "stdin istream must not read bytes when interrupted while blocked");
+    Expect(input_stream->fail(), "stdin istream must report fail after interrupt");
+    Expect(input_stream->eof(), "stdin istream must report eof after interrupt");
+    Expect(
+        input_stream->what().find("interrupted") != std::string::npos,
+        "stdin istream must explain interruption after a blocked read");
+}
+
+void TestStdinIStreamInterruptClearAndResume()
+{
+    PipePair pipe;
+    pipe.write("abc");
+    auto input_stream = std::make_shared<lsp::stdin_istream>(pipe.read_fd());
+
+    input_stream->interrupt();
+
+    char buffer = 0;
+    Expect(input_stream->read_some(&buffer, 1) == 0, "interrupted stdin istream must not read bytes");
+    Expect(input_stream->fail(), "interrupted stdin istream must report fail");
+    Expect(input_stream->eof(), "interrupted stdin istream must report eof");
+    Expect(
+        input_stream->what().find("interrupted") != std::string::npos,
+        "interrupted stdin istream must explain interruption");
+
+    input_stream->clear();
+    auto const read_after_clear = input_stream->read_some(&buffer, 1);
+    Expect(read_after_clear == 1 && buffer == 'a', "clear must make stdin istream readable again");
+    Expect(input_stream->good(), "stdin istream must be good after clear and a successful read");
+}
+
+void TestStdinIStreamRepeatedInterruptWhileBlocked()
+{
+    int const attempts = 25;
+    for (int i = 0; i < attempts; ++i)
+    {
+        PipePair pipe;
+        auto input_stream = std::make_shared<lsp::stdin_istream>(pipe.read_fd());
+
+        std::atomic<bool> reader_started {false};
+        std::atomic<bool> reader_done {false};
+        std::streamsize read_count = -1;
+        char buffer = 0;
+
+        std::thread reader(
+            [&]()
+            {
+                reader_started.store(true, std::memory_order_release);
+                read_count = input_stream->read_some(&buffer, 1);
+                reader_done.store(true, std::memory_order_release);
+            });
+
+        for (int spin = 0; spin < 200 && !reader_started.load(std::memory_order_acquire); ++spin)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        Expect(reader_started.load(std::memory_order_acquire), "stdin istream repeated interrupt reader must start");
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        input_stream->interrupt();
+        reader.join();
+
+        Expect(reader_done.load(std::memory_order_acquire), "stdin istream repeated interrupt reader must finish");
+        Expect(read_count == 0, "stdin istream repeated interrupt must return zero bytes");
+        Expect(input_stream->fail(), "stdin istream repeated interrupt must report fail");
+        Expect(input_stream->eof(), "stdin istream repeated interrupt must report eof");
+    }
+}
+#endif
+
 void TestStdinStreamInterruptStopsReads()
 {
+#ifndef _WIN32
+    PipePair pipe;
+    auto input_stream = std::make_shared<lsp::stdin_istream>(pipe.read_fd());
+#else
     auto input_stream = lsp::make_stdin_stream();
+#endif
 
     input_stream->interrupt();
 
@@ -316,6 +770,9 @@ void TestStdinStreamInterruptStopsReads()
     Expect(read == 0, "interrupted stdin stream must not read bytes");
     Expect(input_stream->eof(), "interrupted stdin stream must report eof");
     Expect(input_stream->fail(), "interrupted stdin stream must report fail");
+    Expect(
+        input_stream->what().find("interrupted") != std::string::npos,
+        "interrupted stdin stream must explain interruption");
 }
 
 void TestStderrLogWritesMessages()
@@ -493,6 +950,19 @@ int main()
     TestPublicLogAndStreamHelpers();
     TestStandardIStreamInterruptStopsFurtherReads();
     TestStdinStreamInterruptStopsReads();
+#ifndef _WIN32
+    TestStdinIStreamReadsAvailableBytes();
+    TestStdinIStreamGetAndReadConsumePipeData();
+    TestStdinIStreamBufferedSmallReadsPreserveOrder();
+    TestStdinIStreamMixedBufferedAndBulkReads();
+    TestStdinIStreamStressMixedReads();
+    TestStdinIStreamPseudoRandomLengthStress();
+    TestStdinIStreamEofOnClosedPipe();
+    TestStdinIStreamRejectsInvalidFileDescriptor();
+    TestStdinIStreamInterruptWhileBlockedInSelect();
+    TestStdinIStreamInterruptClearAndResume();
+    TestStdinIStreamRepeatedInterruptWhileBlocked();
+#endif
     TestStderrLogWritesMessages();
     TestLanguageSessionFacadeKeepsEndpointAccessible();
     TestWorkingFilesRangeChangeUsesCachedLineOffsets();

@@ -2,10 +2,16 @@
 #include "test_helpers.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <cstddef>
 #include <memory>
+#include <random>
 #include <string>
+#include <thread>
 #include <vector>
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 
 namespace
 {
@@ -13,6 +19,65 @@ using test::CollectingIssueHandler;
 using test::Expect;
 using test::MakeLspFrame;
 using test::StringIStream;
+
+#ifndef _WIN32
+class PosixPipe
+{
+public:
+    PosixPipe()
+    {
+        Expect(::pipe(fds_) == 0, "stream producer stress pipe must open");
+    }
+
+    ~PosixPipe()
+    {
+        if (fds_[0] >= 0)
+        {
+            ::close(fds_[0]);
+        }
+        if (fds_[1] >= 0)
+        {
+            ::close(fds_[1]);
+        }
+    }
+
+    int readFd() const
+    {
+        return fds_[0];
+    }
+
+    void writeAll(char const* data, size_t size)
+    {
+        size_t offset = 0;
+        while (offset < size)
+        {
+            ssize_t const written = ::write(fds_[1], data + offset, size - offset);
+            if (written < 0 && errno == EINTR)
+            {
+                continue;
+            }
+            Expect(written > 0, "stream producer stress pipe write must succeed");
+            if (written <= 0)
+            {
+                return;
+            }
+            offset += static_cast<size_t>(written);
+        }
+    }
+
+    void closeWrite()
+    {
+        if (fds_[1] >= 0)
+        {
+            ::close(fds_[1]);
+            fds_[1] = -1;
+        }
+    }
+
+private:
+    int fds_[2] = {-1, -1};
+};
+#endif
 
 class ChunkedIStream : public lsp::istream
 {
@@ -327,6 +392,85 @@ void TestFallbackStreamUsesSingleBulkReadForLargeBody()
         "bulk read() must request exactly the remaining Content-Length body bytes");
 }
 
+#ifndef _WIN32
+void TestStdinIStreamFragmentedFramesStressProducer()
+{
+    PosixPipe pipe;
+    auto input = std::make_shared<lsp::stdin_istream>(pipe.readFd());
+
+    int const frame_count = 512;
+    std::vector<std::string> expected;
+    expected.reserve(frame_count);
+    std::vector<std::string> frames;
+    frames.reserve(frame_count);
+    size_t const boundary_payload_sizes[] = {0, 1, 31, 127, 512, 4095, 4096, 8192};
+    std::mt19937 payload_rng(0x5EED1234u);
+    std::uniform_int_distribution<size_t> payload_size_dist(0, 9999);
+
+    for (int i = 0; i < frame_count; ++i)
+    {
+        size_t payload_size = payload_size_dist(payload_rng);
+        if ((i % 17) < 8)
+        {
+            payload_size = boundary_payload_sizes[static_cast<size_t>(i % 17)];
+        }
+        std::string body = std::string(R"({"jsonrpc":"2.0","method":"stress","seq":)") + std::to_string(i) +
+            R"(,"payload":")";
+        body.append(payload_size, static_cast<char>('a' + (i % 26)));
+        body += "\"}";
+        expected.push_back(body);
+        frames.push_back(MakeLspFrame(body));
+    }
+
+    std::thread writer(
+        [&]()
+        {
+            size_t const boundary_chunk_sizes[] = {1, 2, 3, 5, 13, 127, 4096};
+            std::mt19937 chunk_rng(0xFACEB00Cu);
+            std::uniform_int_distribution<size_t> chunk_size_dist(1, 4096);
+            for (size_t frame_index = 0; frame_index < frames.size(); ++frame_index)
+            {
+                std::string const& frame = frames[frame_index];
+                size_t offset = 0;
+                for (size_t chunk_index = frame_index; offset < frame.size(); ++chunk_index)
+                {
+                    size_t chunk = chunk_size_dist(chunk_rng);
+                    if ((chunk_index % 11) < 7)
+                    {
+                        chunk = boundary_chunk_sizes[chunk_index % 11];
+                    }
+                    chunk = std::min(chunk, frame.size() - offset);
+                    pipe.writeAll(frame.data() + offset, chunk);
+                    offset += chunk;
+                }
+            }
+            pipe.closeWrite();
+        });
+
+    CollectingIssueHandler issues;
+    LSPStreamMessageProducer producer(issues, input);
+    std::vector<std::string> messages;
+    producer.listen(
+        [&](std::string&& content)
+        {
+            messages.push_back(std::move(content));
+        });
+    writer.join();
+
+    Expect(messages.size() == expected.size(), "stdin istream stress producer must deliver every fragmented frame");
+    size_t const compared = std::min(messages.size(), expected.size());
+    for (size_t i = 0; i < compared; ++i)
+    {
+        if (messages[i] != expected[i])
+        {
+            Expect(false, "stdin istream stress producer frame body mismatch");
+            break;
+        }
+    }
+    Expect(issues.issues.empty(), "stdin istream stress producer must not report parser issues");
+}
+#endif
+
 void TestMissingContentLengthReportsWarning()
 {
     auto input = std::make_shared<StringIStream>("Content-Type: application/json\r\n\r\n");
@@ -640,6 +784,9 @@ int main()
     TestChunkedReadSomeDeliversMultipleBufferedFrames();
     TestBulkBodyReadFallbackStreamDeliversLargeBody();
     TestFallbackStreamUsesSingleBulkReadForLargeBody();
+#ifndef _WIN32
+    TestStdinIStreamFragmentedFramesStressProducer();
+#endif
     TestMissingContentLengthReportsWarning();
     TestInvalidContentLengthReportsWarning();
     TestMalformedContentLengthsAreRejected();
