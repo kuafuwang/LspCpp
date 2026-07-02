@@ -13,6 +13,7 @@
 #include "LibLsp/JsonRpc/MessageJsonHandler.h"
 #include "Endpoint.h"
 #include "future.h"
+#include <cstdint>
 #include "MessageProducer.h"
 
 class MessageJsonHandler;
@@ -356,8 +357,8 @@ private:
     CancelMonitor getCancelMonitor(lsRequestId const&);
     void removeRequestInfo(lsRequestId const&);
     void sendMsg(LspMessage& msg);
-    void mainLoop(std::unique_ptr<LspMessage>);
-    bool dispatch(std::string const&);
+    void mainLoop(std::unique_ptr<LspMessage>, uint64_t sequence);
+    bool dispatch(std::string const&, uint64_t sequence);
     template<typename F, typename RequestType = ParamType<F, 0>>
     IsRequest<RequestType> processRequestJsonHandler(F const& handler)
     {

@@ -284,6 +284,40 @@ void TestPublicLogAndStreamHelpers()
     Expect(output.str() == "abc", "public stdio stream helpers must wrap standard streams");
 }
 
+void TestStandardIStreamInterruptStopsFurtherReads()
+{
+    std::istringstream input("abc");
+    auto input_stream = lsp::make_istream(input);
+
+    input_stream->interrupt();
+
+    char buffer = 0;
+    auto const read = input_stream->read_some(&buffer, 1);
+    Expect(read == 0, "interrupted standard istream must not read more bytes");
+    Expect(input_stream->eof(), "interrupted standard istream must report eof");
+    Expect(input_stream->fail(), "interrupted standard istream must report fail");
+    Expect(
+        input_stream->what().find("interrupted") != std::string::npos,
+        "interrupted standard istream must explain interruption");
+
+    input_stream->clear();
+    auto const read_after_clear = input_stream->read_some(&buffer, 1);
+    Expect(read_after_clear == 1 && buffer == 'a', "clear must make standard istream readable again");
+}
+
+void TestStdinStreamInterruptStopsReads()
+{
+    auto input_stream = lsp::make_stdin_stream();
+
+    input_stream->interrupt();
+
+    char buffer = 0;
+    auto const read = input_stream->read_some(&buffer, 1);
+    Expect(read == 0, "interrupted stdin stream must not read bytes");
+    Expect(input_stream->eof(), "interrupted stdin stream must report eof");
+    Expect(input_stream->fail(), "interrupted stdin stream must report fail");
+}
+
 void TestStderrLogWritesMessages()
 {
     std::ostringstream narrow_output;
@@ -457,6 +491,8 @@ int main()
     TestToStringStringId();
     TestToStringNoneId();
     TestPublicLogAndStreamHelpers();
+    TestStandardIStreamInterruptStopsFurtherReads();
+    TestStdinStreamInterruptStopsReads();
     TestStderrLogWritesMessages();
     TestLanguageSessionFacadeKeepsEndpointAccessible();
     TestWorkingFilesRangeChangeUsesCachedLineOffsets();

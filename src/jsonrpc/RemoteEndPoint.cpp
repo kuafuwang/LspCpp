@@ -14,6 +14,7 @@
 #include "LibLsp/JsonRpc/ScopeExit.h"
 #include "LibLsp/JsonRpc/stream.h"
 #include <atomic>
+#include <cstdint>
 #include <optional>
 #include <set>
 #include <thread>
@@ -184,6 +185,11 @@ struct RemoteEndPoint::Data
     }
     ~Data()
     {
+        if (tp)
+        {
+            tp->stop();
+            tp.reset();
+        }
         delete message_producer;
     }
     uint8_t max_workers;
@@ -195,10 +201,16 @@ struct RemoteEndPoint::Data
     mutable std::mutex request_cancelers_mutex;
 
     std::map<lsRequestId, std::pair<Canceler, /*Cookie*/ unsigned>> requestCancelers;
-    std::set<lsRequestId> pendingCancelRequests;
+    std::map<lsRequestId, uint64_t> pendingCancelRequests;
+    std::set<lsRequestId> seenRequestIds;
 
     std::atomic<unsigned> next_request_cookie; // To disambiguate reused IDs, see below.
-    void onCancel(Notify_Cancellation::notify* notify)
+    std::atomic<uint64_t> next_message_sequence {0};
+    uint64_t nextMessageSequence()
+    {
+        return next_message_sequence.fetch_add(1, std::memory_order_relaxed);
+    }
+    void onCancel(Notify_Cancellation::notify* notify, uint64_t sequence)
     {
         std::lock_guard<std::mutex> Lock(request_cancelers_mutex);
         auto const it = requestCancelers.find(notify->params.id);
@@ -207,20 +219,26 @@ struct RemoteEndPoint::Data
             it->second.first(); // Invoke the canceler.
             return;
         }
-        pendingCancelRequests.insert(notify->params.id);
+        auto pending = pendingCancelRequests.find(notify->params.id);
+        if (pending == pendingCancelRequests.end() || pending->second < sequence)
+        {
+            pendingCancelRequests[notify->params.id] = sequence;
+        }
     }
 
     // We run cancelable requests in a context that does two things:
     //  - allows cancellation using requestCancelers[ID]
     //  - cleans up the entry in requestCancelers when it's no longer needed
     // If a client reuses an ID, the last wins and the first cannot be canceled.
-    Context cancelableRequestContext(lsRequestId id)
+    Context cancelableRequestContext(lsRequestId id, uint64_t sequence)
     {
         auto task = cancelableTask(
             id,
             /*Reason=*/static_cast<int>(lsErrorCodes::RequestCancelled)
         );
         unsigned cookie;
+        bool should_cancel = false;
+        Canceler canceler_to_invoke;
         {
             std::lock_guard<std::mutex> Lock(request_cancelers_mutex);
             cookie = next_request_cookie.fetch_add(1, std::memory_order_relaxed);
@@ -228,9 +246,21 @@ struct RemoteEndPoint::Data
             auto const pending = pendingCancelRequests.find(id);
             if (pending != pendingCancelRequests.end())
             {
-                requestCancelers[id].first();
+                // If this id was already used, a pending cancel with an older
+                // sequence belongs to a completed request and must not cancel
+                // the reused id.
+                should_cancel = seenRequestIds.find(id) == seenRequestIds.end() || pending->second > sequence;
                 pendingCancelRequests.erase(pending);
             }
+            seenRequestIds.insert(id);
+            if (should_cancel)
+            {
+                canceler_to_invoke = requestCancelers[id].first;
+            }
+        }
+        if (canceler_to_invoke)
+        {
+            canceler_to_invoke();
         }
         // When the request ends, we can clean up the entry we just added.
         // The cookie lets us check that it hasn't been overwritten due to ID
@@ -329,6 +359,11 @@ struct RemoteEndPoint::Data
         if (input)
         {
             input->interrupt();
+        }
+        {
+            std::lock_guard<std::mutex> lock(request_cancelers_mutex);
+            pendingCancelRequests.clear();
+            seenRequestIds.clear();
         }
         failPendingRequests();
         if (tp)
@@ -432,7 +467,7 @@ RemoteEndPoint::~RemoteEndPoint()
     d_ptr = nullptr;
 }
 
-bool RemoteEndPoint::dispatch(std::string const& content)
+bool RemoteEndPoint::dispatch(std::string const& content, uint64_t sequence)
 {
     rapidjson::Document document;
     document.Parse(content.c_str(), content.length());
@@ -467,7 +502,7 @@ bool RemoteEndPoint::dispatch(std::string const& content)
             auto msg = jsonHandler->parseRequstMessage(visitor["method"]->GetString(), visitor);
             if (msg)
             {
-                mainLoop(std::move(msg));
+                mainLoop(std::move(msg), sequence);
             }
             else
             {
@@ -496,7 +531,7 @@ bool RemoteEndPoint::dispatch(std::string const& content)
                 auto msg = jsonHandler->parseResponseMessage(msgInfo->method, visitor);
                 if (msg)
                 {
-                    mainLoop(std::move(msg));
+                    mainLoop(std::move(msg), sequence);
                 }
                 else
                 {
@@ -517,7 +552,7 @@ bool RemoteEndPoint::dispatch(std::string const& content)
                 d_ptr->log.log(Log::Level::SEVERE, info);
                 return false;
             }
-            mainLoop(std::move(msg));
+            mainLoop(std::move(msg), sequence);
         }
         else
         {
@@ -624,7 +659,7 @@ std::unique_ptr<LspMessage> RemoteEndPoint::internalWaitResponse(RequestInMessag
     return response;
 }
 
-void RemoteEndPoint::mainLoop(std::unique_ptr<LspMessage> msg)
+void RemoteEndPoint::mainLoop(std::unique_ptr<LspMessage> msg, uint64_t sequence)
 {
     if (d_ptr->quit.load(std::memory_order_relaxed))
     {
@@ -637,7 +672,7 @@ void RemoteEndPoint::mainLoop(std::unique_ptr<LspMessage> msg)
         auto const request_id = req->id;
         auto const method = std::string(req->GetMethodType());
         // Calls can be canceled by the client. Add cancellation context.
-        WithContext WithCancel(d_ptr->cancelableRequestContext(request_id));
+        WithContext WithCancel(d_ptr->cancelableRequestContext(request_id, sequence));
         if (!local_endpoint->onRequest(std::move(msg)))
         {
             Rsp_Error error;
@@ -675,7 +710,7 @@ void RemoteEndPoint::mainLoop(std::unique_ptr<LspMessage> msg)
     {
         if (strcmp(Notify_Cancellation::notify::kMethodInfo, msg->GetMethodType()) == 0)
         {
-            d_ptr->onCancel(static_cast<Notify_Cancellation::notify*>(msg.get()));
+            d_ptr->onCancel(static_cast<Notify_Cancellation::notify*>(msg.get()), sequence);
         }
         else
         {
@@ -715,15 +750,16 @@ void RemoteEndPoint::startProcessingMessages(std::shared_ptr<lsp::istream> r, st
             d_ptr->message_producer->listen(
                 [&](std::string&& content)
                 {
+                    auto const sequence = d_ptr->nextMessageSequence();
                     asio::post(
                         *d_ptr->tp,
-                        [this, content = std::move(content)]
+                        [this, content = std::move(content), sequence]
                         {
 #ifdef LSPCPP_USEGC
                             GCThreadContext gcContext;
 #endif
 
-                            dispatch(content);
+                            dispatch(content, sequence);
                         }
                     );
                 }
