@@ -4,14 +4,18 @@
 #include "LibLsp/lsp/ProtocolJsonHandler.h"
 #include "LibLsp/lsp/general/exit.h"
 #include "LibLsp/lsp/general/initialize.h"
+#include "LibLsp/lsp/general/lsServerCapabilities.h"
 #include "test_helpers.h"
 
 #include <rapidjson/document.h>
+#include <rapidjson/stringbuffer.h>
+#include <rapidjson/writer.h>
 
 #include <memory>
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace
 {
@@ -193,6 +197,136 @@ void TestPrimitiveReaderRejectsWrongTypes()
         ThrowsInvalidArgument([&]() { Reflect(bool_reader, double_value); }),
         "double reader must reject JSON bool values");
 }
+
+template<typename T>
+std::string SerializeJson(T value)
+{
+    rapidjson::StringBuffer buffer;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+    JsonWriter json_writer(&writer);
+    Reflect(json_writer, value);
+    return buffer.GetString();
+}
+
+template<typename T>
+T ParseJson(char const* json)
+{
+    rapidjson::Document document;
+    JsonReader reader = MakeReader(document, json);
+    T value;
+    Reflect(reader, value);
+    return value;
+}
+
+void TestCapabilityUnionBoolRoundTrip()
+{
+    using Provider = std::pair<optional<bool>, optional<WorkDoneProgressOptions>>;
+
+    Provider const parsed = ParseJson<Provider>("true");
+    Expect(parsed.first && *parsed.first == true, "bool capability union must parse JSON true");
+    Expect(!parsed.second, "bool capability union must leave object side unset");
+
+    Provider provider;
+    provider.first = true;
+    Expect(SerializeJson(provider) == "true", "bool capability union must serialize as JSON true");
+}
+
+void TestCapabilityUnionObjectRoundTrip()
+{
+    using Provider = std::pair<optional<bool>, optional<CodeActionOptions>>;
+
+    Provider const parsed = ParseJson<Provider>(R"({"codeActionKinds":["quickfix","refactor"]})");
+    Expect(!parsed.first, "object capability union must leave bool side unset");
+    Expect(
+        parsed.second && parsed.second->codeActionKinds.size() == 2 &&
+            parsed.second->codeActionKinds[0] == "quickfix" &&
+            parsed.second->codeActionKinds[1] == "refactor",
+        "object capability union must parse provider options");
+
+    Provider provider;
+    CodeActionOptions options;
+    options.codeActionKinds = std::vector<std::string>{"quickfix"};
+    provider.second = options;
+    std::string const json = SerializeJson(provider);
+    Expect(
+        json.find("\"codeActionKinds\"") != std::string::npos,
+        "object capability union must serialize provider options");
+    Expect(json.find("\"quickfix\"") != std::string::npos, "object capability union must preserve option values");
+}
+
+void TestJsonReaderIterArrayRejectsNonArray()
+{
+    rapidjson::Document document;
+    JsonReader reader = MakeReader(document, R"({"not":"array"})");
+    Expect(
+        ThrowsInvalidArgument([&]() { reader.IterArray([](Reader&) {}); }),
+        "IterArray must reject non-array JSON values");
+
+    rapidjson::Document array_document;
+    JsonReader array_reader = MakeReader(array_document, "[1,2,3]");
+    std::vector<int> values;
+    array_reader.IterArray([&](Reader& child) {
+        int value = 0;
+        Reflect(child, value);
+        values.push_back(value);
+    });
+    Expect(values.size() == 3, "IterArray must iterate JSON arrays");
+    Expect(values[0] == 1 && values[1] == 2 && values[2] == 3, "IterArray must preserve element order");
+}
+
+void TestJsonReaderDoMemberSkipsMissingKey()
+{
+    rapidjson::Document document;
+    JsonReader reader = MakeReader(document, R"({"present":7})");
+
+    bool missing_called = false;
+    reader.DoMember(
+        "missing",
+        [&](Reader&)
+        {
+            missing_called = true;
+        });
+    Expect(!missing_called, "DoMember must skip missing keys without invoking callback");
+
+    int present_value = 0;
+    reader.DoMember(
+        "present",
+        [&](Reader& child)
+        {
+            Reflect(child, present_value);
+        });
+    Expect(present_value == 7, "DoMember must invoke callback for present keys");
+}
+
+void TestJsonReaderHasMemberAndNull()
+{
+    rapidjson::Document document;
+    JsonReader reader = MakeReader(document, R"({"known":null,"nested":{"child":1}})");
+
+    Expect(reader.HasMember("known"), "HasMember must find existing object keys");
+    Expect(!reader.HasMember("missing"), "HasMember must return false for missing keys");
+
+    reader.DoMember(
+        "known",
+        [&](Reader& child)
+        {
+            Expect(child.IsNull(), "reader positioned at null must report IsNull");
+        });
+
+    rapidjson::Document string_document;
+    JsonReader string_reader = MakeReader(string_document, R"("not-an-object")");
+    Expect(!string_reader.HasMember("anything"), "HasMember must return false for non-object values");
+}
+
+void TestJsonWriterNullRoundTrip()
+{
+    optional<int> value;
+    std::string const json = SerializeJson(value);
+    Expect(json == "null", "unset optional must serialize as null");
+
+    optional<int> const parsed = ParseJson<optional<int>>("null");
+    Expect(!parsed, "null optional must deserialize as unset");
+}
 } // namespace
 
 int main()
@@ -202,6 +336,12 @@ int main()
     TestMessageJsonHandlerParsesRegisteredMethods();
     TestMessageJsonHandlerResolveResponseSkipsThrowingParsers();
     TestPrimitiveReaderRejectsWrongTypes();
+    TestCapabilityUnionBoolRoundTrip();
+    TestCapabilityUnionObjectRoundTrip();
+    TestJsonReaderIterArrayRejectsNonArray();
+    TestJsonReaderDoMemberSkipsMissingKey();
+    TestJsonReaderHasMemberAndNull();
+    TestJsonWriterNullRoundTrip();
 
     return test::Failures() == 0 ? 0 : 1;
 }

@@ -12,6 +12,7 @@
 #include <cerrno>
 #include <chrono>
 #include <cstddef>
+#include <cstdio>
 #include <memory>
 #include <random>
 #include <sstream>
@@ -22,11 +23,6 @@
 #include <array>
 #include <unistd.h>
 #endif
-
-namespace lsp
-{
-lsPosition GetPositionForOffset(size_t offset, std::string const& content);
-}
 
 namespace
 {
@@ -311,6 +307,23 @@ void TestStandardIStreamInterruptStopsFurtherReads()
     input_stream->clear();
     auto const read_after_clear = input_stream->read_some(&buffer, 1);
     Expect(read_after_clear == 1 && buffer == 'a', "clear must make standard istream readable again");
+}
+
+void TestStandardIStreamReadSomeBulkReadsMultipleBytes()
+{
+    std::string const payload = "hello world payload";
+    std::istringstream input(payload);
+    auto input_stream = lsp::make_istream(input);
+
+    char buffer[32] = {};
+    auto const read = input_stream->read_some(buffer, static_cast<std::streamsize>(sizeof(buffer)));
+    Expect(read > 1, "standard istream read_some must bulk-read multiple buffered bytes");
+    Expect(
+        read == static_cast<std::streamsize>(payload.size()),
+        "standard istream read_some must read all available buffered bytes in one call");
+    Expect(
+        std::string(buffer, static_cast<size_t>(read)) == payload,
+        "standard istream read_some bulk read must preserve byte order");
 }
 
 #ifndef _WIN32
@@ -829,7 +842,7 @@ void TestLanguageSessionFacadeKeepsEndpointAccessible()
 void TestWorkingFilesRangeChangeUsesCachedLineOffsets()
 {
     WorkingFiles files;
-    AbsolutePath path("/tmp/lspcpp-working-files-test.cpp", false);
+    AbsolutePath path("/tmp/lspcpp-working-files-test.cpp");
 
     lsTextDocumentItem open;
     open.uri = lsDocumentUri(path);
@@ -859,7 +872,7 @@ void TestWorkingFilesMaintainsLineOffsetIndex()
     // Uses a large file to verify the cached line-offset index is built and
     // rebuilt after both ranged and full-content changes.
     WorkingFiles files;
-    AbsolutePath path("/tmp/lspcpp-working-files-large-test.cpp", false);
+    AbsolutePath path("/tmp/lspcpp-working-files-large-test.cpp");
 
     std::string text;
     for (int i = 0; i < 10000; ++i)
@@ -919,12 +932,267 @@ void TestStringAndPathUtilities()
 {
     Expect(lsp::StartsWith("alpha.cpp", "alpha"), "StartsWith must detect prefixes");
     Expect(lsp::EndsWith("alpha.cpp", ".cpp"), "EndsWith must detect suffixes");
+    Expect(!lsp::StartsWith("alpha.cpp", "beta"), "StartsWith must reject non-matching prefixes");
+    Expect(!lsp::StartsWith("short", "longer-prefix"), "StartsWith must reject prefixes longer than the value");
+    Expect(!lsp::EndsWith("alpha.cpp", ".h"), "EndsWith must reject non-matching suffixes");
+    Expect(!lsp::EndsWith("x", "xx"), "EndsWith must reject suffixes longer than the value");
+
+    Expect(
+        lsp::AnyStartsWith({"alpha.cpp", "beta.h"}, "alpha"),
+        "AnyStartsWith must detect a matching prefix in the collection");
+    Expect(
+        !lsp::AnyStartsWith({"alpha.cpp", "beta.h"}, "gamma"),
+        "AnyStartsWith must reject when no value matches");
+    Expect(
+        lsp::StartsWithAny("alpha.cpp", {"beta.h", "alpha"}),
+        "StartsWithAny must detect a matching prefix in the candidate list");
+    Expect(
+        !lsp::StartsWithAny("alpha.cpp", {"beta", "gamma"}),
+        "StartsWithAny must reject when no candidate matches");
+    Expect(
+        lsp::EndsWithAny("alpha.cpp", {".h", ".cpp"}),
+        "EndsWithAny must detect a matching suffix in the candidate list");
+    Expect(
+        !lsp::EndsWithAny("alpha.cpp", {".h", ".txt"}),
+        "EndsWithAny must reject when no candidate matches");
+
     Expect(lsp::GetDirName("/tmp/lspcpp/file.cpp") == "/tmp/lspcpp/", "GetDirName must keep trailing slash");
+    Expect(lsp::GetDirName("foo") == "./", "GetDirName must return ./ for bare filenames");
+    Expect(lsp::GetDirName("/foo") == "/", "GetDirName must return / for root-level absolute paths");
+    Expect(lsp::GetDirName("foo/bar") == "foo/", "GetDirName must return parent directory with trailing slash");
+    Expect(lsp::GetDirName("foo/") == "./", "GetDirName must treat trailing slash as directory-only path");
+    Expect(lsp::GetDirName("") == "./", "GetDirName must return ./ for empty paths");
+    Expect(lsp::GetDirName("/") == "/", "GetDirName must preserve the filesystem root");
+    Expect(
+        lsp::GetDirName("foo\\bar\\baz.cpp") == "foo/bar/",
+        "GetDirName must normalize backslashes before returning the parent directory");
+    Expect(
+        lsp::GetDirName("foo/bar\\baz.cpp") == "foo/bar/",
+        "GetDirName must honor forward slashes even when backslashes are present");
+
     Expect(lsp::GetBaseName("/tmp/lspcpp/file.cpp") == "file.cpp", "GetBaseName must return final path component");
+    Expect(lsp::GetBaseName("file.cpp") == "file.cpp", "GetBaseName must return the whole path when no slash is present");
+    Expect(lsp::GetBaseName("/tmp/") == "/tmp/", "GetBaseName must return trailing-slash paths unchanged");
+    Expect(lsp::GetBaseName("foo/bar/") == "foo/bar/", "GetBaseName must return directory-only paths unchanged");
+
     Expect(lsp::StripFileType("/tmp/lspcpp/file.cpp") == "/tmp/lspcpp/file", "StripFileType must remove suffix");
+    Expect(lsp::StripFileType("file") == "file", "StripFileType must leave extensionless paths unchanged");
+    Expect(
+        lsp::StripFileType("archive.tar.gz") == "archive.tar",
+        "StripFileType must remove only the last dotted suffix");
+
     Expect(
         lsp::ReplaceAll("a-b-c", "-", "::") == "a::b::c",
         "ReplaceAll must replace every occurrence of the source token");
+    Expect(
+        lsp::ReplaceAll("unchanged", "missing", "replacement") == "unchanged",
+        "ReplaceAll must leave the source unchanged when the pattern is absent");
+    Expect(
+        lsp::ReplaceAll("unchanged", "", "replacement") == "unchanged",
+        "ReplaceAll must leave the source unchanged when the pattern is empty");
+
+    std::string with_slash = "foo";
+    lsp::EnsureEndsInSlash(with_slash);
+    Expect(with_slash == "foo/", "EnsureEndsInSlash must append a slash when missing");
+
+    std::string already_slashed = "foo/";
+    lsp::EnsureEndsInSlash(already_slashed);
+    Expect(already_slashed == "foo/", "EnsureEndsInSlash must not duplicate an existing trailing slash");
+
+    std::string empty_path;
+    lsp::EnsureEndsInSlash(empty_path);
+    Expect(empty_path == "/", "EnsureEndsInSlash must append a slash to empty paths");
+}
+
+void TestUtf8PositionOffsetUtilities()
+{
+    std::string const content = "a\xc3\xa9\nb\xf0\x9f\x98\x80z";
+
+    Expect(
+        lsp::GetOffsetForPosition(lsPosition(0, 1), content) == 1,
+        "UTF-8 GetOffsetForPosition must treat ASCII characters as one code point");
+    Expect(
+        lsp::GetOffsetForPosition(lsPosition(0, 2), content) == 3,
+        "UTF-8 GetOffsetForPosition must advance two-byte code points as one character");
+    Expect(
+        lsp::GetOffsetForPosition(lsPosition(1, 3), content) == 9,
+        "GetOffsetForPosition must count four-byte code points as two UTF-16 code units");
+    Expect(
+        lsp::GetOffsetForPosition(lsPosition(1, 4), content) == 10,
+        "GetOffsetForPosition must resume single-unit counting after a surrogate pair");
+    Expect(
+        lsp::GetOffsetForPosition(lsPosition(1, 2), content) == 9,
+        "character indexes inside a surrogate pair must snap past the whole code point");
+    Expect(
+        lsp::GetPositionForOffset(9, content) == lsPosition(1, 3),
+        "GetPositionForOffset must count four-byte code points as two UTF-16 code units");
+
+    for (int offset : {0, 1, 3, 4, 5, 9, 10})
+    {
+        lsPosition const position = lsp::GetPositionForOffset(static_cast<size_t>(offset), content);
+        int const round_trip = lsp::GetOffsetForPosition(position, content);
+        Expect(
+            round_trip == offset,
+            "UTF-8 code-point boundary offsets must round-trip through GetPositionForOffset");
+    }
+
+    lsPosition const inside_two_byte = lsp::GetPositionForOffset(2, content);
+    Expect(
+        inside_two_byte == lsPosition(0, 2),
+        "GetPositionForOffset must count a started multi-byte code point as one character");
+    Expect(
+        lsp::GetOffsetForPosition(inside_two_byte, content) == 3,
+        "UTF-8 offsets inside multi-byte code points must snap to the enclosing code point boundary");
+    lsPosition const inside_four_byte = lsp::GetPositionForOffset(7, content);
+    Expect(
+        lsp::GetOffsetForPosition(inside_four_byte, content) == 9,
+        "UTF-8 offsets inside four-byte code points must snap to the enclosing code point boundary");
+}
+
+void TestDirectGetOffsetForPositionCrlfAndBounds()
+{
+    std::string const content = "a\r\nbb\nccc";
+
+    Expect(
+        lsp::GetOffsetForPosition(lsPosition(0, 0), content) == 0,
+        "direct GetOffsetForPosition must map the document start to offset zero");
+    Expect(
+        lsp::GetOffsetForPosition(lsPosition(0, 2), content) == 2,
+        "direct GetOffsetForPosition must count carriage returns as characters on CRLF lines");
+    Expect(
+        lsp::GetOffsetForPosition(lsPosition(1, 1), content) == 4,
+        "direct GetOffsetForPosition must locate offsets on later lines");
+    Expect(
+        lsp::GetOffsetForPosition(lsPosition(2, 3), content) == 9,
+        "direct GetOffsetForPosition must reach the end of the final line");
+
+    Expect(
+        lsp::GetOffsetForPosition(lsPosition(20, 0), content) == static_cast<int>(content.size()),
+        "direct GetOffsetForPosition must clamp out-of-range lines to the document end");
+    Expect(
+        lsp::GetOffsetForPosition(lsPosition(2, 99), content) == static_cast<int>(content.size()),
+        "direct GetOffsetForPosition must clamp out-of-range characters to the document end");
+}
+
+void TestFileIoUtilities()
+{
+    std::string const temp_path = "/tmp/lspcpp-utils-file-io-test.txt";
+    std::remove(temp_path.c_str());
+
+    Expect(!lsp::FileExists(temp_path), "FileExists must return false for missing files");
+
+    AbsolutePath const missing_path = AbsolutePath::FromNormalized("/tmp/lspcpp-utils-missing-file.txt");
+    std::remove(missing_path.path().c_str());
+    auto const missing_content = lsp::ReadContent(missing_path);
+    Expect(!missing_content.has_value(), "ReadContent must return nullopt for missing files");
+
+    Expect(lsp::WriteToFile(temp_path, "hello\nworld"), "WriteToFile must create and write a temp file");
+    Expect(lsp::FileExists(temp_path), "FileExists must return true after writing a temp file");
+
+    AbsolutePath const written_path = AbsolutePath::FromNormalized(temp_path);
+    auto const read_back = lsp::ReadContent(written_path);
+    Expect(read_back.has_value(), "ReadContent must read back written temp file content");
+    Expect(read_back.value() == "hello\nworld", "ReadContent must preserve written temp file bytes");
+
+    Expect(lsp::WriteToFile(temp_path, ""), "WriteToFile must succeed when truncating to an empty file");
+    auto const empty_read = lsp::ReadContent(written_path);
+    Expect(empty_read.has_value(), "ReadContent must succeed for an empty file");
+    Expect(empty_read.value().empty(), "ReadContent must return empty content for an empty file");
+
+    Expect(
+        !lsp::WriteToFile("/tmp", "cannot-write-to-directory"),
+        "WriteToFile must fail when the target path is not a writable file");
+
+    std::remove(temp_path.c_str());
+    Expect(!lsp::FileExists(temp_path), "FileExists must return false after deleting the temp file");
+}
+
+void TestWideStringConversionUtilities()
+{
+    Expect(lsp::ws2s(lsp::s2ws("ascii")) == "ascii", "ws2s/s2ws must round-trip ASCII text");
+    Expect(
+        lsp::ws2s(lsp::s2ws("caf\xc3\xa9")) == "caf\xc3\xa9",
+        "ws2s/s2ws must round-trip UTF-8 multi-byte text");
+    Expect(
+        lsp::ws2s(lsp::s2ws("emoji \xf0\x9f\x98\x80")) == "emoji \xf0\x9f\x98\x80",
+        "ws2s/s2ws must round-trip four-byte UTF-8 sequences");
+}
+
+void TestMiscStringUtilities()
+{
+    std::vector<std::string> const split = lsp::SplitString("a|b|c", "|");
+    Expect(split.size() == 3, "SplitString must split on every delimiter occurrence");
+    Expect(split[0] == "a" && split[1] == "b" && split[2] == "c", "SplitString must preserve segment order");
+
+    std::vector<std::string> const multi_char_split = lsp::SplitString("a::b::c", "::");
+    Expect(multi_char_split.size() == 3, "SplitString must split multi-character delimiters into segments");
+    Expect(
+        multi_char_split[0] == "a" && multi_char_split[1] == "b" && multi_char_split[2] == "c",
+        "SplitString must consume the full multi-character delimiter");
+
+    std::vector<std::string> const no_delimiter = lsp::SplitString("single", "::");
+    Expect(no_delimiter.size() == 1, "SplitString must return one segment when the delimiter is absent");
+    Expect(no_delimiter[0] == "single", "SplitString must preserve the original string when no delimiter matches");
+
+    std::vector<std::string> const empty_delimiter = lsp::SplitString("single", "");
+    Expect(empty_delimiter.size() == 1, "SplitString must not loop on empty delimiters");
+    Expect(empty_delimiter[0] == "single", "SplitString empty delimiter must preserve the source string");
+
+    Expect(
+        lsp::EscapeFileName("foo/bar.c") == "foo@bar.c",
+        "EscapeFileName must replace path separators with @");
+    Expect(
+        lsp::EscapeFileName("C:\\tmp\\file.c") == "C@@tmp@file.c",
+        "EscapeFileName must replace backslashes and drive colons");
+    Expect(
+        lsp::EscapeFileName("dir/") == "dir",
+        "EscapeFileName must drop a trailing slash before escaping");
+
+    lsPosition const char_pos = lsp::CharPos("a\nbx", 'x', 0);
+    Expect(char_pos.line == 1 && char_pos.character == 1, "CharPos must locate characters across line breaks");
+
+    Expect(lsp::UpdateToRnNewlines("a\nb") == "a\r\nb", "UpdateToRnNewlines must convert lone LF newlines");
+    Expect(
+        lsp::UpdateToRnNewlines("a\r\nb") == "a\r\nb",
+        "UpdateToRnNewlines must leave existing CRLF sequences unchanged");
+    Expect(
+        lsp::UpdateToRnNewlines("a\n\nb") == "a\r\n\r\nb",
+        "UpdateToRnNewlines must convert consecutive LF-only newlines");
+
+    Expect(lsp::FormatMicroseconds(0) == "0.00ms", "FormatMicroseconds must format zero microseconds");
+    Expect(lsp::FormatMicroseconds(1500) == "1.50ms", "FormatMicroseconds must keep two fractional digits");
+    Expect(lsp::FormatMicroseconds(123456) == "123.45ms", "FormatMicroseconds must scale larger values to milliseconds");
+
+    std::string const temp_path = "/tmp/lspcpp-utils-read-lines-test.txt";
+    std::remove(temp_path.c_str());
+    Expect(lsp::WriteToFile(temp_path, "first\nsecond"), "WriteToFile must prepare ReadLinesWithEnding fixture");
+
+    AbsolutePath const lines_path = AbsolutePath::FromNormalized(temp_path);
+    Expect(lsp::FileExists(temp_path), "ReadLinesWithEnding fixture file must exist on disk");
+    auto const raw_content = lsp::ReadContent(lines_path);
+    Expect(raw_content.has_value(), "ReadContent must read the ReadLinesWithEnding fixture");
+    Expect(
+        raw_content.value() == "first\nsecond",
+        "ReadContent must preserve the ReadLinesWithEnding fixture bytes");
+
+    std::vector<std::string> const lines = lsp::ReadLinesWithEnding(lines_path);
+    Expect(lines.size() == 3, "ReadLinesWithEnding must return a trailing empty line after the final unterminated line");
+    Expect(lines[0] == "first\n", "ReadLinesWithEnding must preserve LF line endings");
+    Expect(lines[1] == "second", "ReadLinesWithEnding must return the final line without a trailing newline");
+    Expect(lines[2].empty(), "ReadLinesWithEnding must append an empty line once EOF is reached");
+
+    std::string const crlf_path = "/tmp/lspcpp-utils-read-lines-crlf-test.txt";
+    std::remove(crlf_path.c_str());
+    Expect(lsp::WriteToFile(crlf_path, "crlf\r\n"), "WriteToFile must prepare CRLF ReadLinesWithEnding fixture");
+    std::vector<std::string> const crlf_lines =
+        lsp::ReadLinesWithEnding(AbsolutePath::FromNormalized(crlf_path));
+    Expect(crlf_lines.size() == 2, "ReadLinesWithEnding must append a trailing empty line after CRLF content");
+    Expect(crlf_lines[0] == "crlf\r\n", "ReadLinesWithEnding must preserve CRLF line endings");
+    Expect(crlf_lines[1].empty(), "ReadLinesWithEnding must append an empty line once EOF is reached");
+
+    std::remove(crlf_path.c_str());
+
+    std::remove(temp_path.c_str());
 }
 } // namespace
 
@@ -949,6 +1217,7 @@ int main()
     TestToStringNoneId();
     TestPublicLogAndStreamHelpers();
     TestStandardIStreamInterruptStopsFurtherReads();
+    TestStandardIStreamReadSomeBulkReadsMultipleBytes();
     TestStdinStreamInterruptStopsReads();
 #ifndef _WIN32
     TestStdinIStreamReadsAvailableBytes();
@@ -969,6 +1238,11 @@ int main()
     TestWorkingFilesMaintainsLineOffsetIndex();
     TestAsciiPositionOffsetRoundTrip();
     TestStringAndPathUtilities();
+    TestUtf8PositionOffsetUtilities();
+    TestDirectGetOffsetForPositionCrlfAndBounds();
+    TestFileIoUtilities();
+    TestWideStringConversionUtilities();
+    TestMiscStringUtilities();
 
     return test::Failures() == 0 ? 0 : 1;
 }

@@ -1,9 +1,12 @@
 #include "LibLsp/JsonRpc/json.h"
 #include "LibLsp/lsp/ProtocolJsonHandler.h"
 #include "LibLsp/lsp/AbsolutePath.h"
+#include "LibLsp/lsp/Directory.h"
 #include "LibLsp/lsp/lsDocumentUri.h"
 #include "LibLsp/lsp/utils.h"
 #include "LibLsp/lsp/general/initialize.h"
+#include "LibLsp/lsp/general/lsServerCapabilities.h"
+#include "LibLsp/lsp/general/lsTextDocumentClientCapabilities.h"
 #include "LibLsp/lsp/location_type.h"
 #include "LibLsp/lsp/lsp_completion.h"
 #include "LibLsp/lsp/lsp_diagnostic.h"
@@ -104,6 +107,16 @@ JsonReader MakeReader(rapidjson::Document& document, char const* json)
 {
     document.Parse(json);
     return JsonReader(&document);
+}
+
+template<typename T>
+T ParseJson(char const* json)
+{
+    rapidjson::Document document;
+    JsonReader reader = MakeReader(document, json);
+    T value;
+    Reflect(reader, value);
+    return value;
 }
 
 lsDocumentUri MakeDocumentUri(char const* uri)
@@ -247,6 +260,59 @@ void TestCompletionHoverAndInitializeRoundTrip()
         "initialize response capabilities must round-trip");
 }
 
+void TestTextDocumentSyncUnionRoundTrip()
+{
+    lsServerCapabilities kind_caps;
+    kind_caps.textDocumentSync = std::make_pair(
+        optional<lsTextDocumentSyncKind>(lsTextDocumentSyncKind::Incremental), optional<lsTextDocumentSyncOptions>());
+    lsServerCapabilities const kind_copy = RoundTrip(kind_caps);
+    Expect(
+        kind_copy.textDocumentSync && kind_copy.textDocumentSync->first &&
+            *kind_copy.textDocumentSync->first == lsTextDocumentSyncKind::Incremental,
+        "textDocumentSync kind union must round-trip numeric sync kind");
+    Expect(
+        !kind_copy.textDocumentSync->second,
+        "textDocumentSync kind union must not populate options side");
+
+    using SyncUnion = std::pair<optional<lsTextDocumentSyncKind>, optional<lsTextDocumentSyncOptions>>;
+    SyncUnion kind_union;
+    kind_union.first = lsTextDocumentSyncKind::Incremental;
+    Expect(SerializeJson(kind_union) == "2", "textDocumentSync kind union must serialize as sync kind number");
+    Expect(
+        SerializeJson(kind_caps).find("\"textDocumentSync\":2") != std::string::npos,
+        "server capabilities must serialize textDocumentSync as sync kind number");
+
+    lsServerCapabilities options_caps;
+    lsTextDocumentSyncOptions options;
+    options.openClose = true;
+    options.change = lsTextDocumentSyncKind::Full;
+    options_caps.textDocumentSync =
+        std::make_pair(optional<lsTextDocumentSyncKind>(), optional<lsTextDocumentSyncOptions>(options));
+    lsServerCapabilities const options_copy = RoundTrip(options_caps);
+    Expect(
+        options_copy.textDocumentSync && options_copy.textDocumentSync->second &&
+            options_copy.textDocumentSync->second->openClose &&
+            *options_copy.textDocumentSync->second->openClose == true &&
+            options_copy.textDocumentSync->second->change &&
+            *options_copy.textDocumentSync->second->change == lsTextDocumentSyncKind::Full,
+        "textDocumentSync options union must round-trip sync options object");
+    Expect(
+        !options_copy.textDocumentSync->first,
+        "textDocumentSync options union must not populate kind side");
+
+    SyncUnion const parsed_kind = ParseJson<SyncUnion>("1");
+    Expect(
+        parsed_kind.first && *parsed_kind.first == lsTextDocumentSyncKind::Full,
+        "textDocumentSync must parse numeric JSON as sync kind");
+
+    SyncUnion const parsed_options = ParseJson<SyncUnion>(R"({"openClose":true,"change":2})");
+    Expect(
+        parsed_options.second && parsed_options.second->openClose &&
+            *parsed_options.second->openClose == true && parsed_options.second->change &&
+            *parsed_options.second->change == lsTextDocumentSyncKind::Incremental,
+        "textDocumentSync must parse object JSON as sync options");
+}
+
 void TestDocumentUriEscapingRoundTrip()
 {
     AbsolutePath path("/tmp/lspcpp space/with#symbols(a).cpp");
@@ -368,6 +434,47 @@ void TestDocumentUriRelativePathAndQueryFragmentGuards()
         "file URI fragment must be stripped while encoded path hashes still decode");
 }
 
+void TestAbsolutePathFromNormalized()
+{
+    AbsolutePath valid = AbsolutePath::FromNormalized("/tmp/normalized.cpp");
+    Expect(valid.valid(), "FromNormalized must accept absolute paths");
+    Expect(valid.path() == "/tmp/normalized.cpp", "FromNormalized must preserve the normalized string");
+
+    AbsolutePath preserved = AbsolutePath::FromNormalized("/tmp/a/../b");
+    Expect(preserved.valid(), "FromNormalized must accept absolute paths with dot components");
+    Expect(preserved.path() == "/tmp/a/../b", "FromNormalized must not re-normalize the input string");
+
+    AbsolutePath relative = AbsolutePath::FromNormalized("relative/path.cpp");
+    Expect(relative.empty(), "FromNormalized must reject relative paths");
+    Expect(!relative.valid(), "FromNormalized relative results must be invalid");
+
+    AbsolutePath empty = AbsolutePath::FromNormalized("");
+    Expect(empty.empty(), "FromNormalized must reject empty strings");
+    Expect(!empty.valid(), "FromNormalized empty results must be invalid");
+}
+
+void TestDirectoryEnsuresTrailingSlash()
+{
+    Directory without_slash(AbsolutePath("/tmp/dir"));
+    Expect(without_slash.path == "/tmp/dir/", "Directory must append trailing slash to path");
+
+    Directory with_slash(AbsolutePath("/tmp/dir/"));
+    Expect(with_slash.path == "/tmp/dir/", "Directory must keep a single trailing slash");
+
+    Expect(without_slash == with_slash, "Directory equality must treat trailing slash variants as equal");
+}
+
+void TestAbsolutePathJsonRoundTrip()
+{
+    AbsolutePath path("/tmp/json-roundtrip.cpp");
+    AbsolutePath const copy = RoundTrip(path);
+    Expect(copy.path() == path.path(), "AbsolutePath JSON must round-trip valid paths");
+    Expect(copy.valid(), "AbsolutePath JSON round-trip must stay valid");
+
+    std::string const json = SerializeJson(path);
+    Expect(json == "\"/tmp/json-roundtrip.cpp\"", "AbsolutePath JSON writer must serialize path string");
+}
+
 void TestAbsolutePathValidationNormalizesRelativePaths()
 {
     AbsolutePath raw("relative/../guarded/missing.cpp");
@@ -455,6 +562,9 @@ void TestNormalizePathCollapsesAbsoluteComponents()
     AbsolutePath collapsed = lsp::NormalizePath("/tmp//a/./b/../c/", false);
     Expect(collapsed.path() == "/tmp/a/c", "NormalizePath must collapse slashes, dots, dot-dots, and trailing slash");
 
+    AbsolutePath unc = lsp::NormalizePath("//server/share/../docs/file.cpp", false);
+    Expect(unc.path() == "//server/docs/file.cpp", "NormalizePath must preserve leading double-slash UNC roots");
+
     AbsolutePath above_root = lsp::NormalizePath("/../../", false);
     Expect(above_root.path() == "/", "NormalizePath dot-dots above root must remain at root");
 }
@@ -523,6 +633,84 @@ void TestDocumentUriWindowsDriveLetterEscaping()
 
     Expect(uri.raw_uri_.find("C%3A") != std::string::npos, "Windows drive letters must escape the colon");
     Expect(uri.GetRawPath() == path.path(), "Windows drive letter URI must decode back to the original path");
+}
+#endif
+
+void TestDocumentUriGetAbsolutePathInvalidPaths()
+{
+    lsDocumentUri localhost_without_path;
+    localhost_without_path.raw_uri_ = "file://localhost";
+    Expect(
+        !localhost_without_path.GetAbsolutePath().valid(),
+        "file://localhost without path must not produce valid AbsolutePath");
+    Expect(
+        localhost_without_path.GetAbsolutePath().empty(),
+        "file://localhost without path must return empty AbsolutePath");
+
+    lsDocumentUri empty_uri;
+    Expect(!empty_uri.GetAbsolutePath().valid(), "empty document URI GetAbsolutePath must be invalid");
+    Expect(empty_uri.GetAbsolutePath().empty(), "empty document URI GetAbsolutePath must return empty AbsolutePath");
+
+    lsDocumentUri non_file;
+    non_file.raw_uri_ = "untitled:Untitled-1";
+    Expect(!non_file.GetAbsolutePath().valid(), "non-file URI GetAbsolutePath must be invalid");
+    Expect(non_file.GetAbsolutePath().empty(), "non-file URI GetAbsolutePath must return empty AbsolutePath");
+
+#if defined(_WIN32)
+    lsDocumentUri invalid_utf8;
+    invalid_utf8.raw_uri_ = "file:///tmp/%FF.cpp";
+    Expect(
+        !invalid_utf8.GetAbsolutePath().valid(),
+        "GetAbsolutePath must return invalid paths when Windows UTF-8 conversion rejects URI bytes");
+#endif
+}
+
+void TestDocumentUriUncAuthorityRoundTrip()
+{
+    lsDocumentUri unc;
+    unc.raw_uri_ = "file://server/share/docs/file.cpp";
+    Expect(
+        unc.GetRawPath() == "//server/share/docs/file.cpp",
+        "UNC authority file URI must decode to UNC absolute paths");
+    Expect(unc.GetAbsolutePath().valid(), "UNC file URI GetAbsolutePath must produce valid AbsolutePath");
+    Expect(
+        unc.GetAbsolutePath().path() == "//server/share/docs/file.cpp",
+        "UNC file URI GetAbsolutePath must preserve the UNC authority path");
+
+    lsDocumentUri const unc_copy = RoundTrip(unc);
+    Expect(unc_copy == unc, "UNC document URI must round-trip through JSON");
+
+    lsDocumentUri localhost;
+    localhost.raw_uri_ = "file://localhost/tmp/roundtrip.cpp";
+    lsDocumentUri const localhost_copy = RoundTrip(localhost);
+    Expect(localhost_copy == localhost, "localhost authority document URI must round-trip through JSON");
+    Expect(
+        localhost_copy.GetAbsolutePath().path() == "/tmp/roundtrip.cpp",
+        "localhost authority round-trip must still normalize to local absolute paths");
+}
+
+#ifndef _WIN32
+void TestNormalizePathForceLowerIgnoredOnUnix()
+{
+    AbsolutePath default_case = lsp::NormalizePath("/tmp/MixedCase/File.cpp", false);
+    AbsolutePath explicit_lower = lsp::NormalizePath("/tmp/MixedCase/File.cpp", false, true);
+    AbsolutePath preserve_case = lsp::NormalizePath("/tmp/MixedCase/File.cpp", false, false);
+    Expect(explicit_lower.path() == default_case.path(), "default force_lower must match explicit true on Unix");
+    Expect(preserve_case.path() == default_case.path(), "force_lower_on_windows must be ignored on Unix");
+}
+#endif
+
+#if defined(_WIN32)
+void TestNormalizePathWindowsDriveLetterAndForceLower()
+{
+    AbsolutePath lowered = lsp::NormalizePath("C:/Users/MIXED/File.cpp", false, true);
+    Expect(lowered.valid(), "Windows NormalizePath must accept drive-letter paths");
+    Expect(lowered.path() == "c:/users/mixed/file.cpp", "Windows NormalizePath must lower-case paths by default");
+
+    AbsolutePath preserved = lsp::NormalizePath("C:/Users/MIXED/File.cpp", false, false);
+    Expect(preserved.valid(), "Windows NormalizePath must accept drive-letter paths without force_lower");
+    Expect(preserved.path().find("MIXED") != std::string::npos, "force_lower_on_windows=false must preserve path casing");
+    Expect(lowered.path() != preserved.path(), "force_lower_on_windows must change normalized path casing");
 }
 #endif
 
@@ -671,12 +859,16 @@ int main()
     TestPositionRangeLocationAndTextEditRoundTrip();
     TestWorkspaceEditAndDiagnosticRoundTrip();
     TestCompletionHoverAndInitializeRoundTrip();
+    TestTextDocumentSyncUnionRoundTrip();
     TestDocumentUriEscapingRoundTrip();
     TestDocumentUriFromPathAndSimpleFileUri();
     TestDocumentUriReservedCharacterEscaping();
     TestDocumentUriPercentAndUtf8Escaping();
     TestDocumentUriFileLocalhostAndInvalidPercentDecoding();
     TestDocumentUriRelativePathAndQueryFragmentGuards();
+    TestAbsolutePathFromNormalized();
+    TestDirectoryEnsuresTrailingSlash();
+    TestAbsolutePathJsonRoundTrip();
     TestAbsolutePathValidationNormalizesRelativePaths();
     TestAbsolutePathQualifyConsistency();
     TestAbsolutePathOperatorsAndConversion();
@@ -690,6 +882,12 @@ int main()
     TestAbsolutePathRecognitionGuards();
 #if defined(_WIN32)
     TestDocumentUriWindowsDriveLetterEscaping();
+    TestNormalizePathWindowsDriveLetterAndForceLower();
+#endif
+    TestDocumentUriGetAbsolutePathInvalidPaths();
+    TestDocumentUriUncAuthorityRoundTrip();
+#ifndef _WIN32
+    TestNormalizePathForceLowerIgnoredOnUnix();
 #endif
     TestDocumentUriDefaultCopyEqualityAndSwap();
     TestDocumentUriNonFileSchemePassthrough();

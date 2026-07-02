@@ -206,7 +206,7 @@ void PerfWorkingFilesRangeEdits()
     // Measures repeated tail edits on a large file to watch line-index rebuild
     // cost without using a flaky default wall-clock assertion.
     WorkingFiles files;
-    AbsolutePath path("/tmp/lspcpp-working-files-perf-smoke.cpp", false);
+    AbsolutePath path("/tmp/lspcpp-working-files-perf-smoke.cpp");
 
     std::string text;
     for (int i = 0; i < 20000; ++i)
@@ -263,7 +263,7 @@ void PerfWorkingFilesOffsetLookupComparison()
     }
 
     WorkingFiles files;
-    AbsolutePath path("/tmp/lspcpp-working-files-offset-perf.cpp", false);
+    AbsolutePath path("/tmp/lspcpp-working-files-offset-perf.cpp");
     lsTextDocumentItem open;
     open.uri = lsDocumentUri(path);
     open.languageId = "cpp";
