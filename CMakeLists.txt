@@ -67,8 +67,11 @@ endfunction()
 
 option_if_not_defined(USE_SYSTEM_RAPIDJSON "Use system RapidJSON instead of the git submodule if exists" OFF)
 option_if_not_defined(LSPCPP_WARNINGS_AS_ERRORS "Treat warnings as errors" OFF)
+option_if_not_defined(LSPCPP_BUILD_MINIMAL_EXAMPLE "Build the Boost-free minimal stdio example" OFF)
 option_if_not_defined(LSPCPP_BUILD_EXAMPLES "Build example applications" OFF)
 option_if_not_defined(LSPCPP_BUILD_TESTS "Build and register tests with CTest" OFF)
+option_if_not_defined(LSPCPP_BUILD_PERF_SMOKE "Build optional performance smoke tests" OFF)
+option_if_not_defined(LSPCPP_PERF_WARNINGS_AS_ERRORS "Treat performance smoke warnings as test failures" OFF)
 option_if_not_defined(LSPCPP_BUILD_FUZZER "Build fuzzer" OFF)
 option_if_not_defined(LSPCPP_BUILD_WEBSOCKETS "Build websocket server" ON)
 option_if_not_defined(LSPCPP_ASAN "Build lsp with address sanitizer" OFF)
@@ -427,7 +430,7 @@ endif()
 if(NOT RapidJSON_FOUND)
     if(EXISTS "${PROJECT_SOURCE_DIR}/third_party/rapidjson/include")
         message(STATUS "Using local RapidJSON")
-        set(RapidJSON_INCLUDE_DIRS third_party/rapidjson/include)
+        set(RapidJSON_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/rapidjson/include")
     else()
         message(STATUS "Please initialize rapidJSON git submodule as currently installed version is to old:")
         message(STATUS "git submodule init && git submodule update")
@@ -452,13 +455,16 @@ set (LSP_INCLUDE_LIST ${LSPCPP_INCLUDE_DIR}
 target_include_directories(lspcpp
         PUBLIC
         $<BUILD_INTERFACE:${LSPCPP_INCLUDE_DIR}>
-        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+
+target_include_directories(lspcpp SYSTEM
+        PUBLIC
+        $<BUILD_INTERFACE:${RapidJSON_INCLUDE_DIRS}>
+        $<BUILD_INTERFACE:${ASIO_INCLUDE_DIRS}>
+        $<BUILD_INTERFACE:${GHC_FS_INCLUDE_DIRS}>
+        $<BUILD_INTERFACE:${Uri_SOURCE_DIR}/include>
         PRIVATE
-        ${RapidJSON_INCLUDE_DIRS}
-        ${Boost_INCLUDE_DIRS}
-        ${ASIO_INCLUDE_DIRS}
-        ${GHC_FS_INCLUDE_DIRS}
-        ${Uri_SOURCE_DIR}/include)
+        ${Boost_INCLUDE_DIRS})
 
 target_link_libraries(
         lspcpp
@@ -518,6 +524,11 @@ target_sources(lspcpp PRIVATE
 ### Compile options
 
 lspcpp_set_target_options(lspcpp)
+if (LSPCPP_USE_CPP17)
+    target_compile_features(lspcpp PUBLIC cxx_std_17)
+else()
+    target_compile_features(lspcpp PUBLIC cxx_std_14)
+endif()
 
 set_target_properties(lspcpp PROPERTIES POSITION_INDEPENDENT_CODE 1)
 set_target_properties(lspcpp PROPERTIES
@@ -608,6 +619,16 @@ if(LSPCPP_INSTALL)
     install(FILES "${pkgconfig}" DESTINATION "${LSPCPP_PKGCONFIG_DIR}")
 endif()
 
+# OS libraries
+###########################################################
+if(CMAKE_SYSTEM_NAME MATCHES "Windows")
+    set(LSPCPP_OS_LIBS WS2_32)
+elseif(CMAKE_SYSTEM_NAME MATCHES "Linux")
+    set(LSPCPP_OS_LIBS pthread)
+elseif(CMAKE_SYSTEM_NAME MATCHES "Darwin")
+    set(LSPCPP_OS_LIBS)
+endif()
+
 # tests
 if(LSPCPP_BUILD_TESTS)
     function(lspcpp_add_test_executable target source)
@@ -624,8 +645,19 @@ if(LSPCPP_BUILD_TESTS)
     lspcpp_add_test_executable(lspcpp_remote_endpoint_tests remote_endpoint_tests.cpp)
     lspcpp_add_test_executable(lspcpp_endpoint_serializer_tests endpoint_serializer_tests.cpp)
     lspcpp_add_test_executable(lspcpp_infrastructure_tests infrastructure_tests.cpp)
+    lspcpp_add_test_executable(lspcpp_working_files_tests working_files_tests.cpp)
+    lspcpp_add_test_executable(lspcpp_lsp_types_tests lsp_types_roundtrip_tests.cpp)
+    lspcpp_add_test_executable(lspcpp_language_session_tests language_session_tests.cpp)
     lspcpp_add_test_executable(lspcpp_lsp_3_18_tests lsp_3_18_tests.cpp)
     lspcpp_add_test_executable(lspcpp_lsp_3_16_17_tests lsp_3_16_17_tests.cpp)
+    lspcpp_add_test_executable(lspcpp_tcp_write_queue_tests tcp_write_queue_tests.cpp)
+    target_link_libraries(lspcpp_tcp_write_queue_tests PRIVATE ${LSPCPP_OS_LIBS})
+    if(LSPCPP_BUILD_PERF_SMOKE)
+        lspcpp_add_test_executable(lspcpp_perf_smoke_tests perf_smoke_tests.cpp)
+        if(LSPCPP_PERF_WARNINGS_AS_ERRORS)
+            target_compile_definitions(lspcpp_perf_smoke_tests PRIVATE LSPCPP_PERF_WARNINGS_AS_ERRORS)
+        endif()
+    endif()
 
     add_test(NAME lspcpp.jsonrpc
             COMMAND $<TARGET_FILE:lspcpp_jsonrpc_tests>)
@@ -637,25 +669,78 @@ if(LSPCPP_BUILD_TESTS)
             COMMAND $<TARGET_FILE:lspcpp_endpoint_serializer_tests>)
     add_test(NAME lspcpp.infrastructure
             COMMAND $<TARGET_FILE:lspcpp_infrastructure_tests>)
+    add_test(NAME lspcpp.working_files
+            COMMAND $<TARGET_FILE:lspcpp_working_files_tests>)
+    add_test(NAME lspcpp.lsp_types
+            COMMAND $<TARGET_FILE:lspcpp_lsp_types_tests>)
+    add_test(NAME lspcpp.language_session
+            COMMAND $<TARGET_FILE:lspcpp_language_session_tests>)
     add_test(NAME lspcpp.lsp_3_18
             COMMAND $<TARGET_FILE:lspcpp_lsp_3_18_tests>)
     add_test(NAME lspcpp.lsp_3_16_17
             COMMAND $<TARGET_FILE:lspcpp_lsp_3_16_17_tests>)
+    add_test(NAME lspcpp.tcp_write_queue
+            COMMAND $<TARGET_FILE:lspcpp_tcp_write_queue_tests>)
+    set_tests_properties(lspcpp.tcp_write_queue PROPERTIES TIMEOUT 30)
+    if(LSPCPP_BUILD_PERF_SMOKE)
+        add_test(NAME lspcpp.perf_smoke
+                COMMAND $<TARGET_FILE:lspcpp_perf_smoke_tests>)
+        set_tests_properties(lspcpp.perf_smoke PROPERTIES TIMEOUT 120)
+    endif()
+
+    set(LSPCPP_CONSUMER_SMOKE_BINARY_DIR "${CMAKE_BINARY_DIR}/lspcpp_consumer_smoke")
+    set(LSPCPP_CONSUMER_SMOKE_CONFIGURE_ARGS
+            -S ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/consumer_project
+            -B ${LSPCPP_CONSUMER_SMOKE_BINARY_DIR}
+            -DLSPCPP_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -DLSPCPP_USE_CPP17=${LSPCPP_USE_CPP17}
+            -DLSPCPP_STANDALONE_ASIO=${LSPCPP_STANDALONE_ASIO}
+            -DUSE_EXTERNAL_ASIO=${USE_EXTERNAL_ASIO}
+            -DUSE_EXTERNAL_IXWEBSOCKET=${USE_EXTERNAL_IXWEBSOCKET}
+            -DUSE_SYSTEM_RAPIDJSON=${USE_SYSTEM_RAPIDJSON}
+            )
+    if(CMAKE_TOOLCHAIN_FILE)
+        list(APPEND LSPCPP_CONSUMER_SMOKE_CONFIGURE_ARGS
+                -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE})
+    endif()
+    add_test(NAME lspcpp.consumer_cmake_configure
+            COMMAND ${CMAKE_COMMAND} ${LSPCPP_CONSUMER_SMOKE_CONFIGURE_ARGS})
+    set_tests_properties(lspcpp.consumer_cmake_configure PROPERTIES TIMEOUT 120)
+    add_test(NAME lspcpp.consumer_cmake_build
+            COMMAND ${CMAKE_COMMAND} --build ${LSPCPP_CONSUMER_SMOKE_BINARY_DIR}
+                    --target consumer_smoke MinimalStdIOServerExample)
+    set_tests_properties(lspcpp.consumer_cmake_build PROPERTIES
+            DEPENDS lspcpp.consumer_cmake_configure
+            TIMEOUT 120)
+    add_test(NAME lspcpp.consumer_smoke_run
+            COMMAND ${LSPCPP_CONSUMER_SMOKE_BINARY_DIR}/consumer_smoke)
+    set_tests_properties(lspcpp.consumer_smoke_run PROPERTIES
+            DEPENDS lspcpp.consumer_cmake_build
+            TIMEOUT 30)
 endif()
 
 # examples
-if(LSPCPP_BUILD_EXAMPLES)
+if(LSPCPP_BUILD_MINIMAL_EXAMPLE OR LSPCPP_BUILD_EXAMPLES)
+    function(build_minimal_example target)
+        add_executable(${target} "${CMAKE_CURRENT_SOURCE_DIR}/examples/${target}.cpp")
+        target_include_directories(${target} PRIVATE ${LSP_INCLUDE_LIST})
+        set_target_properties(${target} PROPERTIES
+                FOLDER "Examples"
+                )
+        lspcpp_set_target_options(${target})
+        target_link_libraries(${target} PRIVATE lspcpp ${LSPCPP_OS_LIBS})
+    endfunction(build_minimal_example)
 
-    ###########################################################
-    # OS libraries
-    ###########################################################
-    if(CMAKE_SYSTEM_NAME MATCHES "Windows")
-        set(LSPCPP_OS_LIBS WS2_32)
-    elseif(CMAKE_SYSTEM_NAME MATCHES "Linux")
-        set(LSPCPP_OS_LIBS pthread)
-    elseif(CMAKE_SYSTEM_NAME MATCHES "Darwin")
-        set(LSPCPP_OS_LIBS)
+    build_minimal_example(MinimalStdIOServerExample)
+
+    if(LSPCPP_BUILD_TESTS)
+        add_test(NAME lspcpp.minimal_stdio_example_build
+                COMMAND ${CMAKE_COMMAND} --build "${CMAKE_BINARY_DIR}" --target MinimalStdIOServerExample)
+        set_tests_properties(lspcpp.minimal_stdio_example_build PROPERTIES TIMEOUT 60)
     endif()
+endif()
+
+if(LSPCPP_BUILD_EXAMPLES)
 
     find_package(Boost REQUIRED COMPONENTS filesystem program_options system)
     set(LSPCPP_EXAMPLE_LIBS

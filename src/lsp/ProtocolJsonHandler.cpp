@@ -798,6 +798,12 @@ void AddStandardRequestJsonRpcMethod(MessageJsonHandler& handler)
     { return td_definition::request::ReflectReader(visitor); };
     handler.method2request[td_declaration::request::kMethodInfo] = [](Reader& visitor)
     { return td_declaration::request::ReflectReader(visitor); };
+    handler.method2request[td_references::request::kMethodInfo] = [](Reader& visitor)
+    { return td_references::request::ReflectReader(visitor); };
+    handler.method2request[td_rename::request::kMethodInfo] = [](Reader& visitor)
+    { return td_rename::request::ReflectReader(visitor); };
+    handler.method2request[wp_symbol::request::kMethodInfo] = [](Reader& visitor)
+    { return wp_symbol::request::ReflectReader(visitor); };
     handler.method2request[td_willSaveWaitUntil::request::kMethodInfo] = [](Reader& visitor)
     {
         if (visitor.HasMember("error"))
