@@ -102,7 +102,21 @@ cmake --build . -j
 ctest --output-on-failure
 ```
 
-`LSPCPP_BUILD_TESTS=ON` automatically enables `LSPCPP_BUILD_EXAMPLES`.
+`LSPCPP_BUILD_TESTS=ON` automatically enables `LSPCPP_BUILD_EXAMPLES`. By default this registers 18 CTest cases.
+
+Optional performance smoke tests (`lspcpp.perf_smoke`, adds one more CTest case) can be enabled with:
+
+```shell
+cmake -DLSPCPP_BUILD_TESTS=ON -DLSPCPP_BUILD_PERF_SMOKE=ON ..
+cmake --build . -j
+ctest --output-on-failure
+```
+
+To fail the perf smoke test when it emits warnings:
+
+```shell
+cmake -DLSPCPP_BUILD_TESTS=ON -DLSPCPP_BUILD_PERF_SMOKE=ON -DLSPCPP_PERF_WARNINGS_AS_ERRORS=ON ..
+```
 
 On Linux:
 
@@ -187,13 +201,13 @@ Example applications live in the [examples](https://github.com/kuafuwang/LspCpp/
 ## Versioning
 
 LspCpp uses semantic versioning for project and package metadata. The current
-project version is `1.0.1`.
+project version is `1.0.3`.
 
 When preparing a release:
 
 - Update `LSPCPP_VERSION` in `CMakeLists.txt`.
 - Update `version-semver` in `vcpkg.json` to the same value.
-- Tag the release as `vX.Y.Z`, for example `v1.0.1`.
+- Tag the release as `vX.Y.Z`, for example `v1.0.3`.
 - Use the same version in the GitHub release title.
 
 ## Projects using LspCpp
