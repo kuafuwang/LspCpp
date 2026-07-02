@@ -73,14 +73,19 @@ int WorkingFile::GetOffsetForPosition(lsPosition position) const
 
     while (position.character > 0 && i < buffer_content.size())
     {
-        if (uint8_t(buffer_content[i++]) >= 128)
+        uint8_t const lead = uint8_t(buffer_content[i++]);
+        if (lead >= 128)
         {
             while (i < buffer_content.size() && uint8_t(buffer_content[i]) >= 128 && uint8_t(buffer_content[i]) < 192)
             {
                 i++;
             }
         }
-        position.character--;
+        // Match lsp::GetOffsetForPosition: code points above U+FFFF count as
+        // two UTF-16 code units (a surrogate pair).
+        // Saturating subtraction: |character| is unsigned.
+        unsigned const units = (lead >= 0xF0) ? 2u : 1u;
+        position.character -= std::min(position.character, units);
     }
     return static_cast<int>(i);
 }

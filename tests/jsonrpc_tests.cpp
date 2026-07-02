@@ -1,3 +1,4 @@
+#include "LibLsp/JsonRpc/StreamMessageProducer.h"
 #include "LibLsp/JsonRpc/json.h"
 #include "LibLsp/JsonRpc/lsRequestId.h"
 #include "LibLsp/lsp/general/initialize.h"
@@ -5,6 +6,7 @@
 
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <rapidjson/document.h>
 #include <rapidjson/stringbuffer.h>
 #include <rapidjson/writer.h>
@@ -67,6 +69,36 @@ void TestRequestIdOrderingKeepsLargeIntegersDistinct()
 
     Expect(ids.size() == 2, "large integer request ids must not collide");
     Expect(ids[large] == "large", "large integer request id lookup returned wrong value");
+}
+
+void TestRequestIdIntegerRoundTrip()
+{
+    lsRequestId const id = ParseRequestIdFromJson("42");
+
+    Expect(id.type == lsRequestId::kInt, "integer request id must stay integer type");
+    Expect(id.value == 42, "integer request id value mismatch");
+    Expect(SerializeRequestIdToJson(id) == "42", "integer request id must serialize as JSON number");
+}
+
+void TestRequestIdLargeIntegerRoundTrip()
+{
+    int64_t const large = static_cast<int64_t>(1) << 40;
+    lsRequestId const id = ParseRequestIdFromJson("1099511627776");
+
+    Expect(id.type == lsRequestId::kInt, "large integer request id must stay integer type");
+    Expect(id.value == large, "large integer request id value mismatch");
+    Expect(
+        SerializeRequestIdToJson(id) == "1099511627776",
+        "large integer request id must serialize as JSON number");
+}
+
+void TestRequestIdIntegerReflectRoundTrip()
+{
+    lsRequestId id;
+    id.set(9001);
+
+    lsRequestId const round_trip = ParseRequestIdFromJson(SerializeRequestIdToJson(id).c_str());
+    Expect(round_trip == id, "integer request id must round-trip through Reflect");
 }
 
 void TestRequestIdStringRoundTrip()
@@ -132,17 +164,67 @@ void TestRequestSwapSwapsMethod()
     Expect(first.method == "second", "request swap must take the other method");
     Expect(second.method == "first", "request swap must give the original method to the other request");
 }
+
+void TestHandleMessageReadsContentLengthBody()
+{
+    std::string const body = R"({"jsonrpc":"2.0","id":42,"method":"test"})";
+    auto input = std::make_shared<test::StringIStream>(body);
+    test::CollectingIssueHandler issues;
+    LSPStreamMessageProducer producer(issues, input);
+
+    LSPStreamMessageProducer::Headers headers;
+    headers.contentLength = static_cast<int>(body.size());
+
+    std::string received;
+    bool const ok = producer.handleMessage(
+        headers,
+        [&](std::string&& content)
+        {
+            received = std::move(content);
+        });
+
+    Expect(ok, "handleMessage must succeed when the stream has enough bytes");
+    Expect(received == body, "handleMessage must deliver the full JSON body");
+}
+
+void TestHandleMessageReturnsFalseOnBadStream()
+{
+    auto input = std::make_shared<test::StringIStream>("short");
+    input->set_bad(true);
+    test::CollectingIssueHandler issues;
+    LSPStreamMessageProducer producer(issues, input);
+
+    LSPStreamMessageProducer::Headers headers;
+    headers.contentLength = 10;
+
+    bool callback_called = false;
+    bool const ok = producer.handleMessage(
+        headers,
+        [&](std::string&&)
+        {
+            callback_called = true;
+        });
+
+    Expect(!ok, "handleMessage must fail when the input stream is bad");
+    Expect(!callback_called, "handleMessage must not invoke callback on bad stream");
+    Expect(!issues.issues.empty(), "handleMessage must report stream issues");
+}
 } // namespace
 
 int main()
 {
     TestRequestIdOrderingKeepsTypesDistinct();
     TestRequestIdOrderingKeepsLargeIntegersDistinct();
+    TestRequestIdIntegerRoundTrip();
+    TestRequestIdLargeIntegerRoundTrip();
+    TestRequestIdIntegerReflectRoundTrip();
     TestRequestIdStringRoundTrip();
     TestNumericStringRequestIdDoesNotBecomeInteger();
     TestRequestIdNullAndInvalid();
     TestLspMessageWriteFraming();
     TestRequestSwapSwapsMethod();
+    TestHandleMessageReadsContentLengthBody();
+    TestHandleMessageReturnsFalseOnBadStream();
 
     return test::Failures() == 0 ? 0 : 1;
 }

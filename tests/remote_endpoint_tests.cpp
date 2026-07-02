@@ -967,6 +967,34 @@ void TestConditionTimedWaitStillTimesOut()
 
     Expect(msg == nullptr, "timed Condition wait must still return null on timeout");
 }
+
+void TestConditionWaitZeroBlocksUntilNotify()
+{
+    // RemoteEndPoint::internalWaitResponse uses wait(0) for indefinite blocking.
+    Condition<LspMessage> condition;
+    std::atomic<bool> wait_completed {false};
+    std::unique_ptr<LspMessage> received;
+
+    std::thread waiter(
+        [&]()
+        {
+            received = condition.wait(0);
+            wait_completed.store(true, std::memory_order_release);
+        });
+
+    for (int i = 0; i < 50 && !wait_completed.load(std::memory_order_acquire); ++i)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    Expect(!wait_completed.load(std::memory_order_acquire), "Condition wait(0) must block until notify");
+
+    std::unique_ptr<LspMessage> msg(new Rsp_Error());
+    condition.notify(std::move(msg));
+    waiter.join();
+
+    Expect(wait_completed.load(std::memory_order_acquire), "Condition wait(0) must return after notify");
+    Expect(received != nullptr, "Condition wait(0) must deliver the notified value");
+}
 } // namespace
 
 int main()
@@ -999,6 +1027,7 @@ int main()
     TestNotificationHandlerReceivesNotification();
     TestConditionTimedWaitReturnsNotifiedValue();
     TestConditionTimedWaitStillTimesOut();
+    TestConditionWaitZeroBlocksUntilNotify();
 
     return test::Failures() == 0 ? 0 : 1;
 }

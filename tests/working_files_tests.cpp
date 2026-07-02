@@ -67,7 +67,15 @@ void TestUtf8OffsetsUseCodePointCounting()
 
     Expect(file->GetOffsetForPosition(lsPosition(0, 1)) == 1, "ASCII prefix offset mismatch");
     Expect(file->GetOffsetForPosition(lsPosition(0, 2)) == 3, "UTF-8 two-byte code point must advance as one character");
-    Expect(file->GetOffsetForPosition(lsPosition(1, 2)) == 9, "UTF-8 four-byte code point must advance as one character");
+    Expect(
+        file->GetOffsetForPosition(lsPosition(1, 3)) == 9,
+        "UTF-8 four-byte code point must advance as two UTF-16 code units");
+    Expect(
+        file->GetOffsetForPosition(lsPosition(1, 4)) == 10,
+        "cached offsets must resume single-unit counting after a surrogate pair");
+    Expect(
+        file->GetOffsetForPosition(lsPosition(1, 2)) == 9,
+        "character indexes inside a surrogate pair must snap past the whole code point");
 }
 
 void TestMultipleEditsRebuildLineOffsetsSequentially()
@@ -149,6 +157,29 @@ void TestLifecycleOpenCloseClearAndDirectories()
     OpenFile(files, clear_path, "present");
     files.Clear();
     Expect(!files.GetFileBufferContent(clear_path, closed_content), "Clear must remove all tracked files");
+}
+
+void TestCloseFilesInDirectoryTrailingSlashMatching()
+{
+    WorkingFiles files;
+    AbsolutePath const first = MakePath("dir-match/a.cpp");
+    AbsolutePath const second = MakePath("dir-match/b.cpp");
+    AbsolutePath const unrelated = MakePath("other-dir/file.cpp");
+    OpenFile(files, first, "first");
+    OpenFile(files, second, "second");
+    OpenFile(files, unrelated, "stay");
+
+    files.CloseFilesInDirectory({Directory(AbsolutePath("/tmp/lspcpp-working-files-suite/dir-match"))});
+
+    std::string content;
+    Expect(!files.GetFileBufferContent(first, content), "CloseFilesInDirectory must match directory paths without trailing slash");
+    Expect(!files.GetFileBufferContent(second, content), "CloseFilesInDirectory must remove every file in the matched directory");
+    Expect(files.GetFileBufferContent(unrelated, content), "CloseFilesInDirectory must not remove files outside the matched directory");
+    Expect(content == "stay", "CloseFilesInDirectory must leave unrelated files untouched");
+
+    OpenFile(files, first, "again");
+    files.CloseFilesInDirectory({Directory(AbsolutePath("/tmp/lspcpp-working-files-suite/dir-match/"))});
+    Expect(!files.GetFileBufferContent(first, content), "CloseFilesInDirectory must match directory paths with trailing slash");
 }
 
 void TestOnSaveWritesCurrentContent()
@@ -255,6 +286,7 @@ int main()
     TestMultipleEditsRebuildLineOffsetsSequentially();
     TestFullReplaceAndDocumentBoundaryEdits();
     TestLifecycleOpenCloseClearAndDirectories();
+    TestCloseFilesInDirectoryTrailingSlashMatching();
     TestOnSaveWritesCurrentContent();
     TestNonFileUrisDoNotEnterWorkingFiles();
     TestConcurrentReadSnapshotsDuringChanges();

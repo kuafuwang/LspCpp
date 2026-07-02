@@ -2,7 +2,9 @@
 #include "test_helpers.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cerrno>
+#include <chrono>
 #include <cstddef>
 #include <memory>
 #include <random>
@@ -182,6 +184,125 @@ private:
     size_t read_bytes_requested_ = 0;
     size_t read_some_calls_ = 0;
     bool eof_ = false;
+};
+
+class BodyReadErrorIStream : public lsp::istream
+{
+public:
+    enum class BodyReadError
+    {
+        Fail,
+        Bad,
+    };
+
+    BodyReadErrorIStream(std::string data, size_t read_some_limit, BodyReadError error)
+        : data_(std::move(data)), read_some_limit_(read_some_limit), error_(error)
+    {
+    }
+
+    int get() override
+    {
+        if (bad_ || fail_)
+        {
+            return EOF;
+        }
+        if (pos_ >= data_.size())
+        {
+            eof_ = true;
+            return EOF;
+        }
+        return static_cast<unsigned char>(data_[pos_++]);
+    }
+
+    lsp::istream& read(char* str, std::streamsize count) override
+    {
+        ++body_read_calls_;
+        if (body_read_calls_ == 1)
+        {
+            if (error_ == BodyReadError::Bad)
+            {
+                bad_ = true;
+                what_ = "simulated bad during body read";
+            }
+            else
+            {
+                fail_ = true;
+                what_ = "simulated fail during body read";
+            }
+        }
+        for (std::streamsize i = 0; i < count; ++i)
+        {
+            int const c = get();
+            if (c == EOF)
+            {
+                break;
+            }
+            str[i] = static_cast<char>(c);
+        }
+        return *this;
+    }
+
+    std::streamsize read_some(char* str, std::streamsize count) override
+    {
+        if (bad_ || fail_ || count <= 0)
+        {
+            return 0;
+        }
+        if (pos_ >= read_some_limit_)
+        {
+            return 0;
+        }
+        auto const remaining = read_some_limit_ - pos_;
+        auto const n = std::min<size_t>({remaining, static_cast<size_t>(count), data_.size() - pos_});
+        std::copy(data_.begin() + static_cast<std::ptrdiff_t>(pos_),
+                  data_.begin() + static_cast<std::ptrdiff_t>(pos_ + n),
+                  str);
+        pos_ += n;
+        return static_cast<std::streamsize>(n);
+    }
+
+    bool fail() override
+    {
+        return fail_;
+    }
+
+    bool bad() override
+    {
+        return bad_;
+    }
+
+    bool eof() override
+    {
+        return eof_;
+    }
+
+    bool good() override
+    {
+        return !fail_ && !bad_ && !eof_;
+    }
+
+    void clear() override
+    {
+        fail_ = false;
+        bad_ = false;
+        eof_ = false;
+    }
+
+    std::string what() override
+    {
+        return what_;
+    }
+
+private:
+    std::string data_;
+    size_t pos_ = 0;
+    size_t read_some_limit_ = 0;
+    BodyReadError error_;
+    size_t body_read_calls_ = 0;
+    bool fail_ = false;
+    bool bad_ = false;
+    bool eof_ = false;
+    std::string what_;
 };
 
 // Simulates legacy streams that only override get()/read(); counters prove
@@ -675,6 +796,112 @@ void TestBadStreamExitsCleanly()
         "bad stream issue must mention bad input");
 }
 
+void TestBadDuringBodyReadReportsSevere()
+{
+    std::string body = R"({"jsonrpc":"2.0","method":"big","params":")";
+    body.append(9000, 'x');
+    body += "\"}";
+    std::string const frame = MakeLspFrame(body);
+    auto const header_end = frame.find("\r\n\r\n");
+    Expect(header_end != std::string::npos, "body read bad test frame must contain header delimiter");
+    auto input = std::make_shared<BodyReadErrorIStream>(
+        frame, header_end + 4 + 16, BodyReadErrorIStream::BodyReadError::Bad);
+    CollectingIssueHandler issues;
+    LSPStreamMessageProducer producer(issues, input);
+
+    std::vector<std::string> messages;
+    producer.listen(
+        [&](std::string&& content)
+        {
+            messages.push_back(std::move(content));
+        });
+
+    Expect(messages.empty(), "bad during body read must not invoke callback");
+    Expect(!issues.issues.empty(), "bad during body read must report an issue");
+    Expect(
+        issues.issues[0].text.find("Input stream is bad") != std::string::npos,
+        "bad during body read must report bad input");
+    Expect(
+        issues.issues[0].code == lsp::Log::Level::SEVERE,
+        "bad during body read must use SEVERE severity");
+}
+
+void TestFailDuringBodyReadReportsWarning()
+{
+    std::string body = R"({"jsonrpc":"2.0","method":"big","params":")";
+    body.append(9000, 'x');
+    body += "\"}";
+    std::string const frame = MakeLspFrame(body);
+    auto const header_end = frame.find("\r\n\r\n");
+    Expect(header_end != std::string::npos, "body read fail test frame must contain header delimiter");
+    auto input = std::make_shared<BodyReadErrorIStream>(
+        frame, header_end + 4 + 16, BodyReadErrorIStream::BodyReadError::Fail);
+    CollectingIssueHandler issues;
+    LSPStreamMessageProducer producer(issues, input);
+
+    std::vector<std::string> messages;
+    producer.listen(
+        [&](std::string&& content)
+        {
+            messages.push_back(std::move(content));
+        });
+
+    Expect(messages.empty(), "fail during body read must not invoke callback");
+    Expect(!issues.issues.empty(), "fail during body read must report an issue");
+    Expect(
+        issues.issues[0].text.find("Input fail") != std::string::npos,
+        "fail during body read must report input fail");
+    Expect(
+        issues.issues[0].code == lsp::Log::Level::WARNING,
+        "fail during body read must use WARNING severity");
+}
+
+#ifndef _WIN32
+void TestStdinIStreamInterruptMidListenExitsProducer()
+{
+    PosixPipe pipe;
+    std::string body = R"({"jsonrpc":"2.0","method":"blocked","payload":")";
+    body.append(500, 'x');
+    body += "\"}";
+    std::string const frame = MakeLspFrame(body);
+    size_t const partial = frame.size() / 2;
+    pipe.writeAll(frame.data(), partial);
+
+    auto input = std::make_shared<lsp::stdin_istream>(pipe.readFd());
+    CollectingIssueHandler issues;
+    LSPStreamMessageProducer producer(issues, input);
+
+    std::atomic<bool> listen_done {false};
+    std::vector<std::string> messages;
+    std::thread listener(
+        [&]()
+        {
+            producer.listen(
+                [&](std::string&& content)
+                {
+                    messages.push_back(std::move(content));
+                });
+            listen_done.store(true, std::memory_order_release);
+        });
+
+    for (int i = 0; i < 200 && !listen_done.load(std::memory_order_acquire); ++i)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    Expect(!listen_done.load(std::memory_order_acquire), "producer listen must block while body bytes are pending");
+
+    input->interrupt();
+    listener.join();
+
+    Expect(listen_done.load(std::memory_order_acquire), "producer listen must return after stdin interrupt");
+    Expect(messages.empty(), "interrupted producer must not deliver a partial message");
+    Expect(!issues.issues.empty(), "interrupted producer must report a body-read issue");
+    Expect(
+        issues.issues[0].text.find("content body") != std::string::npos,
+        "interrupted producer must report missing body bytes");
+}
+#endif
+
 void TestDelimitedProducerDeliversDelimitedJsonBlocks()
 {
     auto input = std::make_shared<StringIStream>(
@@ -797,6 +1024,11 @@ int main()
     TestPartialHeaderThenEofExitsCleanly();
     TestShortBodyExitsWithoutDeliveringMessage();
     TestBadStreamExitsCleanly();
+    TestBadDuringBodyReadReportsSevere();
+    TestFailDuringBodyReadReportsWarning();
+#ifndef _WIN32
+    TestStdinIStreamInterruptMidListenExitsProducer();
+#endif
     TestDelimitedProducerDeliversDelimitedJsonBlocks();
     TestDelimitedProducerDropsUnterminatedTrailingBlock();
     TestDelimitedProducerIgnoresEmptyLines();

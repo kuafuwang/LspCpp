@@ -88,8 +88,15 @@ bool FindAnyPartial(std::string const& value, std::vector<std::string> const& va
 
 std::string GetDirName(std::string path)
 {
-
-    ReplaceAll(path, "\\", "/");
+    path = ReplaceAll(path, "\\", "/");
+    if (path.empty())
+    {
+        return "./";
+    }
+    if (path == "/" || (path.size() == 3 && path[1] == ':' && path[2] == '/'))
+    {
+        return path;
+    }
     if (path.size() && path.back() == '/')
     {
         path.pop_back();
@@ -125,6 +132,11 @@ std::string StripFileType(std::string const& path)
 // See http://stackoverflow.com/a/29752943
 std::string ReplaceAll(std::string const& source, std::string const& from, std::string const& to)
 {
+    if (from.empty())
+    {
+        return source;
+    }
+
     std::string result;
     result.reserve(source.length()); // avoids a few memory allocations
 
@@ -148,13 +160,18 @@ std::vector<std::string> SplitString(std::string const& str, std::string const& 
 {
     // http://stackoverflow.com/a/13172514
     std::vector<std::string> strings;
+    if (delimiter.empty())
+    {
+        strings.emplace_back(str);
+        return strings;
+    }
 
     std::string::size_type pos = 0;
     std::string::size_type prev = 0;
     while ((pos = str.find(delimiter, prev)) != std::string::npos)
     {
         strings.emplace_back(str.substr(prev, pos - prev));
-        prev = pos + 1;
+        prev = pos + delimiter.length();
     }
 
     // To get the last substring (or only, if delimiter is not found)
@@ -230,6 +247,10 @@ optional<std::string> ReadContent(AbsolutePath const& filename)
 
     std::ifstream cache;
     cache.open(filename.path());
+    if (!cache.is_open())
+    {
+        return {};
+    }
 
     try
     {
@@ -270,15 +291,9 @@ bool WriteToFile(std::string const& filename, std::string const& content)
 std::string FormatMicroseconds(long long microseconds)
 {
     long long milliseconds = microseconds / 1000;
-    long long remaining = microseconds - milliseconds;
-
-    // Only show two digits after the dot.
-    while (remaining >= 100)
-    {
-        remaining /= 10;
-    }
-
-    return std::to_string(milliseconds) + "." + std::to_string(remaining) + "ms";
+    long long hundredths = (microseconds % 1000) / 10;
+    std::string fraction = hundredths < 10 ? "0" + std::to_string(hundredths) : std::to_string(hundredths);
+    return std::to_string(milliseconds) + "." + fraction + "ms";
 }
 
 std::string UpdateToRnNewlines(std::string output)
@@ -413,7 +428,12 @@ AbsolutePath RealPathNotExpandSymlink(std::string path, bool ensure_exists)
     std::string resolved;
     size_t i = 0;
     struct stat sb;
-    if (path[0] == '/')
+    if (path.size() >= 2 && path[0] == '/' && path[1] == '/' && (path.size() == 2 || path[2] != '/'))
+    {
+        resolved = "//";
+        i = 2;
+    }
+    else if (path[0] == '/')
     {
         resolved = "/";
         i = 1;
@@ -541,8 +561,8 @@ AbsolutePath NormalizePath(std::string const& path0, bool ensure_exists, bool fo
 
 // VSCode (UTF-16) disagrees with Emacs lsp-mode (UTF-8) on how to represent
 // text documents.
-// We use a UTF-8 iterator to approximate UTF-16 in the specification (weird).
-// This is good enough and fails only for UTF-16 surrogate pairs.
+// We iterate UTF-8 code points and count UTF-16 code units per code point:
+// code points above U+FFFF (4-byte UTF-8 sequences) count as a surrogate pair.
 int GetOffsetForPosition(lsPosition position, std::string const& content)
 {
     size_t i = 0;
@@ -558,7 +578,8 @@ int GetOffsetForPosition(lsPosition position, std::string const& content)
     // Iterate characters on the target line.
     while (position.character > 0 && i < content.size())
     {
-        if (uint8_t(content[i++]) >= 128)
+        uint8_t const lead = uint8_t(content[i++]);
+        if (lead >= 128)
         {
             // Skip 0b10xxxxxx
             while (i < content.size() && uint8_t(content[i]) >= 128 && uint8_t(content[i]) < 192)
@@ -566,7 +587,11 @@ int GetOffsetForPosition(lsPosition position, std::string const& content)
                 i++;
             }
         }
-        position.character--;
+        // Code points above U+FFFF take two UTF-16 code units; a character
+        // index landing between them snaps past the whole code point.
+        // Saturating subtraction: |character| is unsigned.
+        unsigned const units = (lead >= 0xF0) ? 2u : 1u;
+        position.character -= std::min(position.character, units);
     }
     return int(i);
 }
@@ -576,14 +601,18 @@ lsPosition GetPositionForOffset(size_t offset, std::string const& content)
     lsPosition result;
     for (size_t i = 0; i < offset && i < content.length(); ++i)
     {
+        uint8_t const byte = uint8_t(content[i]);
         if (content[i] == '\n')
         {
             result.line++;
             result.character = 0;
         }
-        else
+        else if (byte < 128 || byte >= 192)
         {
-            result.character++;
+            // Count UTF-16 code units like GetOffsetForPosition: continuation
+            // bytes (0b10xxxxxx) do not start a new character, and 4-byte
+            // sequences (code points above U+FFFF) count as a surrogate pair.
+            result.character += (byte >= 0xF0) ? 2 : 1;
         }
     }
     return result;
