@@ -810,55 +810,72 @@ std::string make_file_scheme_uri(std::string const& absolute_path)
     return MakeFileUriFromPath(absolute_path);
 }
 
-// static
-AbsolutePath AbsolutePath::BuildDoNotUse(std::string const& path)
-{
-    AbsolutePath p;
-    p.path = std::string(path);
-    return p;
-}
-
 AbsolutePath::AbsolutePath()
 {
 }
 
-AbsolutePath::operator std::string() const
+AbsolutePath AbsolutePath::FromNormalized(std::string const& absolute_path)
 {
-    return path;
+    AbsolutePath result;
+    if (lsp::IsAbsolutePath(absolute_path))
+    {
+        result.path_ = absolute_path;
+    }
+    return result;
+}
+
+std::string const& AbsolutePath::path() const
+{
+    return path_;
+}
+
+bool AbsolutePath::valid() const
+{
+    return lsp::IsAbsolutePath(path_);
+}
+
+bool AbsolutePath::empty() const
+{
+    return path_.empty();
+}
+
+bool AbsolutePath::is_absolute() const
+{
+    return valid();
 }
 
 bool AbsolutePath::operator==(AbsolutePath const& rhs) const
 {
-    return path == rhs.path;
+    return path_ == rhs.path_;
 }
 
 bool AbsolutePath::operator!=(AbsolutePath const& rhs) const
 {
-    return path != rhs.path;
+    return path_ != rhs.path_;
 }
 
 bool AbsolutePath::operator<(AbsolutePath const& rhs) const
 {
-    return path < rhs.path;
+    return path_ < rhs.path_;
 }
 
 bool AbsolutePath::operator>(AbsolutePath const& rhs) const
 {
-    return path > rhs.path;
+    return path_ > rhs.path_;
 }
 
 void Reflect(Reader& visitor, AbsolutePath& value)
 {
-    value.path = visitor.GetString();
+    value = AbsolutePath(visitor.GetString());
 }
 void Reflect(Writer& visitor, AbsolutePath& value)
 {
-    visitor.String(value.path.c_str(), value.path.length());
+    visitor.String(value.path().c_str(), value.path().length());
 }
 
 std::ostream& operator<<(std::ostream& out, AbsolutePath const& path)
 {
-    out << path.path;
+    out << path.path();
     return out;
 }
 
@@ -868,14 +885,9 @@ lsDocumentUri lsDocumentUri::FromPath(AbsolutePath const& path)
     result.SetPath(path);
     return result;
 }
-//void lsDocumentUri::SetPath(const AbsolutePath& path)
-//{
-//      raw_uri_ = make_file_scheme_uri(path.path);
-//}
-//
 void lsDocumentUri::SetPath(AbsolutePath const& path)
 {
-    raw_uri_ = MakeFileUriFromPath(path.path);
+    raw_uri_ = path.valid() ? MakeFileUriFromPath(path.path()) : "";
 }
 
 std::string lsDocumentUri::GetRawPath() const
@@ -917,25 +929,21 @@ AbsolutePath lsDocumentUri::GetAbsolutePath() const
         }
         catch (std::exception&)
         {
-            return AbsolutePath("", false);
+            return {};
         }
     }
 
-    return AbsolutePath(raw_uri_, false);
+    return {};
 }
 
-AbsolutePath::AbsolutePath(std::string const& path, bool validate) : path(path)
+AbsolutePath::AbsolutePath(std::string const& path)
 {
-    // TODO: enable validation after fixing tests.
-    if (validate && !lsp::IsAbsolutePath(path))
+    if (!lsp::IsAbsolutePath(path))
     {
-        qualify = false;
-        auto temp = lsp::NormalizePath(path, false);
-        if (!temp.path.empty())
-        {
-            this->path = temp.path;
-        }
+        return;
     }
+
+    path_ = lsp::NormalizePath(path, false).path();
 }
 
 void Reflect(Writer& visitor, lsDocumentUri& value)
@@ -1263,7 +1271,7 @@ namespace CodeActionKind
 }; // namespace CodeActionKind
 
 } // namespace JDT
-Directory::Directory(AbsolutePath const& path) : path(path.path)
+Directory::Directory(AbsolutePath const& path) : path(path.path())
 {
     lsp::EnsureEndsInSlash(this->path);
 }

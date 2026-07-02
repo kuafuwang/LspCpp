@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cctype>
+#include <cerrno>
 #include <cstring>
 #include <fstream>
 #include <functional>
@@ -11,6 +12,7 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <vector>
 #include <sys/stat.h>
 
 #include "LibLsp/lsp/lsPosition.h"
@@ -227,7 +229,7 @@ optional<std::string> ReadContent(AbsolutePath const& filename)
 {
 
     std::ifstream cache;
-    cache.open(filename.path);
+    cache.open(filename.path());
 
     try
     {
@@ -243,7 +245,7 @@ std::vector<std::string> ReadLinesWithEnding(AbsolutePath const& filename)
 {
     std::vector<std::string> result;
 
-    std::ifstream input(filename.path);
+    std::ifstream input(filename.path());
     for (std::string line; SafeGetline(input, line);)
     {
         result.emplace_back(line);
@@ -319,8 +321,14 @@ bool IsUnixAbsolutePath(std::string const& path)
 bool IsWindowsAbsolutePath(std::string const& path)
 {
     auto is_drive_letter = [](char c) { return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'); };
+    auto is_slash = [](char c) { return c == '/' || c == '\\'; };
 
-    return path.size() > 3 && path[1] == ':' && (path[2] == '/' || path[2] == '\\') && is_drive_letter(path[0]);
+    if (path.size() >= 3 && path[1] == ':' && is_slash(path[2]) && is_drive_letter(path[0]))
+    {
+        return true;
+    }
+
+    return path.size() >= 5 && is_slash(path[0]) && is_slash(path[1]) && !is_slash(path[2]);
 }
 
 bool IsDirectory(std::string const& path)
@@ -369,6 +377,23 @@ std::wstring s2ws(std::string const& str)
 }
 
 #ifndef _WIN32
+static std::string GetCurrentWorkingDirectory()
+{
+    std::vector<char> buffer(1024);
+    while (true)
+    {
+        if (getcwd(buffer.data(), buffer.size()) != nullptr)
+        {
+            return std::string(buffer.data());
+        }
+        if (errno != ERANGE)
+        {
+            return {};
+        }
+        buffer.resize(buffer.size() * 2);
+    }
+}
+
 // Returns the canonicalized absolute pathname, without expanding symbolic
 // links. This is a variant of realpath(2), C++ rewrite of
 // https://github.com/freebsd/freebsd/blob/master/lib/libc/stdlib/realpath.c
@@ -385,9 +410,6 @@ AbsolutePath RealPathNotExpandSymlink(std::string path, bool ensure_exists)
         return {};
     }
 
-    // Do not use PATH_MAX because it is tricky on Linux.
-    // See https://eklitzke.org/path-max-is-tricky
-    char tmp[1024];
     std::string resolved;
     size_t i = 0;
     struct stat sb;
@@ -398,11 +420,11 @@ AbsolutePath RealPathNotExpandSymlink(std::string path, bool ensure_exists)
     }
     else
     {
-        if (!getcwd(tmp, sizeof tmp) && ensure_exists)
+        resolved = GetCurrentWorkingDirectory();
+        if (resolved.empty())
         {
             return {};
         }
-        resolved = tmp;
     }
 
     while (i < path.size())
@@ -436,11 +458,12 @@ AbsolutePath RealPathNotExpandSymlink(std::string path, bool ensure_exists)
         // Here we differ from realpath(3), we use stat(2) instead of
         // lstat(2) because we do not want to resolve symlinks.
         resolved += next_token;
-        if (stat(resolved.c_str(), &sb) != 0 && ensure_exists)
+        bool const stat_ok = stat(resolved.c_str(), &sb) == 0;
+        if (!stat_ok && ensure_exists)
         {
             return {};
         }
-        if (!S_ISDIR(sb.st_mode) && j < path.size() && ensure_exists)
+        if (ensure_exists && stat_ok && !S_ISDIR(sb.st_mode) && j < path.size())
         {
             errno = ENOTDIR;
             return {};
@@ -452,7 +475,7 @@ AbsolutePath RealPathNotExpandSymlink(std::string path, bool ensure_exists)
     {
         resolved.pop_back();
     }
-    return AbsolutePath(resolved, true /*validate*/);
+    return AbsolutePath::FromNormalized(resolved);
 }
 #endif
 
@@ -466,7 +489,7 @@ AbsolutePath NormalizePath(std::string const& path0, bool ensure_exists, bool fo
 
     // Normalize the path name, ie, resolve `..`.
     unsigned long len = GetFullPathNameW(path.c_str(), MAX_PATH, buffer, nullptr);
-    if (!len)
+    if (!len || len >= MAX_PATH)
     {
         return {};
     }
@@ -478,7 +501,7 @@ AbsolutePath NormalizePath(std::string const& path0, bool ensure_exists, bool fo
     if (ensure_exists)
     {
         len = GetLongPathNameW(path.c_str(), buffer, MAX_PATH);
-        if (!len)
+        if (!len || len >= MAX_PATH)
         {
             return {};
         }
@@ -508,7 +531,7 @@ AbsolutePath NormalizePath(std::string const& path0, bool ensure_exists, bool fo
     // cquery assumes forward-slashes.
     std::replace(path.begin(), path.end(), '\\', '/');
 
-    return AbsolutePath(lsp::ws2s(path), false /*validate*/);
+    return AbsolutePath::FromNormalized(lsp::ws2s(path));
 #else
 
     return RealPathNotExpandSymlink(path0, ensure_exists);
