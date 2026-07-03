@@ -80,6 +80,11 @@ public:
         bad_ = value;
     }
 
+    void set_fail(bool value = true)
+    {
+        fail_ = value;
+    }
+
     int get() override
     {
         if (bad_)

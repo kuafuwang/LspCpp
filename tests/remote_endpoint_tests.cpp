@@ -1,3 +1,4 @@
+#include "LibLsp/JsonRpc/MessageJsonHandler.h"
 #include "LibLsp/JsonRpc/Endpoint.h"
 #include "LibLsp/JsonRpc/Condition.h"
 #include "LibLsp/JsonRpc/RemoteEndPoint.h"
@@ -61,6 +62,11 @@ std::string WaitForOutputContainingAll(std::shared_ptr<StringOStream> const& out
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     return output;
+}
+
+std::string MakeDelimitedInput(std::string const& body)
+{
+    return body + "\n// -----\n";
 }
 
 std::vector<std::string> ExtractFrameBodies(std::string const& output)
@@ -995,6 +1001,301 @@ void TestConditionWaitZeroBlocksUntilNotify()
     Expect(wait_completed.load(std::memory_order_acquire), "Condition wait(0) must return after notify");
     Expect(received != nullptr, "Condition wait(0) must deliver the notified value");
 }
+
+void TestInternalWaitResponseSuccessTimeoutAndSendFailure()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    RemoteEndPoint point(json_handler, endpoint, log);
+    point.startProcessingMessages(input_stream, output_stream);
+
+    td_initialize::request success_req;
+    success_req.id.set(901);
+    std::unique_ptr<LspMessage> success_response;
+    std::thread success_waiter(
+        [&]()
+        {
+            success_response = point.internalWaitResponse(success_req, 5000);
+        });
+    WaitForOutputContaining(output_stream, "\"id\":901");
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":901,"result":{"capabilities":{}}})"));
+    success_waiter.join();
+    Expect(success_response != nullptr, "internalWaitResponse must return a response on success");
+    if (success_response)
+    {
+        Expect(
+            !static_cast<ResponseInMessage*>(success_response.get())->IsErrorType(),
+            "internalWaitResponse success must deliver a non-error response");
+    }
+
+    td_initialize::request timed_out_req;
+    timed_out_req.id.set(902);
+    auto const timed_out_response = point.internalWaitResponse(timed_out_req, 50);
+    Expect(timed_out_response == nullptr, "internalWaitResponse must return null on timeout");
+
+    td_initialize::request retry_req;
+    retry_req.id.set(902);
+    auto retry_future = point.send(retry_req);
+    auto const retry_status = retry_future.wait_for(std::chrono::milliseconds(50));
+    Expect(
+        retry_status == lsp::future_status::timeout,
+        "request id must be reusable after internalWaitResponse timeout");
+
+    point.stop();
+
+    auto bad_output = std::make_shared<StringOStream>();
+    bad_output->set_bad(true);
+    RemoteEndPoint bad_point(json_handler, endpoint, log);
+    td_initialize::request send_failed_req;
+    send_failed_req.id.set(903);
+    auto const send_failed_response = bad_point.internalWaitResponse(send_failed_req, 0);
+    Expect(send_failed_response == nullptr, "internalWaitResponse must return null when send fails");
+}
+
+void TestSendWithOnErrorCallback()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    RemoteEndPoint point(json_handler, endpoint, log);
+    point.startProcessingMessages(input_stream, output_stream);
+
+    td_initialize::request success_req;
+    success_req.id.set(1000);
+    std::atomic<bool> success_response_called {false};
+    std::atomic<bool> unexpected_error_called {false};
+    point.send(
+        success_req,
+        [&](td_initialize::response const& rsp)
+        {
+            success_response_called.store(true, std::memory_order_relaxed);
+            Expect(rsp.id == success_req.id, "send(onError) success handler must receive the matching response id");
+        },
+        [&](Rsp_Error const&)
+        {
+            unexpected_error_called.store(true, std::memory_order_relaxed);
+        });
+    WaitForOutputContaining(output_stream, "\"id\":1000");
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":1000,"result":{"capabilities":{}}})"));
+    for (int i = 0; i < 100 && !success_response_called.load(std::memory_order_relaxed); ++i)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    Expect(success_response_called.load(std::memory_order_relaxed), "send(onError) must invoke success handler for success responses");
+    Expect(!unexpected_error_called.load(std::memory_order_relaxed), "send(onError) must not invoke onError for success responses");
+
+    td_initialize::request req;
+    req.id.set(1001);
+    std::atomic<bool> success_called {false};
+    std::atomic<bool> error_called {false};
+    lsErrorCodes captured_code = lsErrorCodes::UnknownErrorCode;
+    std::string captured_message;
+
+    point.send(
+        req,
+        [&](td_initialize::response const&)
+        {
+            success_called.store(true, std::memory_order_relaxed);
+        },
+        [&](Rsp_Error const& err)
+        {
+            error_called.store(true, std::memory_order_relaxed);
+            captured_code = err.error.code;
+            captured_message = err.error.message;
+        });
+    WaitForOutputContaining(output_stream, "\"id\":1001");
+    input_stream->append(
+        test::MakeLspFrame(R"({"jsonrpc":"2.0","id":1001,"error":{"code":-32600,"message":"callback error"}})"));
+    for (int i = 0; i < 100 && !error_called.load(std::memory_order_relaxed); ++i)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    point.stop();
+
+    Expect(error_called.load(std::memory_order_relaxed), "send(onError) must invoke onError for error responses");
+    Expect(!success_called.load(std::memory_order_relaxed), "send(onError) must not invoke success handler on error");
+    Expect(captured_code == lsErrorCodes::InvalidRequest, "send(onError) must deliver the response error code");
+    Expect(captured_message == "callback error", "send(onError) must deliver the response error message");
+
+    auto bad_output = std::make_shared<StringOStream>();
+    bad_output->set_bad(true);
+    RemoteEndPoint bad_point(json_handler, endpoint, log);
+    td_initialize::request failed_send_req;
+    failed_send_req.id.set(1002);
+    std::atomic<bool> send_failure_called {false};
+    std::string send_failure_message;
+    bad_point.send(
+        failed_send_req,
+        [&](td_initialize::response const&)
+        {
+        },
+        [&](Rsp_Error const& err)
+        {
+            send_failure_called.store(true, std::memory_order_relaxed);
+            send_failure_message = err.error.message;
+        });
+    Expect(send_failure_called.load(std::memory_order_relaxed), "send(onError) must invoke onError when send fails");
+    Expect(
+        send_failure_message == "Failed to send request.",
+        "send(onError) must report failed send through onError");
+}
+
+void TestDelimitedRemoteEndPointRoundTrip()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    std::string const request = R"({"jsonrpc":"2.0","id":1101,"method":"initialize","params":{}})";
+    auto input_stream = std::make_shared<StringIStream>(MakeDelimitedInput(request));
+    auto output_stream = std::make_shared<StringOStream>();
+
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Delimited);
+    point.registerHandler(
+        [](td_initialize::request const& req) -> lsp::ResponseOrError<td_initialize::response>
+        {
+            td_initialize::response rsp;
+            rsp.id = req.id;
+            return rsp;
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    std::string const output = WaitForOutputContaining(output_stream, "\"id\":1101");
+    point.stop();
+
+    Expect(output.find("\"id\":1101") != std::string::npos, "delimited RemoteEndPoint must respond to delimited input");
+    Expect(
+        output.find("Content-Length:") != std::string::npos,
+        "delimited RemoteEndPoint must still write standard framed output");
+}
+
+void TestDispatchUnknownNotificationReturnsFalse()
+{
+    std::string const notification = R"({"jsonrpc":"2.0","method":"unknown/notification","params":{}})";
+    auto const output = ProcessSingleInput(test::MakeLspFrame(notification));
+
+    Expect(output.empty(), "unknown notification must not produce output");
+}
+
+void TestDispatchResponseParseFailure()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<MessageJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    RemoteEndPoint point(json_handler, endpoint, log);
+    point.startProcessingMessages(input_stream, output_stream);
+
+    td_initialize::request req;
+    req.id.set(1201);
+    std::unique_ptr<LspMessage> response;
+    std::thread waiter(
+        [&]()
+        {
+            response = point.internalWaitResponse(req, 500);
+        });
+    WaitForOutputContaining(output_stream, "\"id\":1201");
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":1201,"result":{"capabilities":{}}})"));
+    waiter.join();
+    point.stop();
+
+    Expect(response == nullptr, "response parse failure must not deliver a parsed message");
+}
+
+void TestRegisterHandlerReturnsErrorResponse()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    std::string const request = R"({"jsonrpc":"2.0","id":1301,"method":"initialize","params":{}})";
+    auto input_stream = std::make_shared<StringIStream>(test::MakeLspFrame(request));
+    auto output_stream = std::make_shared<StringOStream>();
+
+    RemoteEndPoint point(json_handler, endpoint, log);
+    point.registerHandler(
+        [](td_initialize::request const& req) -> lsp::ResponseOrError<td_initialize::response>
+        {
+            Rsp_Error error;
+            error.id = req.id;
+            error.error.code = lsErrorCodes::InternalError;
+            error.error.message = "handler returned error";
+            return error;
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    std::string const output = WaitForOutputContaining(output_stream, "\"code\":-32603");
+    point.stop();
+
+    Expect(output.find("\"id\":1301") != std::string::npos, "handler error response must preserve request id");
+    Expect(output.find("\"code\":-32603") != std::string::npos, "handler error response must serialize error code");
+    Expect(
+        output.find("handler returned error") != std::string::npos,
+        "handler error response must serialize error message");
+}
+
+void TestCancelRequestWhenNotWorkingOrUnknownId()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    RemoteEndPoint point(json_handler, endpoint, log);
+
+    lsRequestId unknown_id;
+    unknown_id.set(404);
+    Expect(!point.cancelRequest(unknown_id), "cancelRequest must return false when endpoint is not working");
+
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+    point.startProcessingMessages(input_stream, output_stream);
+
+    lsRequestId not_pending_id;
+    not_pending_id.set(405);
+    Expect(!point.cancelRequest(not_pending_id), "cancelRequest must return false for unknown request id");
+
+    point.stop();
+    Expect(!point.cancelRequest(not_pending_id), "cancelRequest must return false after stop");
+}
+
+void TestRemoteEndPointRestartTwice()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto output_stream = std::make_shared<StringOStream>();
+
+    std::atomic<int> handled_count {0};
+    RemoteEndPoint point(json_handler, endpoint, log);
+    point.registerHandler(
+        [&](td_initialize::request const& req) -> lsp::ResponseOrError<td_initialize::response>
+        {
+            handled_count.fetch_add(1, std::memory_order_relaxed);
+            td_initialize::response rsp;
+            rsp.id = req.id;
+            return rsp;
+        });
+
+    auto first_input = std::make_shared<StringIStream>(
+        test::MakeLspFrame(R"({"jsonrpc":"2.0","id":1401,"method":"initialize","params":{}})"));
+    point.startProcessingMessages(first_input, output_stream);
+    WaitForOutputContaining(output_stream, "\"id\":1401");
+    point.stop();
+
+    auto second_input = std::make_shared<StringIStream>(
+        test::MakeLspFrame(R"({"jsonrpc":"2.0","id":1402,"method":"initialize","params":{}})"));
+    point.startProcessingMessages(second_input, output_stream);
+    WaitForOutputContaining(output_stream, "\"id\":1402");
+    point.stop();
+
+    Expect(handled_count.load(std::memory_order_relaxed) == 2, "RemoteEndPoint must handle requests across two restarts");
+}
 } // namespace
 
 int main()
@@ -1028,6 +1329,14 @@ int main()
     TestConditionTimedWaitReturnsNotifiedValue();
     TestConditionTimedWaitStillTimesOut();
     TestConditionWaitZeroBlocksUntilNotify();
+    TestInternalWaitResponseSuccessTimeoutAndSendFailure();
+    TestSendWithOnErrorCallback();
+    TestDelimitedRemoteEndPointRoundTrip();
+    TestDispatchUnknownNotificationReturnsFalse();
+    TestDispatchResponseParseFailure();
+    TestRegisterHandlerReturnsErrorResponse();
+    TestCancelRequestWhenNotWorkingOrUnknownId();
+    TestRemoteEndPointRestartTwice();
 
     return test::Failures() == 0 ? 0 : 1;
 }

@@ -24,13 +24,28 @@
 #include "LibLsp/lsp/textDocument/publishDiagnostics.h"
 #include "LibLsp/lsp/textDocument/references.h"
 #include "LibLsp/lsp/textDocument/rename.h"
+#include "LibLsp/lsp/textDocument/signature_help.h"
+#include "LibLsp/lsp/workspace/execute_command.h"
 #include "LibLsp/lsp/workspace/symbol.h"
+#include "LibLsp/lsp/out_list.h"
+#include "LibLsp/lsp/general/shutdown.h"
+#include "LibLsp/lsp/general/initialized.h"
+#include "LibLsp/lsp/lsCodeAction.h"
+#include "LibLsp/lsp/ResourceOperation.h"
+#include "LibLsp/lsp/lsTextDocumentEdit.h"
+#include "LibLsp/lsp/lsp_diagnostic.h"
+#include "LibLsp/lsp/textDocument/code_lens.h"
+#include "LibLsp/lsp/textDocument/highlight.h"
+#include "LibLsp/lsp/textDocument/did_save.h"
+#include "LibLsp/lsp/textDocument/willSave.h"
+#include "LibLsp/lsp/windows/MessageNotify.h"
 #include "test_helpers.h"
 
 #include <rapidjson/document.h>
 #include <rapidjson/stringbuffer.h>
 #include <rapidjson/writer.h>
 
+#include <cstdio>
 #include <fstream>
 #include <memory>
 #include <sstream>
@@ -138,6 +153,31 @@ void ExpectParsesNotification(lsp::ProtocolJsonHandler& handler, MethodType meth
     rapidjson::Document document;
     JsonReader reader = MakeReader(document, json);
     Expect(handler.parseNotificationMessage(method, reader) != nullptr, message);
+}
+
+void ExpectParsesResponse(lsp::ProtocolJsonHandler& handler, MethodType method, char const* json, char const* message)
+{
+    rapidjson::Document document;
+    JsonReader reader = MakeReader(document, json);
+    Expect(handler.parseResponseMessage(method, reader) != nullptr, message);
+}
+
+void ExpectParsesErrorResponse(
+    lsp::ProtocolJsonHandler& handler, MethodType method, char const* json, char const* message)
+{
+    rapidjson::Document document;
+    JsonReader reader = MakeReader(document, json);
+    std::unique_ptr<LspMessage> msg = handler.parseResponseMessage(method, reader);
+    Expect(msg != nullptr, message);
+    auto* error = dynamic_cast<Rsp_Error*>(msg.get());
+    Expect(error != nullptr, "error response must deserialize as Rsp_Error");
+    if (error != nullptr)
+    {
+        Expect(error->error.message == "Request failed", "error response message must round-trip");
+        Expect(
+            error->error.code == lsErrorCodes::InternalError,
+            "error response code must round-trip as InternalError");
+    }
 }
 
 void TestPositionRangeLocationAndTextEditRoundTrip()
@@ -636,6 +676,17 @@ void TestDocumentUriWindowsDriveLetterEscaping()
 }
 #endif
 
+#if defined(_WIN32)
+void TestDocumentUriDotDotNormalizationWindows()
+{
+    lsDocumentUri uri;
+    uri.raw_uri_ = "file:///C:/tmp/a/../b.cpp";
+    Expect(
+        uri.GetAbsolutePath().path() == "C:/tmp/b.cpp",
+        "Windows file URI GetAbsolutePath must normalize dot-dot components");
+}
+#endif
+
 void TestDocumentUriGetAbsolutePathInvalidPaths()
 {
     lsDocumentUri localhost_without_path;
@@ -714,6 +765,29 @@ void TestNormalizePathWindowsDriveLetterAndForceLower()
 }
 #endif
 
+#if defined(_WIN32)
+void TestNormalizePathWindowsEnsureExistsAndMaxPathGuard()
+{
+    std::string const file = "lspcpp-normalize-existing.tmp";
+    std::remove(file.c_str());
+    std::ofstream(file.c_str()) << "int main() {}\n";
+
+    AbsolutePath existing = lsp::NormalizePath(file, true);
+    Expect(existing.valid(), "Windows NormalizePath ensure_exists must accept existing files");
+    Expect(lsp::EndsWith(existing.path(), "/lspcpp-normalize-existing.tmp"), "Windows NormalizePath must normalize existing files");
+
+    AbsolutePath missing = lsp::NormalizePath("lspcpp-normalize-missing.tmp", true);
+    Expect(missing.empty(), "Windows NormalizePath ensure_exists must reject missing paths");
+    Expect(!missing.valid(), "Windows NormalizePath missing results must not be valid");
+
+    AbsolutePath too_long = lsp::NormalizePath(std::string(300, 'a'), false);
+    Expect(too_long.empty(), "Windows NormalizePath must reject paths whose normalized length reaches MAX_PATH");
+    Expect(!too_long.valid(), "Windows NormalizePath long-path results must not be valid");
+
+    std::remove(file.c_str());
+}
+#endif
+
 void TestDocumentUriDefaultCopyEqualityAndSwap()
 {
     lsDocumentUri empty;
@@ -780,6 +854,239 @@ void TestOptionalFieldsAreOmittedWhenUnsetAndReadFromNull()
     Expect(value && *value == "present", "reading null into an optional must preserve current nullopt compatibility");
 }
 
+void TestLocationListEitherRoundTrip()
+{
+    lsRange const range(lsPosition(1, 0), lsPosition(1, 4));
+
+    LocationListEither::Either locations;
+    locations.first = std::vector<lsLocation> {lsLocation(MakeDocumentUri("file:///tmp/a.cpp"), range)};
+    LocationListEither::Either const locations_copy = RoundTrip(locations);
+    Expect(locations_copy.first && locations_copy.first->size() == 1, "Location[] union must round-trip array size");
+    Expect(
+        (*locations_copy.first)[0].uri == MakeDocumentUri("file:///tmp/a.cpp"),
+        "Location[] union must round-trip target URI");
+    Expect((*locations_copy.first)[0].range == range, "Location[] union must round-trip range");
+
+    LocationListEither::Either links;
+    LocationLink link;
+    link.originSelectionRange = lsRange(lsPosition(0, 0), lsPosition(0, 1));
+    link.targetUri = MakeDocumentUri("file:///tmp/b.cpp");
+    link.targetRange = range;
+    link.targetSelectionRange = range;
+    links.second = std::vector<LocationLink> {link};
+    LocationListEither::Either const links_copy = RoundTrip(links);
+    Expect(links_copy.second && links_copy.second->size() == 1, "LocationLink[] union must round-trip array size");
+    Expect(
+        (*links_copy.second)[0].targetUri == MakeDocumentUri("file:///tmp/b.cpp"),
+        "LocationLink[] union must round-trip target URI");
+
+    LocationListEither::Either const parsed_locations = ParseJson<LocationListEither::Either>(
+        R"([{"uri":"file:///tmp/a.cpp","range":{"start":{"line":1,"character":0},"end":{"line":1,"character":4}}}])");
+    Expect(parsed_locations.first && parsed_locations.first->size() == 1, "Location[] JSON must parse as location vector");
+    Expect(!parsed_locations.second, "Location[] JSON must not populate LocationLink side");
+
+    LocationListEither::Either const parsed_links = ParseJson<LocationListEither::Either>(
+        R"([{"originSelectionRange":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"targetUri":"file:///tmp/b.cpp","targetRange":{"start":{"line":1,"character":0},"end":{"line":1,"character":4}},"targetSelectionRange":{"start":{"line":1,"character":0},"end":{"line":1,"character":4}}}])");
+    Expect(parsed_links.second && parsed_links.second->size() == 1, "LocationLink[] JSON must parse as link vector");
+    Expect(!parsed_links.first, "LocationLink[] JSON must not populate Location side");
+}
+
+void TestCompletionResponseArrayVsList()
+{
+    lsCompletionItem item;
+    item.label = "foo";
+
+    TextDocumentComplete::Either array_result;
+    array_result.first = std::vector<lsCompletionItem> {item};
+    TextDocumentComplete::Either const array_copy = RoundTrip(array_result);
+    Expect(
+        array_copy.first && array_copy.first->size() == 1 && (*array_copy.first)[0].label == "foo",
+        "CompletionItem[] union must round-trip item label");
+    Expect(!array_copy.second, "CompletionItem[] union must not populate CompletionList side");
+
+    TextDocumentComplete::Either list_result;
+    CompletionList list;
+    list.isIncomplete = true;
+    list.items.push_back(item);
+    list_result.second = list;
+    TextDocumentComplete::Either const list_copy = RoundTrip(list_result);
+    Expect(
+        list_copy.second && list_copy.second->items.size() == 1 && list_copy.second->items[0].label == "foo",
+        "CompletionList union must round-trip nested items");
+    Expect(
+        list_copy.second && list_copy.second->isIncomplete,
+        "CompletionList union must round-trip isIncomplete flag");
+    Expect(!list_copy.first, "CompletionList union must not populate array side");
+
+    TextDocumentComplete::Either const parsed_array = ParseJson<TextDocumentComplete::Either>(R"([{"label":"bar"}])");
+    Expect(
+        parsed_array.first && (*parsed_array.first)[0].label == "bar",
+        "CompletionItem[] JSON must parse as completion item array");
+
+    TextDocumentComplete::Either const parsed_list =
+        ParseJson<TextDocumentComplete::Either>(R"({"isIncomplete":true,"items":[{"label":"baz"}]})");
+    Expect(
+        parsed_list.second && parsed_list.second->items[0].label == "baz",
+        "CompletionList JSON must parse as completion list object");
+}
+
+void TestCodeActionEitherVariants()
+{
+    TextDocumentCodeAction::Either command_either;
+    lsCommandWithAny command;
+    command.title = "Run Fix";
+    command.command = "editor.action.fixAll";
+    command_either.first = command;
+    TextDocumentCodeAction::Either const command_copy = RoundTrip(command_either);
+    Expect(
+        command_copy.first && command_copy.first->command == "editor.action.fixAll",
+        "CodeAction command variant must round-trip command id");
+    Expect(!command_copy.second, "CodeAction command variant must not populate CodeAction side");
+
+    TextDocumentCodeAction::Either action_either;
+    CodeAction action;
+    action.title = "Organize Imports";
+    action.kind = std::string("source.organizeImports");
+    action.diagnostics = std::vector<lsDiagnostic>();
+    action_either.second = action;
+    TextDocumentCodeAction::Either const action_copy = RoundTrip(action_either);
+    Expect(
+        action_copy.second && action_copy.second->title == "Organize Imports",
+        "CodeAction object variant must round-trip title");
+    Expect(!action_copy.first, "CodeAction object variant must not populate command side");
+
+    TextDocumentCodeAction::Either const parsed_command =
+        ParseJson<TextDocumentCodeAction::Either>(R"({"title":"Quick Fix","command":"cmd.quickFix"})");
+    Expect(
+        parsed_command.first && parsed_command.first->command == "cmd.quickFix",
+        "CodeAction JSON with string command must parse as command variant");
+
+    TextDocumentCodeAction::Either const parsed_action = ParseJson<TextDocumentCodeAction::Either>(
+        R"({"title":"Rename","kind":"quickfix","diagnostics":[]})");
+    Expect(
+        parsed_action.second && parsed_action.second->title == "Rename",
+        "CodeAction JSON with diagnostics must parse as CodeAction variant");
+}
+
+void TestWorkspaceEditDocumentChanges()
+{
+    lsWorkspaceEdit workspace_edit;
+    workspace_edit.documentChanges = std::vector<lsWorkspaceEdit::Either>();
+
+    lsWorkspaceEdit::Either document_edit_entry;
+    lsTextDocumentEdit document_edit;
+    document_edit.textDocument.uri = MakeDocumentUri("file:///tmp/a.cpp");
+    document_edit.textDocument.version = 2;
+    lsTextEdit text_edit;
+    text_edit.range = lsRange(lsPosition(0, 0), lsPosition(0, 3));
+    text_edit.newText = "inserted";
+    document_edit.edits.push_back(text_edit);
+    document_edit_entry.first = document_edit;
+    workspace_edit.documentChanges->push_back(document_edit_entry);
+
+    lsWorkspaceEdit::Either create_entry;
+    create_entry.second = lsp::Any();
+    create_entry.second->SetJsonString(
+        R"({"kind":"create","uri":"file:///tmp/new.cpp"})",
+        lsp::Any::kObjectType);
+    workspace_edit.documentChanges->push_back(create_entry);
+
+    lsWorkspaceEdit const workspace_copy = RoundTrip(workspace_edit);
+    Expect(
+        workspace_copy.documentChanges && workspace_copy.documentChanges->size() == 2,
+        "workspace edit documentChanges must round-trip entry count");
+    Expect(
+        workspace_copy.documentChanges->at(0).first &&
+            workspace_copy.documentChanges->at(0).first->edits[0].newText == "inserted",
+        "workspace edit documentChanges must round-trip text document edits");
+    Expect(
+        workspace_copy.documentChanges->at(1).second &&
+            workspace_copy.documentChanges->at(1).second->Data().find("\"kind\":\"create\"") != std::string::npos,
+        "workspace edit documentChanges must round-trip resource operations");
+
+    lsWorkspaceEdit const parsed = ParseJson<lsWorkspaceEdit>(R"({
+        "documentChanges": [
+            {
+                "textDocument": {"uri": "file:///tmp/a.cpp", "version": 1},
+                "edits": [{"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 3}}, "newText": "bar"}]
+            },
+            {"kind": "create", "uri": "file:///tmp/new.cpp", "options": {"overwrite": true}}
+        ]
+    })");
+    Expect(parsed.documentChanges && parsed.documentChanges->size() == 2, "workspace edit JSON must parse documentChanges");
+    Expect(
+        parsed.documentChanges->at(0).first &&
+            parsed.documentChanges->at(0).first->textDocument.uri.raw_uri_ == "file:///tmp/a.cpp",
+        "workspace edit JSON must parse text document edit URI");
+    Expect(
+        parsed.documentChanges->at(1).second &&
+            parsed.documentChanges->at(1).second->Data().find("file:///tmp/new.cpp") != std::string::npos,
+        "workspace edit JSON must parse create resource operation");
+}
+
+void TestHoverContentsAllRepresentations()
+{
+    TextDocumentHover::Result const markup_hover = ParseJson<TextDocumentHover::Result>(
+        R"({"contents":{"kind":"markdown","value":"**bold**"}})");
+    Expect(
+        markup_hover.contents.second && markup_hover.contents.second->value == "**bold**",
+        "hover MarkupContent JSON must parse contents.kind/value");
+
+    TextDocumentHover::Result const marked_hover = ParseJson<TextDocumentHover::Result>(
+        R"({"contents":[{"language":"cpp","value":"int main();"}]})");
+    Expect(
+        marked_hover.contents.first && marked_hover.contents.first->size() == 1,
+        "hover MarkedString array JSON must parse as marked content array");
+    Expect(
+        marked_hover.contents.first && (*marked_hover.contents.first)[0].second &&
+            (*marked_hover.contents.first)[0].second->value == "int main();",
+        "hover MarkedString object JSON must parse language/value pair");
+
+    TextDocumentHover::Result const string_hover =
+        ParseJson<TextDocumentHover::Result>(R"({"contents":["plain hover text"]})");
+    Expect(
+        string_hover.contents.first && string_hover.contents.first->size() == 1,
+        "hover string array JSON must parse as marked string array");
+    Expect(
+        string_hover.contents.first && (*string_hover.contents.first)[0].first &&
+            *(*string_hover.contents.first)[0].first == "plain hover text",
+        "hover plain string JSON must parse as string marked content");
+
+    TextDocumentHover::Result markup_result;
+    MarkupContent markdown;
+    markdown.kind = "markdown";
+    markdown.value = "**symbol**";
+    markup_result.contents.second = markdown;
+    TextDocumentHover::Result const markup_copy = RoundTrip(markup_result);
+    Expect(
+        markup_copy.contents.second && markup_copy.contents.second->value == "**symbol**",
+        "hover MarkupContent must round-trip through JSON");
+}
+
+void TestProtocolJsonHandlerParsesErrorResponses()
+{
+    lsp::ProtocolJsonHandler handler;
+    char const* error_json =
+        R"({"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"Request failed"}})";
+
+    ExpectParsesErrorResponse(
+        handler, td_initialize::request::kMethodInfo, error_json, "ProtocolJsonHandler must parse initialize error responses");
+    ExpectParsesErrorResponse(
+        handler, td_completion::request::kMethodInfo, error_json, "ProtocolJsonHandler must parse completion error responses");
+    ExpectParsesErrorResponse(
+        handler, td_hover::request::kMethodInfo, error_json, "ProtocolJsonHandler must parse hover error responses");
+    ExpectParsesErrorResponse(
+        handler,
+        td_definition::request::kMethodInfo,
+        error_json,
+        "ProtocolJsonHandler must parse definition error responses");
+    ExpectParsesErrorResponse(
+        handler,
+        td_codeAction::request::kMethodInfo,
+        error_json,
+        "ProtocolJsonHandler must parse codeAction error responses");
+}
+
 void TestProtocolJsonHandlerRegistersCoreRequestsAndNotifications()
 {
     lsp::ProtocolJsonHandler handler;
@@ -794,6 +1101,11 @@ void TestProtocolJsonHandlerRegistersCoreRequestsAndNotifications()
         td_hover::request::kMethodInfo,
         R"({"jsonrpc":"2.0","id":2,"method":"textDocument/hover","params":{"textDocument":{"uri":"file:///a.cpp"},"position":{"line":1,"character":2}}})",
         "ProtocolJsonHandler must parse textDocument/hover requests");
+    ExpectParsesRequest(
+        handler,
+        td_signatureHelp::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":15,"method":"textDocument/signatureHelp","params":{"textDocument":{"uri":"file:///a.cpp"},"position":{"line":1,"character":2}}})",
+        "ProtocolJsonHandler must parse textDocument/signatureHelp requests");
     ExpectParsesRequest(
         handler,
         td_definition::request::kMethodInfo,
@@ -829,6 +1141,11 @@ void TestProtocolJsonHandlerRegistersCoreRequestsAndNotifications()
         wp_symbol::request::kMethodInfo,
         R"({"jsonrpc":"2.0","id":9,"method":"workspace/symbol","params":{"query":"foo"}})",
         "ProtocolJsonHandler must parse workspace/symbol requests");
+    ExpectParsesRequest(
+        handler,
+        wp_executeCommand::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":16,"method":"workspace/executeCommand","params":{"command":"build.project","arguments":[]}})",
+        "ProtocolJsonHandler must parse workspace/executeCommand requests");
 
     ExpectParsesNotification(
         handler,
@@ -850,6 +1167,99 @@ void TestProtocolJsonHandlerRegistersCoreRequestsAndNotifications()
         Notify_TextDocumentDidClose::notify::kMethodInfo,
         R"({"jsonrpc":"2.0","method":"textDocument/didClose","params":{"textDocument":{"uri":"file:///a.cpp"}}})",
         "ProtocolJsonHandler must parse didClose notifications");
+
+    ExpectParsesRequest(
+        handler,
+        td_initialize::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":10,"method":"initialize","params":{"processId":1234,"capabilities":{}}})",
+        "ProtocolJsonHandler must parse initialize requests");
+    ExpectParsesRequest(
+        handler,
+        td_shutdown::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":11,"method":"shutdown","params":null})",
+        "ProtocolJsonHandler must parse shutdown requests");
+    ExpectParsesRequest(
+        handler,
+        td_declaration::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":12,"method":"textDocument/declaration","params":{"textDocument":{"uri":"file:///a.cpp"},"position":{"line":1,"character":2}}})",
+        "ProtocolJsonHandler must parse textDocument/declaration requests");
+    ExpectParsesRequest(
+        handler,
+        td_codeLens::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":13,"method":"textDocument/codeLens","params":{"textDocument":{"uri":"file:///a.cpp"}}})",
+        "ProtocolJsonHandler must parse textDocument/codeLens requests");
+    ExpectParsesRequest(
+        handler,
+        td_highlight::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":14,"method":"textDocument/documentHighlight","params":{"textDocument":{"uri":"file:///a.cpp"},"position":{"line":1,"character":2}}})",
+        "ProtocolJsonHandler must parse textDocument/documentHighlight requests");
+
+    ExpectParsesNotification(
+        handler,
+        Notify_InitializedNotification::notify::kMethodInfo,
+        R"({"jsonrpc":"2.0","method":"initialized","params":{}})",
+        "ProtocolJsonHandler must parse initialized notifications");
+    ExpectParsesNotification(
+        handler,
+        Notify_TextDocumentDidSave::notify::kMethodInfo,
+        R"({"jsonrpc":"2.0","method":"textDocument/didSave","params":{"textDocument":{"uri":"file:///a.cpp"},"text":"saved"}})",
+        "ProtocolJsonHandler must parse didSave notifications");
+    ExpectParsesNotification(
+        handler,
+        td_willSave::notify::kMethodInfo,
+        R"({"jsonrpc":"2.0","method":"textDocument/willSave","params":{"textDocument":{"uri":"file:///a.cpp"},"reason":1}})",
+        "ProtocolJsonHandler must parse willSave notifications");
+    ExpectParsesNotification(
+        handler,
+        Notify_LogMessage::notify::kMethodInfo,
+        R"({"jsonrpc":"2.0","method":"window/logMessage","params":{"type":3,"message":"server log"}})",
+        "ProtocolJsonHandler must parse window/logMessage notifications");
+
+    ExpectParsesResponse(
+        handler,
+        td_initialize::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":20,"result":{"capabilities":{"hoverProvider":true}}})",
+        "ProtocolJsonHandler must parse initialize responses");
+    ExpectParsesResponse(
+        handler,
+        td_shutdown::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":21,"result":null})",
+        "ProtocolJsonHandler must parse shutdown responses");
+    ExpectParsesResponse(
+        handler,
+        td_completion::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":22,"result":{"isIncomplete":false,"items":[{"label":"item"}]}})",
+        "ProtocolJsonHandler must parse completion responses");
+    ExpectParsesResponse(
+        handler,
+        td_hover::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":23,"result":{"contents":{"kind":"markdown","value":"doc"}}})",
+        "ProtocolJsonHandler must parse hover responses");
+    ExpectParsesResponse(
+        handler,
+        td_definition::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":24,"result":[{"uri":"file:///a.cpp","range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}}}]})",
+        "ProtocolJsonHandler must parse definition responses");
+    ExpectParsesResponse(
+        handler,
+        td_codeAction::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":25,"result":[{"title":"Fix","command":"cmd.fix"}]})",
+        "ProtocolJsonHandler must parse codeAction responses");
+    ExpectParsesResponse(
+        handler,
+        td_codeLens::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":26,"result":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}}}]})",
+        "ProtocolJsonHandler must parse codeLens responses");
+    ExpectParsesResponse(
+        handler,
+        td_highlight::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":27,"result":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"kind":1}]})",
+        "ProtocolJsonHandler must parse documentHighlight responses");
+    ExpectParsesResponse(
+        handler,
+        td_declaration::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":28,"result":[{"uri":"file:///a.cpp","range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}}}]})",
+        "ProtocolJsonHandler must parse declaration responses");
 }
 
 } // namespace
@@ -883,6 +1293,8 @@ int main()
 #if defined(_WIN32)
     TestDocumentUriWindowsDriveLetterEscaping();
     TestNormalizePathWindowsDriveLetterAndForceLower();
+    TestNormalizePathWindowsEnsureExistsAndMaxPathGuard();
+    TestDocumentUriDotDotNormalizationWindows();
 #endif
     TestDocumentUriGetAbsolutePathInvalidPaths();
     TestDocumentUriUncAuthorityRoundTrip();
@@ -893,6 +1305,12 @@ int main()
     TestDocumentUriNonFileSchemePassthrough();
     TestDocumentUriJsonDeserialization();
     TestOptionalFieldsAreOmittedWhenUnsetAndReadFromNull();
+    TestLocationListEitherRoundTrip();
+    TestCompletionResponseArrayVsList();
+    TestCodeActionEitherVariants();
+    TestWorkspaceEditDocumentChanges();
+    TestHoverContentsAllRepresentations();
+    TestProtocolJsonHandlerParsesErrorResponses();
     TestProtocolJsonHandlerRegistersCoreRequestsAndNotifications();
     return test::Failures() == 0 ? 0 : 1;
 }

@@ -1002,6 +1002,186 @@ void TestDelimitedProducerTrimsWhitespace()
             "delimited producer must trim whitespace around JSON lines");
     }
 }
+
+class DelimitedErrorIStream : public lsp::istream
+{
+public:
+    enum class ErrorMode
+    {
+        Bad,
+        FailOnceThenRecover,
+        FailWithoutRecovery,
+    };
+
+    DelimitedErrorIStream(std::string data, ErrorMode mode) : data_(std::move(data)), mode_(mode)
+    {
+        if (mode_ == ErrorMode::Bad)
+        {
+            bad_ = true;
+        }
+        else if (mode_ == ErrorMode::FailOnceThenRecover || mode_ == ErrorMode::FailWithoutRecovery)
+        {
+            fail_pending_ = true;
+        }
+    }
+
+    int get() override
+    {
+        if (bad_)
+        {
+            return EOF;
+        }
+        if (pos_ >= data_.size())
+        {
+            eof_ = true;
+            return EOF;
+        }
+        return static_cast<unsigned char>(data_[pos_++]);
+    }
+
+    lsp::istream& read(char* str, std::streamsize count) override
+    {
+        for (std::streamsize i = 0; i < count; ++i)
+        {
+            int const c = get();
+            if (c == EOF)
+            {
+                break;
+            }
+            str[i] = static_cast<char>(c);
+        }
+        return *this;
+    }
+
+    bool fail() override
+    {
+        return fail_pending_;
+    }
+
+    bool bad() override
+    {
+        return bad_;
+    }
+
+    bool eof() override
+    {
+        return eof_;
+    }
+
+    bool good() override
+    {
+        return !fail_pending_ && !bad_ && !eof_;
+    }
+
+    void clear() override
+    {
+        fail_pending_ = false;
+        bad_ = false;
+        eof_ = false;
+    }
+
+    bool need_to_clear_the_state() override
+    {
+        return mode_ == ErrorMode::FailOnceThenRecover;
+    }
+
+    std::string what() override
+    {
+        return what_;
+    }
+
+private:
+    std::string data_;
+    size_t pos_ = 0;
+    ErrorMode mode_;
+    bool fail_pending_ = false;
+    bool bad_ = false;
+    bool eof_ = false;
+    std::string what_ = "simulated delimited stream error";
+};
+
+void TestDelimitedProducerBadStreamExitsCleanly()
+{
+    auto input = std::make_shared<DelimitedErrorIStream>(
+        "{\"jsonrpc\":\"2.0\",\"method\":\"one\"}\n// -----\n", DelimitedErrorIStream::ErrorMode::Bad);
+    CollectingIssueHandler issues;
+    DelimitedStreamMessageProducer producer(issues, input);
+
+    std::vector<std::string> messages;
+    producer.listen(
+        [&](std::string&& content)
+        {
+            messages.push_back(std::move(content));
+        });
+
+    Expect(messages.empty(), "delimited producer must not emit messages when input stream is bad");
+    Expect(!issues.issues.empty(), "delimited producer bad stream must report an issue");
+    Expect(
+        issues.issues[0].text.find("Input stream is bad") != std::string::npos,
+        "delimited producer bad stream issue must mention bad input");
+    Expect(
+        issues.issues[0].code == lsp::Log::Level::SEVERE,
+        "delimited producer bad stream must use SEVERE severity");
+}
+
+void TestDelimitedProducerFailWithoutRecoveryExitsCleanly()
+{
+    auto input = std::make_shared<DelimitedErrorIStream>(
+        "{\"jsonrpc\":\"2.0\",\"method\":\"one\"}\n// -----\n",
+        DelimitedErrorIStream::ErrorMode::FailWithoutRecovery);
+    CollectingIssueHandler issues;
+    DelimitedStreamMessageProducer producer(issues, input);
+
+    std::vector<std::string> messages;
+    producer.listen(
+        [&](std::string&& content)
+        {
+            messages.push_back(std::move(content));
+        });
+
+    Expect(messages.empty(), "delimited producer must not emit messages when input fail is unrecoverable");
+    Expect(!issues.issues.empty(), "delimited producer fail stream must report an issue");
+    Expect(
+        issues.issues[0].text.find("Input fail") != std::string::npos,
+        "delimited producer fail stream issue must mention input fail");
+    Expect(
+        issues.issues[0].code == lsp::Log::Level::WARNING,
+        "delimited producer fail stream must use WARNING severity");
+}
+
+void TestDelimitedProducerFailRecoveryContinuesAfterClear()
+{
+    auto input = std::make_shared<DelimitedErrorIStream>(
+        "{\"jsonrpc\":\"2.0\",\"method\":\"one\"}\n"
+        "// -----\n"
+        "{\"jsonrpc\":\"2.0\",\"method\":\"two\"}\n"
+        "// -----\n",
+        DelimitedErrorIStream::ErrorMode::FailOnceThenRecover);
+    CollectingIssueHandler issues;
+    DelimitedStreamMessageProducer producer(issues, input);
+
+    std::vector<std::string> messages;
+    producer.listen(
+        [&](std::string&& content)
+        {
+            messages.push_back(std::move(content));
+        });
+
+    Expect(!issues.issues.empty(), "delimited producer recoverable fail must report an issue");
+    Expect(
+        issues.issues[0].text.find("Input fail") != std::string::npos,
+        "delimited producer recoverable fail issue must mention input fail");
+    Expect(messages.size() == 2, "delimited producer must continue after recoverable fail");
+    if (messages.size() == 2)
+    {
+        Expect(
+            messages[0] == "{\"jsonrpc\":\"2.0\",\"method\":\"one\"}",
+            "first delimited message after fail recovery mismatch");
+        Expect(
+            messages[1] == "{\"jsonrpc\":\"2.0\",\"method\":\"two\"}",
+            "second delimited message after fail recovery mismatch");
+    }
+}
 } // namespace
 
 int main()
@@ -1033,6 +1213,9 @@ int main()
     TestDelimitedProducerDropsUnterminatedTrailingBlock();
     TestDelimitedProducerIgnoresEmptyLines();
     TestDelimitedProducerTrimsWhitespace();
+    TestDelimitedProducerBadStreamExitsCleanly();
+    TestDelimitedProducerFailWithoutRecoveryExitsCleanly();
+    TestDelimitedProducerFailRecoveryContinuesAfterClear();
 
     return test::Failures() == 0 ? 0 : 1;
 }

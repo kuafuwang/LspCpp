@@ -15,6 +15,11 @@
 #include "LibLsp/lsp/textDocument/resolveTypeHierarchy.h"
 #include "LibLsp/lsp/textDocument/selectionRange.h"
 #include "LibLsp/lsp/textDocument/typeHierarchy.h"
+#include "LibLsp/lsp/textDocument/hover.h"
+#include "LibLsp/lsp/textDocument/completion.h"
+#include "LibLsp/lsp/textDocument/code_lens.h"
+#include "LibLsp/lsp/textDocument/code_action.h"
+#include "LibLsp/lsp/textDocument/declaration_definition.h"
 #include "test_helpers.h"
 
 #include <rapidjson/document.h>
@@ -48,6 +53,20 @@ lsDocumentUri MakeDocumentUri(char const* uri)
     lsDocumentUri document_uri;
     document_uri.raw_uri_ = uri;
     return document_uri;
+}
+
+void ExpectParsesRequest(lsp::ProtocolJsonHandler& handler, MethodType method, char const* json, char const* message)
+{
+    rapidjson::Document document;
+    JsonReader reader = MakeReader(document, json);
+    Expect(handler.parseRequstMessage(method, reader) != nullptr, message);
+}
+
+void ExpectParsesResponse(lsp::ProtocolJsonHandler& handler, MethodType method, char const* json, char const* message)
+{
+    rapidjson::Document document;
+    JsonReader reader = MakeReader(document, json);
+    Expect(handler.parseResponseMessage(method, reader) != nullptr, message);
 }
 
 void TestProtocolJsonHandlerRegisters316317Requests()
@@ -85,6 +104,22 @@ void TestProtocolJsonHandlerRegisters316317Requests()
     Expect(
         handler.parseRequstMessage(td_inlayHintResolve::request::kMethodInfo, inlay_resolve_reader) != nullptr,
         "default handler must register inlayHint/resolve requests");
+
+    ExpectParsesRequest(
+        handler,
+        td_codeLens::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":5,"method":"textDocument/codeLens","params":{"textDocument":{"uri":"file:///a.cpp"}}})",
+        "default handler must parse textDocument/codeLens requests");
+    ExpectParsesRequest(
+        handler,
+        td_declaration::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":6,"method":"textDocument/declaration","params":{"textDocument":{"uri":"file:///a.cpp"},"position":{"line":0,"character":0}}})",
+        "default handler must parse textDocument/declaration requests");
+    ExpectParsesRequest(
+        handler,
+        td_foldingRange::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":7,"method":"textDocument/foldingRange","params":{"textDocument":{"uri":"file:///a.cpp"}}})",
+        "default handler must parse textDocument/foldingRange requests");
 }
 
 void TestProtocolJsonHandlerParses316317Responses()
@@ -122,6 +157,42 @@ void TestProtocolJsonHandlerParses316317Responses()
     Expect(
         handler.parseResponseMessage(typeHierarchy_resolve::request::kMethodInfo, resolve_reader) != nullptr,
         "default handler must parse typeHierarchy/resolve responses");
+
+    ExpectParsesResponse(
+        handler,
+        td_semanticTokens_full::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":14,"result":{"data":[0,1,2,3,4]}})",
+        "default handler must parse textDocument/semanticTokens/full responses");
+    ExpectParsesResponse(
+        handler,
+        td_inlayHint::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":15,"result":[{"position":{"line":0,"character":0},"label":"hint"}]})",
+        "default handler must parse textDocument/inlayHint responses");
+    ExpectParsesResponse(
+        handler,
+        td_codeLens::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":16,"result":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}}}]})",
+        "default handler must parse textDocument/codeLens responses");
+    ExpectParsesResponse(
+        handler,
+        td_completion::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":17,"result":{"isIncomplete":false,"items":[]}})",
+        "default handler must parse textDocument/completion responses");
+    ExpectParsesResponse(
+        handler,
+        td_hover::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":18,"result":{"contents":"doc"}})",
+        "default handler must parse textDocument/hover responses");
+    ExpectParsesResponse(
+        handler,
+        td_codeAction::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":19,"result":[{"title":"Fix","command":"cmd.fix"}]})",
+        "default handler must parse textDocument/codeAction responses");
+    ExpectParsesResponse(
+        handler,
+        td_declaration::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":20,"result":[{"uri":"file:///a.cpp","range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}}}]})",
+        "default handler must parse textDocument/declaration responses");
 }
 
 void Test316ModelsSerializeExpectedFields()

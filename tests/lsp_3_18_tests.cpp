@@ -35,6 +35,20 @@ JsonReader MakeReader(rapidjson::Document& document, char const* json)
     return JsonReader(&document);
 }
 
+void ExpectParsesRequest(lsp::ProtocolJsonHandler& handler, MethodType method, char const* json, char const* message)
+{
+    rapidjson::Document document;
+    JsonReader reader = MakeReader(document, json);
+    Expect(handler.parseRequstMessage(method, reader) != nullptr, message);
+}
+
+void ExpectParsesResponse(lsp::ProtocolJsonHandler& handler, MethodType method, char const* json, char const* message)
+{
+    rapidjson::Document document;
+    JsonReader reader = MakeReader(document, json);
+    Expect(handler.parseResponseMessage(method, reader) != nullptr, message);
+}
+
 void TestProtocolJsonHandlerRegistersExistingFeatureRequests()
 {
     lsp::ProtocolJsonHandler handler;
@@ -91,6 +105,33 @@ void TestProtocolJsonHandlerRegistersNew318Requests()
     Expect(
         handler.parseRequstMessage(workspace_textDocumentContent::request::kMethodInfo, content_reader) != nullptr,
         "default handler must register workspace/textDocumentContent requests");
+
+    ExpectParsesRequest(
+        handler,
+        workspace_diagnostic::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":7,"method":"workspace/diagnostic","params":{"identifier":"cpp"}})",
+        "default handler must parse workspace/diagnostic requests");
+}
+
+void TestProtocolJsonHandlerParses318Responses()
+{
+    lsp::ProtocolJsonHandler handler;
+
+    ExpectParsesResponse(
+        handler,
+        td_diagnostic::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":30,"result":{"kind":"full","items":[]}})",
+        "default handler must parse textDocument/diagnostic responses");
+    ExpectParsesResponse(
+        handler,
+        workspace_diagnostic::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":31,"result":{"items":[]}})",
+        "default handler must parse workspace/diagnostic responses");
+    ExpectParsesResponse(
+        handler,
+        td_inlineCompletion::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":32,"result":{"items":[{"insertText":"x"}]}})",
+        "default handler must parse textDocument/inlineCompletion responses");
 }
 
 void TestNew318ModelsSerializeExpectedFields()
@@ -178,6 +219,7 @@ int main()
 {
     TestProtocolJsonHandlerRegistersExistingFeatureRequests();
     TestProtocolJsonHandlerRegistersNew318Requests();
+    TestProtocolJsonHandlerParses318Responses();
     TestNew318ModelsSerializeExpectedFields();
     TestCapabilitiesSerialize318Fields();
     TestExisting318FieldExtensionsSerialize();

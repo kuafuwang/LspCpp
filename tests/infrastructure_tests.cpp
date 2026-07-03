@@ -196,6 +196,60 @@ void TestMultiQueueWaiterWakesOnSecondQueue()
     Expect(value && *value == 99, "second watched queue must hold the produced value");
 }
 
+void TestThreadedQueueIterateVisitsPriorityThenNormalItems()
+{
+    ThreadedQueue<int> queue;
+    queue.Enqueue(1, false);
+    queue.Enqueue(10, true);
+    queue.Enqueue(2, false);
+    queue.Enqueue(11, true);
+
+    std::vector<int> visited;
+    queue.Iterate(
+        [&](int const& entry)
+        {
+            visited.push_back(entry);
+        });
+
+    Expect(visited.size() == 4, "Iterate must visit every queued item");
+    if (visited.size() == 4)
+    {
+        Expect(visited[0] == 10, "Iterate must visit priority items before normal items");
+        Expect(visited[1] == 11, "Iterate must preserve FIFO order within priority items");
+        Expect(visited[2] == 1, "Iterate must visit normal items after priority items");
+        Expect(visited[3] == 2, "Iterate must preserve FIFO order within normal items");
+    }
+    Expect(queue.Size() == 4, "Iterate must not remove queued items");
+}
+
+void TestMultiQueueWaiterWaitUntilTimesOutWhenQueuesEmpty()
+{
+    auto waiter = std::make_shared<MultiQueueWaiter>();
+    ThreadedQueue<int> queue(waiter);
+
+    auto const start = std::chrono::steady_clock::now();
+    waiter->WaitUntil(start + std::chrono::milliseconds(50), &queue);
+    auto const elapsed = std::chrono::steady_clock::now() - start;
+
+    Expect(elapsed >= std::chrono::milliseconds(40), "WaitUntil must block until timeout when queues are empty");
+    Expect(queue.IsEmpty(), "WaitUntil must not dequeue items while waiting");
+}
+
+void TestMultiQueueWaiterWaitUntilReturnsImmediatelyWhenQueueHasState()
+{
+    auto waiter = std::make_shared<MultiQueueWaiter>();
+    ThreadedQueue<int> queue(waiter);
+    queue.Enqueue(42, false);
+
+    auto const start = std::chrono::steady_clock::now();
+    waiter->WaitUntil(start + std::chrono::seconds(10), &queue);
+    auto const elapsed = std::chrono::steady_clock::now() - start;
+
+    Expect(elapsed < std::chrono::milliseconds(100), "WaitUntil must return immediately when queue has state");
+    auto value = queue.TryDequeue(false);
+    Expect(value && *value == 42, "WaitUntil must not consume queue items");
+}
+
 void TestContextDeriveAndGet()
 {
     static lsp::Key<int> key;
@@ -1208,6 +1262,9 @@ int main()
     TestMultiQueueWaiterWakesOnEnqueue();
     TestMultiQueueWaiterInterruptReturnsTrue();
     TestMultiQueueWaiterWakesOnSecondQueue();
+    TestThreadedQueueIterateVisitsPriorityThenNormalItems();
+    TestMultiQueueWaiterWaitUntilTimesOutWhenQueuesEmpty();
+    TestMultiQueueWaiterWaitUntilReturnsImmediatelyWhenQueueHasState();
     TestContextDeriveAndGet();
     TestWithContextRestoresOnDestruction();
     TestScopeExitRunsOnDestruction();
