@@ -2,12 +2,16 @@
 
 A C++ library for building [Language Server Protocol (LSP)](https://microsoft.github.io/language-server-protocol/) servers and custom JSON-RPC protocols. It provides JSON-RPC transport, LSP message types, typed custom messages, and helpers for stdio, TCP, and WebSocket communication.
 
+[中文 README](README_zh.md)
+
 ## Documentation
 
 Full documentation lives in the [`docs/`](docs/) directory:
 
-- **Users** — [getting started](docs/user/getting-started.md), [writing a language server](docs/user/writing-a-language-server.md), [advanced customization](docs/user/advanced-customization.md), [custom protocol framework](docs/user/custom-protocol.md), [transport](docs/user/transport.md), [build and install](docs/user/build-and-install.md)
-- **Contributors** — [architecture](docs/developer/architecture.md), [build and test](docs/developer/build-and-test.md), [contributing](docs/developer/contributing.md), [protocol types](docs/developer/protocol-types.md)
+- **Users** — [getting started](docs/engilsh/user/getting-started.md), [writing a language server](docs/engilsh/user/writing-a-language-server.md), [advanced customization](docs/engilsh/user/advanced-customization.md), [custom protocol framework](docs/engilsh/user/custom-protocol.md), [transport](docs/engilsh/user/transport.md), [build and install](docs/engilsh/user/build-and-install.md)
+- **Contributors** — [architecture](docs/engilsh/developer/architecture.md), [build and test](docs/engilsh/developer/build-and-test.md), [contributing](docs/engilsh/developer/contributing.md), [protocol types](docs/engilsh/developer/protocol-types.md)
+- **English index** — [docs/engilsh/README.md](docs/engilsh/README.md)
+- **中文** — [文档索引](docs/zh/README.md)
 
 ## Dependencies
 

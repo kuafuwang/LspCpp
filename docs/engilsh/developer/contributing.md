@@ -49,7 +49,7 @@ Before requesting review:
 - [ ] `ctest --output-on-failure` passes
 - [ ] clang-format applied to changed `.cpp` / `.h` files
 - [ ] New LSP types have round-trip or handler tests when applicable
-- [ ] Public API changes documented in `docs/user/` or `docs/developer/`
+- [ ] Public API changes documented in `docs/engilsh/` or `docs/zh/`
 - [ ] Version bumped in `CMakeLists.txt` and `vcpkg.json` only for releases (not every PR)
 
 ## Adding LSP protocol support
@@ -71,7 +71,7 @@ To use system/vcpkg packages instead:
 - `USE_EXTERNAL_ASIO=ON`
 - `USE_EXTERNAL_IXWEBSOCKET=ON`
 
-Document new CMake options in `docs/user/build-and-install.md` and the root `README.md`.
+Document new CMake options in `docs/engilsh/user/build-and-install.md`, `docs/zh/user/build-and-install.md`, and the root `README.md`.
 
 ## Releases
 
