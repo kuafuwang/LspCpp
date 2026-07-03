@@ -1,6 +1,13 @@
 # LspCpp
 
-A C++ library for building [Language Server Protocol (LSP)](https://microsoft.github.io/language-server-protocol/) servers. It provides JSON-RPC transport, LSP message types, and helpers for stdio, TCP, and WebSocket communication.
+A C++ library for building [Language Server Protocol (LSP)](https://microsoft.github.io/language-server-protocol/) servers and custom JSON-RPC protocols. It provides JSON-RPC transport, LSP message types, typed custom messages, and helpers for stdio, TCP, and WebSocket communication.
+
+## Documentation
+
+Full documentation lives in the [`docs/`](docs/) directory:
+
+- **Users** — [getting started](docs/user/getting-started.md), [writing a language server](docs/user/writing-a-language-server.md), [advanced customization](docs/user/advanced-customization.md), [custom protocol framework](docs/user/custom-protocol.md), [transport](docs/user/transport.md), [build and install](docs/user/build-and-install.md)
+- **Contributors** — [architecture](docs/developer/architecture.md), [build and test](docs/developer/build-and-test.md), [contributing](docs/developer/contributing.md), [protocol types](docs/developer/protocol-types.md)
 
 ## Dependencies
 
@@ -9,7 +16,7 @@ A C++ library for building [Language Server Protocol (LSP)](https://microsoft.gi
 These are required to build the `lspcpp` static library:
 
 | Dependency | Source |
-|------------|--------|
+| ---------- | ------ |
 | [Asio](https://think-async.com/Asio/) (standalone) | Bundled in `third_party/asio`, or via vcpkg / system package |
 | [RapidJSON](https://github.com/Tencent/rapidjson) | Bundled in `third_party/rapidjson`, or system package |
 | [utfcpp](https://github.com/nemtrif/utfcpp) | Bundled in `third_party/utfcpp` |
@@ -21,7 +28,7 @@ Boost is **not** required for the library when `LSPCPP_STANDALONE_ASIO` is enabl
 ### Optional
 
 | Dependency | When needed |
-|------------|-------------|
+| ---------- | ----------- |
 | Boost (`filesystem`, `program_options`, `system`) | Building examples or tests |
 | [Boehm GC](https://www.hboehm.info/gc/) | Optional GC support (`LSPCPP_SUPPORT_BOEHM_GC=ON`) |
 
@@ -102,7 +109,7 @@ cmake --build . -j
 ctest --output-on-failure
 ```
 
-`LSPCPP_BUILD_TESTS=ON` automatically enables `LSPCPP_BUILD_EXAMPLES`. By default this registers 18 CTest cases.
+`LSPCPP_BUILD_TESTS=ON` automatically enables `LSPCPP_BUILD_EXAMPLES`. With the default `LSPCPP_BUILD_WEBSOCKETS=ON`, this registers 19 CTest cases.
 
 Optional performance smoke tests (`lspcpp.perf_smoke`, adds one more CTest case) can be enabled with:
 
@@ -178,7 +185,7 @@ To build tests on Windows, use vcpkg with the `tests` feature (see section 5 abo
 ### Useful CMake options
 
 | Option | Default | Description |
-|--------|---------|-------------|
+| ------ | ------- | ----------- |
 | `LSPCPP_STANDALONE_ASIO` | `ON` | Use standalone Asio instead of Boost.Asio |
 | `LSPCPP_BUILD_MINIMAL_EXAMPLE` | `OFF` | Build the Boost-free minimal stdio example |
 | `LSPCPP_BUILD_WEBSOCKETS` | `ON` | Build WebSocket server support |
@@ -212,10 +219,10 @@ When preparing a release:
 
 ## Projects using LspCpp
 
-* [JCIDE](https://www.javacardos.com/javacardforum/viewtopic.php?f=5&t=3569&sid=e01238adf55cd08696fbf495dfa6c8e5)
-* [LPG-language-server](https://github.com/kuafuwang/LPG-language-server)
-* [Asymptote](https://github.com/vectorgraphics)
-* [chemical](https://github.com/chemicallang/chemical)
+- [JCIDE](https://www.javacardos.com/javacardforum/viewtopic.php?f=5&t=3569&sid=e01238adf55cd08696fbf495dfa6c8e5)
+- [LPG-language-server](https://github.com/kuafuwang/LPG-language-server)
+- [Asymptote](https://github.com/vectorgraphics)
+- [chemical](https://github.com/chemicallang/chemical)
 
 ## Reference
 
