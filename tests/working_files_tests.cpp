@@ -226,6 +226,220 @@ void TestNonFileUrisDoNotEnterWorkingFiles()
     Expect(!files.OnSave(close), "non-file URI saves must be ignored");
 }
 
+void TestWorkingFilesRangedEditUtf16SurrogatePairs()
+{
+    WorkingFiles files;
+    AbsolutePath const path = MakePath("surrogate-edit.cpp");
+    // "prefix" + U+1F600 (😀, UTF-16 surrogate pair) + "suffix"
+    std::string const original = "prefix\xf0\x9f\x98\x80suffix";
+    auto file = OpenFile(files, path, original);
+
+    lsTextDocumentDidChangeParams change;
+    change.textDocument.uri = lsDocumentUri(path);
+    change.textDocument.version = optional<int>(2);
+    change.contentChanges.push_back(RangedEdit(lsPosition(0, 6), lsPosition(0, 8), "X"));
+    files.OnChange(change);
+
+    Expect(
+        ContentOf(files, file) == "prefixXsuffix",
+        "ranged edit spanning a UTF-16 surrogate pair must replace the whole code point");
+    Expect(
+        file->GetOffsetForPosition(lsPosition(0, 7)) == 7,
+        "offsets must stay valid after surrogate-pair edit");
+}
+
+void TestWorkingFilesUriAliasFindsSameFile()
+{
+    WorkingFiles files;
+    AbsolutePath const path = MakePath("uri-alias.cpp");
+
+    lsTextDocumentItem open;
+    open.uri.raw_uri_ = "file:///tmp/lspcpp-working-files-suite/alias/../uri-alias.cpp";
+    open.languageId = "cpp";
+    open.version = 1;
+    open.text = "initial";
+    auto file = files.OnOpen(open);
+    Expect(file != nullptr, "OnOpen must accept aliased file URIs");
+
+    lsTextDocumentDidChangeParams change;
+    change.textDocument.uri = lsDocumentUri(path);
+    change.textDocument.version = optional<int>(2);
+    change.contentChanges.push_back(RangedEdit(lsPosition(0, 0), lsPosition(0, 7), "updated"));
+    auto changed = files.OnChange(change);
+
+    Expect(changed == file, "didChange with normalized URI must find the same WorkingFile");
+    Expect(ContentOf(files, file) == "updated", "didChange with normalized URI must apply to the open file");
+}
+
+#if defined(_WIN32)
+void TestWorkingFilesWindowsUriCasingUsesSameMapKey()
+{
+    WorkingFiles files;
+    AbsolutePath const path("C:/tmp/lspcpp-working-files-suite/casing.cpp");
+
+    lsTextDocumentItem open;
+    open.uri.raw_uri_ = "file:///C:/tmp/lspcpp-working-files-suite/casing.cpp";
+    open.languageId = "cpp";
+    open.version = 1;
+    open.text = "original";
+    auto file = files.OnOpen(open);
+    Expect(file != nullptr, "OnOpen must accept mixed-case Windows file URIs");
+
+    lsTextDocumentDidChangeParams change;
+    change.textDocument.uri.raw_uri_ = "file:///c:/tmp/lspcpp-working-files-suite/casing.cpp";
+    change.textDocument.version = optional<int>(2);
+    lsTextDocumentContentChangeEvent edit;
+    edit.text = "changed";
+    change.contentChanges.push_back(edit);
+    auto changed = files.OnChange(change);
+
+    Expect(changed == file, "didChange with different URI casing must find the same WorkingFile on Windows");
+    Expect(ContentOf(files, file) == "changed", "didChange with different URI casing must apply to the open file");
+}
+#endif
+
+void TestWorkingFilesChangeCloseSaveWithoutOpen()
+{
+    WorkingFiles files;
+    AbsolutePath const path = MakePath("never-opened.cpp");
+
+    lsTextDocumentDidChangeParams change;
+    change.textDocument.uri = lsDocumentUri(path);
+    change.contentChanges.push_back(lsTextDocumentContentChangeEvent());
+    change.contentChanges.back().text = "ghost";
+    Expect(!files.OnChange(change), "OnChange must fail when the file was never opened");
+
+    lsTextDocumentIdentifier id;
+    id.uri = lsDocumentUri(path);
+    Expect(!files.OnClose(id), "OnClose must fail when the file was never opened");
+    Expect(!files.OnSave(id), "OnSave must fail when the file was never opened");
+}
+
+void TestWorkingFilesRejectsInvalidFileUris()
+{
+    WorkingFiles files;
+
+    lsTextDocumentItem open;
+    open.uri.raw_uri_ = "file://localhost";
+    open.languageId = "cpp";
+    open.version = 1;
+    open.text = "content";
+    Expect(!files.OnOpen(open), "OnOpen must reject file://localhost without path");
+
+    open.uri.raw_uri_ = "";
+    Expect(!files.OnOpen(open), "OnOpen must reject empty file URI");
+
+    lsTextDocumentDidChangeParams change;
+    change.textDocument.uri.raw_uri_ = "file://localhost";
+    change.contentChanges.push_back(lsTextDocumentContentChangeEvent());
+    change.contentChanges.back().text = "x";
+    Expect(!files.OnChange(change), "OnChange must reject file://localhost without path");
+
+    change.textDocument.uri.raw_uri_ = "";
+    Expect(!files.OnChange(change), "OnChange must reject empty file URI");
+
+    lsTextDocumentIdentifier id;
+    id.uri.raw_uri_ = "file://localhost";
+    Expect(!files.OnClose(id), "OnClose must reject file://localhost without path");
+
+    id.uri.raw_uri_ = "";
+    Expect(!files.OnClose(id), "OnClose must reject empty file URI");
+
+    id.uri.raw_uri_ = "file://localhost";
+    Expect(!files.OnSave(id), "OnSave must reject file://localhost without path");
+}
+
+void TestOnSaveWritesContentAfterChange()
+{
+    WorkingFiles files;
+    AbsolutePath const path("/tmp/lspcpp-save-after-change.txt");
+    std::remove(path.path().c_str());
+    auto file = OpenFile(files, path, "initial");
+
+    lsTextDocumentDidChangeParams change;
+    change.textDocument.uri = lsDocumentUri(path);
+    change.textDocument.version = optional<int>(2);
+    lsTextDocumentContentChangeEvent edit;
+    edit.text = "modified on disk";
+    change.contentChanges.push_back(edit);
+    files.OnChange(change);
+
+    lsTextDocumentIdentifier save;
+    save.uri = lsDocumentUri(path);
+    auto saved = files.OnSave(save);
+
+    Expect(saved == file, "OnSave after change must return the same WorkingFile");
+    auto disk_content = lsp::ReadContent(path);
+    Expect(disk_content.has_value(), "OnSave after change must create the target file");
+    if (disk_content)
+    {
+        Expect(*disk_content == "modified on disk", "OnSave after change must write the updated buffer content");
+    }
+    std::remove(path.path().c_str());
+}
+
+void TestCloseFilesInDirectoryMultipleRoots()
+{
+    WorkingFiles files;
+    AbsolutePath const in_dir_a = MakePath("multi-root/a/file.cpp");
+    AbsolutePath const in_dir_b = MakePath("multi-root/b/file.cpp");
+    AbsolutePath const in_dir_c = MakePath("multi-root-c/file.cpp");
+    AbsolutePath const unrelated = MakePath("multi-root-unrelated/stay.cpp");
+    OpenFile(files, in_dir_a, "a");
+    OpenFile(files, in_dir_b, "b");
+    OpenFile(files, in_dir_c, "c");
+    OpenFile(files, unrelated, "stay");
+
+    files.CloseFilesInDirectory(
+        {Directory(AbsolutePath("/tmp/lspcpp-working-files-suite/multi-root/a/")),
+         Directory(AbsolutePath("/tmp/lspcpp-working-files-suite/multi-root/b/")),
+         Directory(AbsolutePath("/tmp/lspcpp-working-files-suite/multi-root-c/"))});
+
+    std::string content;
+    Expect(
+        !files.GetFileBufferContent(in_dir_a, content),
+        "CloseFilesInDirectory must remove files under the first matched root");
+    Expect(
+        !files.GetFileBufferContent(in_dir_b, content),
+        "CloseFilesInDirectory must remove files under the second matched root");
+    Expect(
+        !files.GetFileBufferContent(in_dir_c, content),
+        "CloseFilesInDirectory must remove files under the third matched root");
+    Expect(
+        files.GetFileBufferContent(unrelated, content),
+        "CloseFilesInDirectory must leave files outside all matched roots");
+    Expect(content == "stay", "CloseFilesInDirectory must not disturb unrelated files");
+}
+
+void TestGetFileByFilenameRejectsInvalidPath()
+{
+    WorkingFiles files;
+    OpenFile(files, MakePath("lookup.cpp"), "present");
+
+    Expect(
+        files.GetFileByFilename(AbsolutePath("relative/path.cpp")) == nullptr,
+        "GetFileByFilename must reject relative paths");
+    Expect(files.GetFileByFilename(AbsolutePath("")) == nullptr, "GetFileByFilename must reject empty paths");
+}
+
+void TestOnChangeWithoutVersionPreservesVersion()
+{
+    WorkingFiles files;
+    AbsolutePath const path = MakePath("version-preserve.cpp");
+    OpenFile(files, path, "content", 1);
+    auto file = OpenFile(files, path, "content", 5);
+
+    lsTextDocumentDidChangeParams change;
+    change.textDocument.uri = lsDocumentUri(path);
+    lsTextDocumentContentChangeEvent edit;
+    edit.text = "updated";
+    change.contentChanges.push_back(edit);
+    files.OnChange(change);
+
+    Expect(file->version == 5, "OnChange without version must preserve the existing file version");
+    Expect(ContentOf(files, file) == "updated", "OnChange without version must still apply content changes");
+}
+
 void TestConcurrentReadSnapshotsDuringChanges()
 {
     WorkingFiles files;
@@ -289,6 +503,19 @@ int main()
     TestCloseFilesInDirectoryTrailingSlashMatching();
     TestOnSaveWritesCurrentContent();
     TestNonFileUrisDoNotEnterWorkingFiles();
+    TestWorkingFilesRangedEditUtf16SurrogatePairs();
+    TestWorkingFilesUriAliasFindsSameFile();
+#if defined(_WIN32)
+    TestWorkingFilesWindowsUriCasingUsesSameMapKey();
+#else
+    // TestWorkingFilesWindowsUriCasingUsesSameMapKey requires Windows path casing semantics.
+#endif
+    TestWorkingFilesChangeCloseSaveWithoutOpen();
+    TestWorkingFilesRejectsInvalidFileUris();
+    TestOnSaveWritesContentAfterChange();
+    TestCloseFilesInDirectoryMultipleRoots();
+    TestGetFileByFilenameRejectsInvalidPath();
+    TestOnChangeWithoutVersionPreservesVersion();
     TestConcurrentReadSnapshotsDuringChanges();
     return test::Failures() == 0 ? 0 : 1;
 }

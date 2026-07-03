@@ -14,6 +14,7 @@
 #include "Endpoint.h"
 #include "future.h"
 #include <cstdint>
+#include <utility>
 #include "MessageProducer.h"
 
 class MessageJsonHandler;
@@ -145,7 +146,7 @@ public:
     template<typename F, typename RequestType = ParamType<F, 0>, typename ResponseType = typename RequestType::Response>
     IsRequestHandler<F, lsp::ResponseOrError<ResponseType>> registerHandler(F&& handler)
     {
-        processRequestJsonHandler(handler);
+        registerRequestJsonHandlerIfMissing<RequestType>();
         local_endpoint->registerRequestHandler(
             RequestType::kMethodInfo,
             [=](std::unique_ptr<LspMessage> msg)
@@ -169,7 +170,7 @@ public:
     template<typename F, typename RequestType = ParamType<F, 0>, typename ResponseType = typename RequestType::Response>
     IsRequestHandlerWithMonitor<F, lsp::ResponseOrError<ResponseType>> registerHandler(F&& handler)
     {
-        processRequestJsonHandler(handler);
+        registerRequestJsonHandlerIfMissing<RequestType>();
         local_endpoint->registerRequestHandler(
             RequestType::kMethodInfo,
             [=](std::unique_ptr<LspMessage> msg)
@@ -195,7 +196,7 @@ public:
     template<typename T, typename F, typename ResponseType = ParamType<F, 0>>
     void send(T& request, F&& handler, RequestErrorCallback onError)
     {
-        processRequestJsonHandler(handler);
+        registerResponseJsonHandlerIfMissing<T>();
         auto cb = [=](std::unique_ptr<LspMessage> msg)
         {
             if (!msg)
@@ -252,7 +253,7 @@ public:
     lsp::future<lsp::ResponseOrError<typename T::Response>> send(T& request)
     {
 
-        processResponseJsonHandler(request);
+        registerResponseJsonHandlerIfMissing<T>();
         using Response = typename T::Response;
         auto promise = std::make_shared<lsp::promise<lsp::ResponseOrError<Response>>>();
         auto cb = [=](std::unique_ptr<LspMessage> msg)
@@ -337,6 +338,20 @@ public:
         return req;
     }
 
+    void overrideRequestParser(std::string const& method, GenericRequestJsonHandler handler)
+    {
+        std::lock_guard<std::mutex> lock(m_sendMutex);
+        jsonHandler->SetRequestJsonHandler(method, std::move(handler));
+    }
+
+    template<typename RequestType, typename = IsRequest<RequestType>>
+    void overrideRequestParser()
+    {
+        overrideRequestParser(
+            RequestType::kMethodInfo, [](Reader& visitor) { return RequestType::ReflectReader(visitor); }
+        );
+    }
+
     int getNextRequestId();
 
     bool cancelRequest(lsRequestId const&);
@@ -359,8 +374,8 @@ private:
     void sendMsg(LspMessage& msg);
     void mainLoop(std::unique_ptr<LspMessage>, uint64_t sequence);
     bool dispatch(std::string const&, uint64_t sequence);
-    template<typename F, typename RequestType = ParamType<F, 0>>
-    IsRequest<RequestType> processRequestJsonHandler(F const& handler)
+    template<typename RequestType, typename = IsRequest<RequestType>>
+    void registerRequestJsonHandlerIfMissing()
     {
         std::lock_guard<std::mutex> lock(m_sendMutex);
         if (!jsonHandler->GetRequestJsonHandler(RequestType::kMethodInfo))
@@ -371,7 +386,7 @@ private:
         }
     }
     template<typename T, typename = IsRequest<T>>
-    void processResponseJsonHandler(T& request)
+    void registerResponseJsonHandlerIfMissing()
     {
         using Response = typename T::Response;
         std::lock_guard<std::mutex> lock(m_sendMutex);

@@ -7,6 +7,7 @@
 #include "LibLsp/lsp/ProtocolJsonHandler.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 
 namespace lsp
@@ -34,6 +35,17 @@ public:
     void on(F&& handler)
     {
         remote_endpoint_.registerHandler(std::forward<F>(handler));
+    }
+
+    void overrideRequestParser(std::string const& method, GenericRequestJsonHandler handler)
+    {
+        remote_endpoint_.overrideRequestParser(method, std::move(handler));
+    }
+
+    template<typename RequestType>
+    void overrideRequestParser()
+    {
+        remote_endpoint_.overrideRequestParser<RequestType>();
     }
 
     void start(std::shared_ptr<istream> input, std::shared_ptr<ostream> output)

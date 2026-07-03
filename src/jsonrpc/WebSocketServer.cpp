@@ -48,6 +48,7 @@ struct WebSocketServer::Data {
                 auto ws = wp.lock();
                 if(!ws) return;
                 auto wrapper = std::make_shared<websocket_stream_wrapper>(ws);
+                wrapper->bindMessageCallback();
                 {
                     std::lock_guard<std::mutex> lock(connection_mutex);
                     if (active_stream)
@@ -66,19 +67,42 @@ struct WebSocketServer::Data {
 websocket_stream_wrapper::websocket_stream_wrapper(std::shared_ptr<ix::WebSocket> ws)
     : ws_(std::move(ws)), request_waiter(new MultiQueueWaiter()), on_request(request_waiter)
 {
-    // incoming messages → queue
+}
+
+websocket_stream_wrapper::~websocket_stream_wrapper()
+{
+    if (ws_)
+    {
+        ws_->setOnMessageCallback([](ix::WebSocketMessagePtr const&) {});
+    }
+    interrupt();
+}
+
+void websocket_stream_wrapper::bindMessageCallback()
+{
+    std::weak_ptr<websocket_stream_wrapper> weak_self = std::static_pointer_cast<websocket_stream_wrapper>(shared_from_this());
+    // incoming messages -> queue
     ws_->setOnMessageCallback(
-        [this](const ix::WebSocketMessagePtr& msg) {
-            if (msg->type == ix::WebSocketMessageType::Message) {
+        [weak_self](ix::WebSocketMessagePtr const& msg)
+        {
+            auto self = weak_self.lock();
+            if (!self)
+            {
+                return;
+            }
+            if (msg->type == ix::WebSocketMessageType::Message)
+            {
                 const auto& s = msg->str;
-                on_request.EnqueueAll(std::vector<char>(s.begin(), s.end()), false);
+                self->on_request.EnqueueAll(std::vector<char>(s.begin(), s.end()), false);
             }
-            else if (msg->type == ix::WebSocketMessageType::Error) {
-                error_message = msg->str;
-                interrupt();
+            else if (msg->type == ix::WebSocketMessageType::Error)
+            {
+                self->error_message = msg->str;
+                self->interrupt();
             }
-            else if (msg->type == ix::WebSocketMessageType::Close) {
-                interrupt();
+            else if (msg->type == ix::WebSocketMessageType::Close)
+            {
+                self->interrupt();
             }
         }
     );

@@ -209,6 +209,55 @@ void TestHandleMessageReturnsFalseOnBadStream()
     Expect(!callback_called, "handleMessage must not invoke callback on bad stream");
     Expect(!issues.issues.empty(), "handleMessage must report stream issues");
 }
+
+void TestHandleMessageReturnsFalseOnEof()
+{
+    std::string const partial = R"({"jsonrpc":"2.0","id":1})";
+    auto input = std::make_shared<test::StringIStream>(partial);
+    test::CollectingIssueHandler issues;
+    LSPStreamMessageProducer producer(issues, input);
+
+    LSPStreamMessageProducer::Headers headers;
+    headers.contentLength = static_cast<int>(partial.size() + 32);
+
+    bool callback_called = false;
+    bool const ok = producer.handleMessage(
+        headers,
+        [&](std::string&&)
+        {
+            callback_called = true;
+        });
+
+    Expect(!ok, "handleMessage must fail when the input stream hits eof before the body is complete");
+    Expect(!callback_called, "handleMessage must not invoke callback on eof");
+    Expect(!issues.issues.empty(), "handleMessage must report eof while reading content body");
+    Expect(
+        issues.issues[0].text.find("No more input when reading content body") != std::string::npos,
+        "handleMessage must report missing body bytes on eof");
+}
+
+void TestHandleMessageReturnsFalseOnFail()
+{
+    auto input = std::make_shared<test::StringIStream>(R"({"jsonrpc":"2.0","id":1})");
+    input->set_fail(true);
+    test::CollectingIssueHandler issues;
+    LSPStreamMessageProducer producer(issues, input);
+
+    LSPStreamMessageProducer::Headers headers;
+    headers.contentLength = 4;
+
+    bool callback_called = false;
+    bool const ok = producer.handleMessage(
+        headers,
+        [&](std::string&&)
+        {
+            callback_called = true;
+        });
+
+    Expect(!ok, "handleMessage must fail when the input stream reports fail");
+    Expect(!callback_called, "handleMessage must not invoke callback on fail");
+    Expect(!issues.issues.empty(), "handleMessage must report stream fail issues");
+}
 } // namespace
 
 int main()
@@ -225,6 +274,8 @@ int main()
     TestRequestSwapSwapsMethod();
     TestHandleMessageReadsContentLengthBody();
     TestHandleMessageReturnsFalseOnBadStream();
+    TestHandleMessageReturnsFalseOnEof();
+    TestHandleMessageReturnsFalseOnFail();
 
     return test::Failures() == 0 ? 0 : 1;
 }

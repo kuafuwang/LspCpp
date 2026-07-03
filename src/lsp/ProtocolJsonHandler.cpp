@@ -17,6 +17,7 @@
 #include "LibLsp/lsp/textDocument/rename.h"
 #include "LibLsp/lsp/textDocument/signature_help.h"
 #include "LibLsp/lsp/textDocument/type_definition.h"
+#include "LibLsp/lsp/workspace/execute_command.h"
 #include "LibLsp/lsp/workspace/symbol.h"
 #include "LibLsp/lsp/textDocument/typeHierarchy.h"
 #include "LibLsp/lsp/out_list.h"
@@ -831,8 +832,15 @@ void AddStandardRequestJsonRpcMethod(MessageJsonHandler& handler)
     handler.method2request[td_hover::request::kMethodInfo] = [](Reader& visitor)
     { return td_hover::request::ReflectReader(visitor); };
 
+    handler.method2request[td_signatureHelp::request::kMethodInfo] = [](Reader& visitor)
+    { return td_signatureHelp::request::ReflectReader(visitor); };
+
     handler.method2request[td_implementation::request::kMethodInfo] = [](Reader& visitor)
     { return td_implementation::request::ReflectReader(visitor); };
+    handler.method2request[td_foldingRange::request::kMethodInfo] = [](Reader& visitor)
+    { return td_foldingRange::request::ReflectReader(visitor); };
+    handler.method2request[wp_executeCommand::request::kMethodInfo] = [](Reader& visitor)
+    { return wp_executeCommand::request::ReflectReader(visitor); };
     handler.method2request[td_semanticTokens_full::request::kMethodInfo] = [](Reader& visitor)
     { return td_semanticTokens_full::request::ReflectReader(visitor); };
     handler.method2request[td_semanticTokens_full_delta::request::kMethodInfo] = [](Reader& visitor)
