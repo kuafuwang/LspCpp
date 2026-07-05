@@ -82,10 +82,12 @@ remote_end_point.registerHandler([](Notify_Exit::notify const&) { });
 
 Return types:
 
-- `T` or `lsp::ResponseOrError<T>` for requests
+- `T`, `lsp::ResponseOrError<T>`, `lsp::future<T>`, or `lsp::future<lsp::ResponseOrError<T>>` for requests
 - `void` for notifications
 
-For cancellable requests, the second parameter is `CancelMonitor const&`.
+For cancellable requests, the second parameter is `CancelMonitor const&` for both synchronous and async handlers.
+
+Throwing `lsp::RequestError` is converted to an `Rsp_Error` response by the handler wrapper.
 
 ## ProtocolJsonHandler
 
@@ -169,6 +171,12 @@ Or use `lsp::ResponseOrError<T>`:
 
 ```cpp
 return lsp::ResponseOrError<td_foo::response>(err);
+```
+
+You can also throw `lsp::RequestError` (`include/LibLsp/JsonRpc/RequestError.h`):
+
+```cpp
+throw lsp::RequestError(lsErrorCodes::InvalidParams, "invalid parameters");
 ```
 
 Standard error codes are in `lsErrorCodes` (see LSP spec appendix).

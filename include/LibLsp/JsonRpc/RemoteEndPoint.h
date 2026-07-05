@@ -1,12 +1,17 @@
 #pragma once
 #include "LibLsp/lsp/lsp_diagnostic.h"
 #include "LibLsp/JsonRpc/Cancellation.h"
+#include "LibLsp/JsonRpc/RequestError.h"
 #include "LibLsp/JsonRpc/lsResponseMessage.h"
 #include "LibLsp/JsonRpc/RequestInMessage.h"
 #include "LibLsp/JsonRpc/NotificationInMessage.h"
 #include "traits.h"
+#include <atomic>
+#include <functional>
 #include <future>
+#include <memory>
 #include <string>
+#include <type_traits>
 #include "threaded_queue.h"
 #include <unordered_map>
 #include "MessageIssue.h"
@@ -111,6 +116,50 @@ ResponseOrError<T>& ResponseOrError<T>::operator=(ResponseOrError&& other) noexc
     return *this;
 }
 
+namespace detail
+{
+template<typename T>
+struct is_lsp_future : std::false_type
+{
+};
+
+template<typename T>
+struct is_lsp_future<lsp::future<T>> : std::true_type
+{
+};
+
+template<typename F>
+using handler_return_t = typename lsp::traits::SignatureOfT<F>::ret;
+
+struct AsyncResponseState
+{
+    std::atomic<bool> active {true};
+    std::shared_ptr<lsp::ostream> output;
+    std::shared_ptr<std::mutex> send_mutex;
+};
+
+template<typename ResponseType>
+lsp::ResponseOrError<ResponseType> normalizeHandlerResult(lsp::ResponseOrError<ResponseType> const& result)
+{
+    return result;
+}
+
+template<typename ResponseType>
+lsp::ResponseOrError<ResponseType> normalizeHandlerResult(lsp::ResponseOrError<ResponseType>&& result)
+{
+    return std::move(result);
+}
+
+template<typename ResponseType, typename Result>
+typename std::enable_if<
+    !std::is_same<typename std::decay<Result>::type, lsp::ResponseOrError<ResponseType>>::value,
+    lsp::ResponseOrError<ResponseType>>::type
+normalizeHandlerResult(Result&& result)
+{
+    return lsp::ResponseOrError<ResponseType>(std::forward<Result>(result));
+}
+} // namespace detail
+
 } // namespace lsp
 
 class RemoteEndPoint : MessageIssueHandler
@@ -136,6 +185,30 @@ class RemoteEndPoint : MessageIssueHandler
     using IsRequestHandlerWithMonitor = lsp::traits::EnableIf<lsp::traits::CompatibleWith<
         F, std::function<ReturnType(RequestInMessage const&, CancelMonitor const&)>>::value>;
 
+    template<typename F, typename RequestType, typename ResponseType>
+    using EnableIfSyncRequestHandler = lsp::traits::EnableIf<
+        !lsp::detail::is_lsp_future<lsp::detail::handler_return_t<F>>::value
+            && lsp::traits::CompatibleWith<
+                F, std::function<lsp::ResponseOrError<ResponseType>(RequestType const&)>>::value>;
+
+    template<typename F, typename RequestType, typename ResponseType>
+    using EnableIfSyncRequestHandlerWithMonitor = lsp::traits::EnableIf<
+        !lsp::detail::is_lsp_future<lsp::detail::handler_return_t<F>>::value
+            && lsp::traits::CompatibleWith<
+                F,
+                std::function<lsp::ResponseOrError<ResponseType>(RequestType const&, CancelMonitor const&)>>::value>;
+
+    template<typename F, typename RequestType, typename ResponseType>
+    using EnableIfAsyncRequestHandler = lsp::traits::EnableIf<
+        lsp::detail::is_lsp_future<lsp::detail::handler_return_t<F>>::value
+            && lsp::traits::CompatibleWith<F, std::function<lsp::future<ResponseType>(RequestType const&)>>::value>;
+
+    template<typename F, typename RequestType, typename ResponseType>
+    using EnableIfAsyncRequestHandlerWithMonitor = lsp::traits::EnableIf<
+        lsp::detail::is_lsp_future<lsp::detail::handler_return_t<F>>::value
+            && lsp::traits::CompatibleWith<
+                F, std::function<lsp::future<ResponseType>(RequestType const&, CancelMonitor const&)>>::value>;
+
 public:
     RemoteEndPoint(
         std::shared_ptr<MessageJsonHandler> const& json_handler, std::shared_ptr<Endpoint> const& localEndPoint,
@@ -144,52 +217,24 @@ public:
 
     ~RemoteEndPoint() override;
     template<typename F, typename RequestType = ParamType<F, 0>, typename ResponseType = typename RequestType::Response>
-    IsRequestHandler<F, lsp::ResponseOrError<ResponseType>> registerHandler(F&& handler)
+    EnableIfSyncRequestHandler<F, RequestType, ResponseType> registerHandler(F&& handler)
     {
-        registerRequestJsonHandlerIfMissing<RequestType>();
-        local_endpoint->registerRequestHandler(
-            RequestType::kMethodInfo,
-            [=](std::unique_ptr<LspMessage> msg)
-            {
-                auto req = static_cast<RequestType const*>(msg.get());
-                lsp::ResponseOrError<ResponseType> res(handler(*req));
-                if (res.is_error)
-                {
-                    res.error.id = req->id;
-                    send(res.error);
-                }
-                else
-                {
-                    res.response.id = req->id;
-                    send(res.response);
-                }
-                return true;
-            }
-        );
+        registerSyncRequestHandler<F, RequestType, ResponseType>(std::forward<F>(handler));
     }
     template<typename F, typename RequestType = ParamType<F, 0>, typename ResponseType = typename RequestType::Response>
-    IsRequestHandlerWithMonitor<F, lsp::ResponseOrError<ResponseType>> registerHandler(F&& handler)
+    EnableIfSyncRequestHandlerWithMonitor<F, RequestType, ResponseType> registerHandler(F&& handler)
     {
-        registerRequestJsonHandlerIfMissing<RequestType>();
-        local_endpoint->registerRequestHandler(
-            RequestType::kMethodInfo,
-            [=](std::unique_ptr<LspMessage> msg)
-            {
-                auto req = static_cast<RequestType const*>(msg.get());
-                lsp::ResponseOrError<ResponseType> res(handler(*req, getCancelMonitor(req->id)));
-                if (res.is_error)
-                {
-                    res.error.id = req->id;
-                    send(res.error);
-                }
-                else
-                {
-                    res.response.id = req->id;
-                    send(res.response);
-                }
-                return true;
-            }
-        );
+        registerSyncRequestHandlerWithMonitor<F, RequestType, ResponseType>(std::forward<F>(handler));
+    }
+    template<typename F, typename RequestType = ParamType<F, 0>, typename ResponseType = typename RequestType::Response>
+    EnableIfAsyncRequestHandler<F, RequestType, ResponseType> registerHandler(F&& handler)
+    {
+        registerAsyncRequestHandler<F, RequestType, ResponseType>(std::forward<F>(handler));
+    }
+    template<typename F, typename RequestType = ParamType<F, 0>, typename ResponseType = typename RequestType::Response>
+    EnableIfAsyncRequestHandlerWithMonitor<F, RequestType, ResponseType> registerHandler(F&& handler)
+    {
+        registerAsyncRequestHandlerWithMonitor<F, RequestType, ResponseType>(std::forward<F>(handler));
     }
     using RequestErrorCallback = std::function<void(Rsp_Error const&)>;
 
@@ -231,7 +276,7 @@ public:
     IsNotify<NotifyType> registerHandler(F&& handler)
     {
         {
-            std::lock_guard<std::mutex> lock(m_sendMutex);
+            std::lock_guard<std::mutex> lock(*m_sendMutex);
             if (!jsonHandler->GetNotificationJsonHandler(NotifyType::kMethodInfo))
             {
                 jsonHandler->SetNotificationJsonHandler(
@@ -340,7 +385,7 @@ public:
 
     void overrideRequestParser(std::string const& method, GenericRequestJsonHandler handler)
     {
-        std::lock_guard<std::mutex> lock(m_sendMutex);
+        std::lock_guard<std::mutex> lock(*m_sendMutex);
         jsonHandler->SetRequestJsonHandler(method, std::move(handler));
     }
 
@@ -369,15 +414,176 @@ public:
     void handle(MessageIssue&&) override;
 
 private:
+    std::shared_ptr<lsp::detail::AsyncResponseState> getAsyncResponseState() const;
+    std::shared_ptr<void> retainRequestCancellation(lsRequestId const& id);
+    static void sendAsyncMessage(std::shared_ptr<lsp::detail::AsyncResponseState> const& state, LspMessage& msg);
+    void sendRspError(lsRequestId const& id, lsp::RequestError const& error)
+    {
+        Rsp_Error rsp = lsp::toRspError(id, error);
+        send(rsp);
+    }
     CancelMonitor getCancelMonitor(lsRequestId const&);
     void removeRequestInfo(lsRequestId const&);
     void sendMsg(LspMessage& msg);
     void mainLoop(std::unique_ptr<LspMessage>, uint64_t sequence);
     bool dispatch(std::string const&, uint64_t sequence);
+    template<typename ResponseType>
+    static void sendAsyncHandlerResult(
+        std::shared_ptr<lsp::detail::AsyncResponseState> const& state,
+        lsp::ResponseOrError<ResponseType>&& res, lsRequestId const& id
+    )
+    {
+        if (res.is_error)
+        {
+            res.error.id = id;
+            sendAsyncMessage(state, res.error);
+        }
+        else
+        {
+            res.response.id = id;
+            sendAsyncMessage(state, res.response);
+        }
+    }
+    template<typename ResponseType>
+    void sendHandlerResult(lsp::ResponseOrError<ResponseType>&& res, lsRequestId const& id)
+    {
+        if (res.is_error)
+        {
+            res.error.id = id;
+            send(res.error);
+        }
+        else
+        {
+            res.response.id = id;
+            send(res.response);
+        }
+    }
+    template<typename ResponseType, typename Future>
+    void completeAsyncHandler(Future fut, lsRequestId const& id)
+    {
+        auto shared_future = std::make_shared<Future>(std::move(fut));
+        auto response_state = getAsyncResponseState();
+        auto cancellation_retainer = retainRequestCancellation(id);
+        std::thread(
+            [id, shared_future, response_state, cancellation_retainer]() mutable
+            {
+                try
+                {
+                    sendAsyncHandlerResult(
+                        response_state,
+                        lsp::detail::normalizeHandlerResult<ResponseType>(shared_future->get()),
+                        id
+                    );
+                }
+                catch (lsp::RequestError const& error)
+                {
+                    Rsp_Error rsp = lsp::toRspError(id, error);
+                    sendAsyncMessage(response_state, rsp);
+                }
+                catch (std::exception const& error)
+                {
+                    Rsp_Error rsp;
+                    rsp.id = id;
+                    rsp.error.code = lsErrorCodes::InternalError;
+                    rsp.error.message = error.what();
+                    sendAsyncMessage(response_state, rsp);
+                }
+            }
+        ).detach();
+    }
+    template<typename F, typename RequestType, typename ResponseType>
+    void registerSyncRequestHandler(F&& handler)
+    {
+        registerRequestJsonHandlerIfMissing<RequestType>();
+        local_endpoint->registerRequestHandler(
+            RequestType::kMethodInfo,
+            [this, handler = std::forward<F>(handler)](std::unique_ptr<LspMessage> msg) mutable
+            {
+                auto req = static_cast<RequestType const*>(msg.get());
+                try
+                {
+                    sendHandlerResult(lsp::detail::normalizeHandlerResult<ResponseType>(handler(*req)), req->id);
+                }
+                catch (lsp::RequestError const& error)
+                {
+                    sendRspError(req->id, error);
+                }
+                return true;
+            }
+        );
+    }
+    template<typename F, typename RequestType, typename ResponseType>
+    void registerSyncRequestHandlerWithMonitor(F&& handler)
+    {
+        registerRequestJsonHandlerIfMissing<RequestType>();
+        local_endpoint->registerRequestHandler(
+            RequestType::kMethodInfo,
+            [this, handler = std::forward<F>(handler)](std::unique_ptr<LspMessage> msg) mutable
+            {
+                auto req = static_cast<RequestType const*>(msg.get());
+                try
+                {
+                    sendHandlerResult(
+                        lsp::detail::normalizeHandlerResult<ResponseType>(
+                            handler(*req, getCancelMonitor(req->id))
+                        ),
+                        req->id
+                    );
+                }
+                catch (lsp::RequestError const& error)
+                {
+                    sendRspError(req->id, error);
+                }
+                return true;
+            }
+        );
+    }
+    template<typename F, typename RequestType, typename ResponseType>
+    void registerAsyncRequestHandler(F&& handler)
+    {
+        registerRequestJsonHandlerIfMissing<RequestType>();
+        local_endpoint->registerRequestHandler(
+            RequestType::kMethodInfo,
+            [this, handler = std::forward<F>(handler)](std::unique_ptr<LspMessage> msg) mutable
+            {
+                auto req = static_cast<RequestType const*>(msg.get());
+                try
+                {
+                    completeAsyncHandler<ResponseType>(handler(*req), req->id);
+                }
+                catch (lsp::RequestError const& error)
+                {
+                    sendRspError(req->id, error);
+                }
+                return true;
+            }
+        );
+    }
+    template<typename F, typename RequestType, typename ResponseType>
+    void registerAsyncRequestHandlerWithMonitor(F&& handler)
+    {
+        registerRequestJsonHandlerIfMissing<RequestType>();
+        local_endpoint->registerRequestHandler(
+            RequestType::kMethodInfo,
+            [this, handler = std::forward<F>(handler)](std::unique_ptr<LspMessage> msg) mutable
+            {
+                auto req = static_cast<RequestType const*>(msg.get());
+                try
+                {
+                    completeAsyncHandler<ResponseType>(handler(*req, getCancelMonitor(req->id)), req->id);
+                }
+                catch (lsp::RequestError const& error)
+                {
+                    sendRspError(req->id, error);
+                }
+                return true;
+            }
+        );
+    }
     template<typename RequestType, typename = IsRequest<RequestType>>
     void registerRequestJsonHandlerIfMissing()
     {
-        std::lock_guard<std::mutex> lock(m_sendMutex);
+        std::lock_guard<std::mutex> lock(*m_sendMutex);
         if (!jsonHandler->GetRequestJsonHandler(RequestType::kMethodInfo))
         {
             jsonHandler->SetRequestJsonHandler(
@@ -389,7 +595,7 @@ private:
     void registerResponseJsonHandlerIfMissing()
     {
         using Response = typename T::Response;
-        std::lock_guard<std::mutex> lock(m_sendMutex);
+        std::lock_guard<std::mutex> lock(*m_sendMutex);
         if (!jsonHandler->GetResponseJsonHandler(T::kMethodInfo))
         {
             jsonHandler->SetResponseJsonHandler(
@@ -411,7 +617,7 @@ private:
     Data* d_ptr;
 
     std::shared_ptr<MessageJsonHandler> jsonHandler;
-    std::mutex m_sendMutex;
+    std::shared_ptr<std::mutex> m_sendMutex {std::make_shared<std::mutex>()};
 
     std::shared_ptr<Endpoint> local_endpoint;
 

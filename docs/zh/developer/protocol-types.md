@@ -82,10 +82,12 @@ remote_end_point.registerHandler([](Notify_Exit::notify const&) { });
 
 返回类型：
 
-- 请求：`T` 或 `lsp::ResponseOrError<T>`
+- 请求：`T`、`lsp::ResponseOrError<T>`、`lsp::future<T>` 或 `lsp::future<lsp::ResponseOrError<T>>`
 - 通知：`void`
 
-可取消请求的第二个参数是 `CancelMonitor const&`。
+可取消请求的第二个参数是 `CancelMonitor const&`，同步与异步 handler 均适用。
+
+抛出 `lsp::RequestError` 时，handler 包装层会将其转换为 `Rsp_Error` 并发送。
 
 ## ProtocolJsonHandler
 
@@ -169,6 +171,12 @@ return err;
 
 ```cpp
 return lsp::ResponseOrError<td_foo::response>(err);
+```
+
+也可以抛出 `lsp::RequestError`（`include/LibLsp/JsonRpc/RequestError.h`）：
+
+```cpp
+throw lsp::RequestError(lsErrorCodes::InvalidParams, "invalid parameters");
 ```
 
 标准错误码在 `lsErrorCodes`（见 LSP 规范附录）。

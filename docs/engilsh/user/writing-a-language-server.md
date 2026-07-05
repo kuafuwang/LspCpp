@@ -57,6 +57,40 @@ server.on([](td_definition::request const& req, CancelMonitor const& monitor)
 });
 ```
 
+### Async request handlers
+
+Long-running requests can return `lsp::future<T>` or `lsp::future<lsp::ResponseOrError<T>>`. The library waits for the future on a background path and sends the response without blocking the dispatch worker:
+
+```cpp
+server.on([](td_hover::request const& req) -> lsp::future<td_hover::response> {
+    auto promise = std::make_shared<lsp::promise<td_hover::response>>();
+    auto future = promise->get_future();
+    std::thread([promise, id = req.id]() {
+        td_hover::response rsp;
+        rsp.id = id;
+        // ...
+        promise->set_value(std::move(rsp));
+    }).detach();
+    return future;
+});
+```
+
+Cancellable async handlers use the same second `CancelMonitor const&` parameter.
+
+### Returning errors with RequestError
+
+In addition to returning `lsp::ResponseOrError<T>` or `Rsp_Error` explicitly, you can throw `lsp::RequestError` and the library converts it to a JSON-RPC error response:
+
+```cpp
+#include "LibLsp/JsonRpc/RequestError.h"
+
+server.on([](td_initialize::request const&) -> td_initialize::response {
+    throw lsp::RequestError(lsErrorCodes::InvalidParams, "invalid initialize params");
+});
+```
+
+`ResponseOrError<T>` remains the explicit, non-exception alternative.
+
 ### Notification handlers
 
 Notifications have no response. Register them the same way:

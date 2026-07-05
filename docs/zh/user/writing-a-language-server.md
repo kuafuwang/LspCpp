@@ -57,6 +57,40 @@ server.on([](td_definition::request const& req, CancelMonitor const& monitor)
 });
 ```
 
+### 异步 request handler
+
+耗时请求可返回 `lsp::future<T>` 或 `lsp::future<lsp::ResponseOrError<T>>`。库会在后台等待 future 完成后再发送响应，避免阻塞消息处理线程：
+
+```cpp
+server.on([](td_hover::request const& req) -> lsp::future<td_hover::response> {
+    auto promise = std::make_shared<lsp::promise<td_hover::response>>();
+    auto future = promise->get_future();
+    std::thread([promise, id = req.id]() {
+        td_hover::response rsp;
+        rsp.id = id;
+        // ...
+        promise->set_value(std::move(rsp));
+    }).detach();
+    return future;
+});
+```
+
+可取消的异步 handler 同样支持第二个 `CancelMonitor const&` 参数。
+
+### 用 RequestError 返回错误
+
+除显式返回 `lsp::ResponseOrError<T>` 或 `Rsp_Error` 外，也可以直接抛出 `lsp::RequestError`，库会将其转换为 JSON-RPC 错误响应：
+
+```cpp
+#include "LibLsp/JsonRpc/RequestError.h"
+
+server.on([](td_initialize::request const&) -> td_initialize::response {
+    throw lsp::RequestError(lsErrorCodes::InvalidParams, "invalid initialize params");
+});
+```
+
+`ResponseOrError<T>` 仍是显式、非异常式的替代方案。
+
 ### 通知 handler
 
 通知没有响应。注册方式相同：

@@ -1,4 +1,5 @@
 #include "LibLsp/LspCpp.h"
+#include "LibLsp/JsonRpc/RequestError.h"
 #include "LibLsp/lsp/general/exit.h"
 #include "LibLsp/lsp/general/shutdown.h"
 #include "LibLsp/lsp/windows/MessageNotify.h"
@@ -210,6 +211,70 @@ void TestLanguageSessionShutdownSequence()
     Expect(exit_notified.load(std::memory_order_relaxed), "LanguageSession must dispatch exit after shutdown");
 }
 
+void TestLanguageSessionThrowsRequestError()
+{
+    lsp::NullLog log;
+    lsp::LanguageSession session(log);
+    auto input = std::make_shared<FeedableIStream>();
+    auto output = std::make_shared<StringOStream>();
+
+    session.on(
+        [](td_initialize::request const&) -> td_initialize::response
+        {
+            throw lsp::RequestError(lsErrorCodes::ServerNotInitialized, "server not initialized");
+        });
+    session.start(input, output);
+
+    input->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":"session-error","method":"initialize","params":{}})"));
+    std::string const response = WaitForOutputContaining(output, "\"code\":-32002");
+    session.stop();
+
+    Expect(
+        response.find(R"("id":"session-error")") != std::string::npos,
+        "LanguageSession RequestError response must preserve request id");
+    Expect(
+        response.find("server not initialized") != std::string::npos,
+        "LanguageSession RequestError response must serialize error message");
+}
+
+void TestLanguageSessionAsyncHandlerCompletesLater()
+{
+    lsp::NullLog log;
+    lsp::LanguageSession session(log);
+    auto input = std::make_shared<FeedableIStream>();
+    auto output = std::make_shared<StringOStream>();
+
+    session.on(
+        [](td_initialize::request const& req) -> lsp::future<td_initialize::response>
+        {
+            auto promise = std::make_shared<lsp::promise<td_initialize::response>>();
+            auto future = promise->get_future();
+            std::thread(
+                [promise, id = req.id]()
+                {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+                    td_initialize::response rsp;
+                    rsp.id = id;
+                    rsp.result.capabilities.hoverProvider = true;
+                    promise->set_value(std::move(rsp));
+                }
+            ).detach();
+            return future;
+        });
+    session.start(input, output);
+
+    input->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":"session-async","method":"initialize","params":{}})"));
+    std::string const response = WaitForOutputContaining(output, "\"hoverProvider\":true");
+    session.stop();
+
+    Expect(
+        response.find(R"("id":"session-async")") != std::string::npos,
+        "LanguageSession async handler response must preserve request id");
+    Expect(
+        response.find("\"hoverProvider\":true") != std::string::npos,
+        "LanguageSession async handler response must include handler result");
+}
+
 } // namespace
 
 int main()
@@ -220,5 +285,7 @@ int main()
     TestLanguageSessionCanOverrideBuiltinRequestParser();
     TestLanguageServerAliasConstructsUsableSession();
     TestLanguageSessionShutdownSequence();
+    TestLanguageSessionThrowsRequestError();
+    TestLanguageSessionAsyncHandlerCompletesLater();
     return test::Failures() == 0 ? 0 : 1;
 }
