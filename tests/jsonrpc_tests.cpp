@@ -2,6 +2,8 @@
 #include "LibLsp/JsonRpc/json.h"
 #include "LibLsp/JsonRpc/lsRequestId.h"
 #include "LibLsp/lsp/general/initialize.h"
+#include "LibLsp/lsp/lsDocumentUri.h"
+#include "LibLsp/lsp/workspace/workspaceFolders.h"
 #include "test_helpers.h"
 
 #include <cstdint>
@@ -258,6 +260,112 @@ void TestHandleMessageReturnsFalseOnFail()
     Expect(!callback_called, "handleMessage must not invoke callback on fail");
     Expect(!issues.issues.empty(), "handleMessage must report stream fail issues");
 }
+
+struct OptionalFieldStruct
+{
+    optional<std::string> field;
+};
+MAKE_REFLECT_STRUCT(OptionalFieldStruct, field);
+
+struct NullableFieldStruct
+{
+    Nullable<std::string> field;
+};
+MAKE_REFLECT_STRUCT(NullableFieldStruct, field);
+
+template<typename T>
+std::string SerializeReflectValue(T& value)
+{
+    rapidjson::StringBuffer buffer;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+    JsonWriter json_writer(&writer);
+    Reflect(json_writer, value);
+    return buffer.GetString();
+}
+
+template<typename T>
+T ParseReflectValue(char const* json)
+{
+    rapidjson::Document document;
+    document.Parse(json);
+    JsonReader reader(&document);
+    T value;
+    Reflect(reader, value);
+    return value;
+}
+
+void TestNullableObjectMemberSerializesNull()
+{
+    NullableFieldStruct value;
+    value.field = nullptr;
+    std::string const json = SerializeReflectValue(value);
+    Expect(json.find("\"field\":null") != std::string::npos, "Nullable member must serialize explicit JSON null");
+}
+
+void TestOptionalObjectMemberOmitsWhenDisengaged()
+{
+    OptionalFieldStruct value;
+    std::string const json = SerializeReflectValue(value);
+    Expect(json.find("field") == std::string::npos, "optional member must omit key when disengaged");
+}
+
+void TestNullableRoundTripNullAndValue()
+{
+    Nullable<std::string> null_value = nullptr;
+    Nullable<std::string> parsed_null = ParseReflectValue<Nullable<std::string>>("null");
+    Expect(parsed_null.isNull(), "Nullable must deserialize JSON null as null");
+    Expect(SerializeReflectValue(null_value) == "null", "Nullable null must serialize as JSON null");
+
+    Nullable<std::string> text;
+    text = std::string("hello");
+    Nullable<std::string> parsed_text = ParseReflectValue<Nullable<std::string>>("\"hello\"");
+    Expect(!parsed_text.isNull(), "Nullable must deserialize JSON string value");
+    Expect(parsed_text.value() == "hello", "Nullable string value must round-trip");
+    Expect(SerializeReflectValue(text) == "\"hello\"", "Nullable value must serialize as JSON string");
+}
+
+void TestWorkspaceFoldersResponseNullableRoundTrip()
+{
+    WorkspaceFolders::response null_rsp;
+    null_rsp.id.set(1);
+    null_rsp.result = nullptr;
+    std::string const null_json = SerializeReflectValue(null_rsp);
+    Expect(null_json.find("\"result\":null") != std::string::npos, "workspaceFolders null response must serialize result:null");
+    WorkspaceFolders::response const parsed_null_rsp =
+        ParseReflectValue<WorkspaceFolders::response>(null_json.c_str());
+    Expect(parsed_null_rsp.result.isNull(), "workspaceFolders result:null must parse as Nullable null");
+
+    WorkspaceFolders::response empty_rsp;
+    empty_rsp.id.set(2);
+    empty_rsp.result.emplace();
+    std::string const empty_json = SerializeReflectValue(empty_rsp);
+    Expect(empty_json.find("\"result\":[]") != std::string::npos, "workspaceFolders empty response must serialize result:[]");
+    WorkspaceFolders::response const parsed_empty_rsp =
+        ParseReflectValue<WorkspaceFolders::response>(empty_json.c_str());
+    Expect(parsed_empty_rsp.result.has_value(), "workspaceFolders result:[] must parse as a Nullable value");
+    Expect(parsed_empty_rsp.result.value().empty(), "workspaceFolders result:[] must parse as an empty folder list");
+
+    WorkspaceFolders::response folder_rsp;
+    folder_rsp.id.set(3);
+    WorkspaceFolder folder;
+    folder.uri = lsDocumentUri();
+    folder.uri.raw_uri_ = "file:///tmp/project";
+    folder.name = "project";
+    folder_rsp.result = std::vector<WorkspaceFolder> {folder};
+    std::string const folder_json = SerializeReflectValue(folder_rsp);
+    Expect(folder_json.find("file:///tmp/project") != std::string::npos, "workspaceFolders folder response must serialize uri");
+    WorkspaceFolders::response const parsed_folder_rsp =
+        ParseReflectValue<WorkspaceFolders::response>(folder_json.c_str());
+    Expect(parsed_folder_rsp.result.has_value(), "workspaceFolders folder response must parse as a Nullable value");
+    Expect(parsed_folder_rsp.result.value().size() == 1, "workspaceFolders folder response must parse one folder");
+    if (parsed_folder_rsp.result.has_value() && parsed_folder_rsp.result.value().size() == 1)
+    {
+        Expect(
+            parsed_folder_rsp.result.value()[0].uri.raw_uri_ == "file:///tmp/project",
+            "workspaceFolders folder response must round-trip uri");
+        Expect(parsed_folder_rsp.result.value()[0].name == "project", "workspaceFolders folder response must round-trip name");
+    }
+}
 } // namespace
 
 int main()
@@ -276,6 +384,10 @@ int main()
     TestHandleMessageReturnsFalseOnBadStream();
     TestHandleMessageReturnsFalseOnEof();
     TestHandleMessageReturnsFalseOnFail();
+    TestNullableObjectMemberSerializesNull();
+    TestOptionalObjectMemberOmitsWhenDisengaged();
+    TestNullableRoundTripNullAndValue();
+    TestWorkspaceFoldersResponseNullableRoundTrip();
 
     return test::Failures() == 0 ? 0 : 1;
 }

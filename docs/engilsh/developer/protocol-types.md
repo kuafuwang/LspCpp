@@ -181,6 +181,20 @@ throw lsp::RequestError(lsErrorCodes::InvalidParams, "invalid parameters");
 
 Standard error codes are in `lsErrorCodes` (see LSP spec appendix).
 
+## `optional<T>` vs `Nullable<T>`
+
+Many LSP fields must distinguish **omitted fields** from **fields present with JSON null**:
+
+| Type | Omitted object member | Explicit null member | Top-level/array null |
+|------|----------------------|----------------------|----------------------|
+| `optional<T>` | key omitted | not supported (disengaged means omit) | writes `null` |
+| `Nullable<T>` | N/A (member always written) | writes `"key": null` | writes `null` |
+
+- Use `optional<T>` for spec `field?: T`.
+- Use `Nullable<T>` for `field: T | null` or whenever null and omission must differ (`LibLsp/JsonRpc/serializer.h`).
+
+For example, the `workspace/workspaceFolders` response uses `Nullable<std::vector<WorkspaceFolder>>` to represent `null`, an empty array `[]`, or a folder list.
+
 ## JDT.LS extensions
 
 The `include/LibLsp/lsp/extention/jdtls/` directory contains Eclipse JDT Language Server extensions retained for compatibility with Java tooling built on LspCpp. These are not part of the standard LSP spec.

@@ -267,8 +267,32 @@ server.overrideRequestParser<td_initialize::request>();
 |------|------|
 | `MinimalStdIOServerExample.cpp` | 最小 stdio 服务器（无 Boost） |
 | `StdIOServerExample.cpp` | 带能力、definition handler、取消的 stdio 服务器 |
+| `ProcessClientExample.cpp` | 用 `lsp::Process` 启动 server 并通过 stdio 通信的轻量客户端 |
 | `TcpServerExample.cpp` | 可配置端口的 TCP 服务器 |
 | `WebsocketExample.cpp` | WebSocket 服务器 |
-| `StdIOClientExample.cpp` | stdio 上的客户端 JSON-RPC |
+| `StdIOClientExample.cpp` | 基于 Boost.Process 的 stdio 客户端 JSON-RPC |
 
-使用 `-DLSPCPP_BUILD_EXAMPLES=ON` 构建全部示例（需要 Boost）。
+使用 `-DLSPCPP_BUILD_EXAMPLES=ON` 构建全部示例（需要 Boost；`ProcessClientExample` 仅依赖库内 `lsp::Process`）。
+
+## 启动 server 进程的客户端
+
+实现 LSP 客户端时，通常由客户端拉起 language server 子进程并通过 stdio 通信。可使用 `lsp::Process`（`LibLsp/JsonRpc/Process.h`）：
+
+```cpp
+#include "LibLsp/JsonRpc/Process.h"
+
+lsp::Process process = lsp::Process::start("/path/to/language-server", {"--stdio"});
+RemoteEndPoint point(json_handler, endpoint, log);
+point.startProcessingMessages(process.input(), process.output());
+// 发送 initialize、处理响应...
+Notify_Exit::notify exit_notify;
+point.send(exit_notify);
+point.stop();
+process.wait();
+```
+
+完整示例见 `examples/ProcessClientExample.cpp`。CTest 在开启示例时会运行：
+
+```bash
+ProcessClientExample --execPath StdIOServerExample
+```

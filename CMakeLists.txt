@@ -479,6 +479,7 @@ set(JSONRPC_LIST
         src/jsonrpc/message.cpp
         src/jsonrpc/MessageJsonHandler.cpp
         src/jsonrpc/RemoteEndPoint.cpp
+        src/jsonrpc/Process.cpp
         src/jsonrpc/serializer.cpp
         src/jsonrpc/StreamMessageProducer.cpp
         src/jsonrpc/TcpServer.cpp
@@ -749,6 +750,7 @@ if(LSPCPP_BUILD_EXAMPLES)
     endfunction(build_example)
 
     set(EXAMPLES
+            ProcessClientExample
             StdIOClientExample
             StdIOServerExample
             TcpServerExample
@@ -767,6 +769,16 @@ if(LSPCPP_BUILD_EXAMPLES)
         add_test(NAME lspcpp.stdio_client_server_example
                 COMMAND $<TARGET_FILE:StdIOClientExample> --execPath $<TARGET_FILE:StdIOServerExample>)
         set_tests_properties(lspcpp.stdio_client_server_example PROPERTIES TIMEOUT 30)
+
+        add_test(NAME lspcpp.process_client_example_build
+                COMMAND ${CMAKE_COMMAND} --build "${CMAKE_BINARY_DIR}" --target ProcessClientExample StdIOServerExample)
+        set_tests_properties(lspcpp.process_client_example_build PROPERTIES TIMEOUT 60)
+
+        add_test(NAME lspcpp.process_client_example
+                COMMAND $<TARGET_FILE:ProcessClientExample> --execPath $<TARGET_FILE:StdIOServerExample>)
+        set_tests_properties(lspcpp.process_client_example PROPERTIES
+                DEPENDS lspcpp.process_client_example_build
+                TIMEOUT 30)
 
         add_test(NAME lspcpp.websocket_example
                 COMMAND $<TARGET_FILE:WebsocketExample>)
