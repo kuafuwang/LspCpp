@@ -302,6 +302,7 @@ endfunction()
 # bring in the tl::optional interface library
 
 if (NOT LSPCPP_USE_CPP17)
+    set(OPTIONAL_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     check_submodule(third_party/optional)
     add_subdirectory(third_party/optional)
     list(APPEND LSPCPP_EXTERNAL_LIBS tl::optional)
@@ -311,9 +312,8 @@ endif ()
 # ——— Add filesystem as INTERFACE target ———
 ################################################
 if (NOT LSPCPP_USE_CPP17)
-    add_library(ghc_filesystem INTERFACE)
-    # point at the ghc filesystem headers
     set(GHC_FS_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/filesystem/include)
+    add_library(ghc_filesystem INTERFACE)
     # attach that include‑dir to our INTERFACE target
     target_include_directories(ghc_filesystem
             INTERFACE

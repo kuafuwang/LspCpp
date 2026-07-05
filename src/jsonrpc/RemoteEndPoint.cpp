@@ -3,6 +3,7 @@
 #include "LibLsp/JsonRpc/message.h"
 #include "LibLsp/JsonRpc/RemoteEndPoint.h"
 #include <future>
+#include <functional>
 #include "LibLsp/JsonRpc/Cancellation.h"
 #include "LibLsp/JsonRpc/StreamMessageProducer.h"
 #include "LibLsp/JsonRpc/NotificationInMessage.h"
@@ -169,6 +170,18 @@ PendingRequestInfo::PendingRequestInfo(std::string const& _md, PendingResponseHa
 PendingRequestInfo::PendingRequestInfo(std::string const& md) : method(md)
 {
 }
+
+struct RequestCancellationRegistry
+{
+    using CancelKey = std::pair<lsRequestId, unsigned>;
+
+    std::mutex mutex;
+    std::map<lsRequestId, std::pair<Canceler, /*Cookie*/ unsigned>> requestCancelers;
+    std::map<lsRequestId, uint64_t> pendingCancelRequests;
+    std::set<lsRequestId> seenRequestIds;
+    std::map<CancelKey, size_t> retainedRequestCancelers;
+};
+
 struct RemoteEndPoint::Data
 {
     explicit Data(lsp::JSONStreamStyle style, uint8_t workers, lsp::Log& _log, RemoteEndPoint* owner)
@@ -196,13 +209,12 @@ struct RemoteEndPoint::Data
     std::atomic<int> m_id;
     std::shared_ptr<asio::thread_pool> tp;
     // Method calls may be cancelled by ID, so keep track of their state.
-    // This needs a mutex: handlers may finish on a different thread, and that's
-    // when we clean up entries in the map.
-    mutable std::mutex request_cancelers_mutex;
-
-    std::map<lsRequestId, std::pair<Canceler, /*Cookie*/ unsigned>> requestCancelers;
-    std::map<lsRequestId, uint64_t> pendingCancelRequests;
-    std::set<lsRequestId> seenRequestIds;
+    // Async handlers may outlive the endpoint, so cancellation bookkeeping is
+    // kept in a shared registry that retained async completions can release
+    // safely after RemoteEndPoint destruction.
+    std::shared_ptr<RequestCancellationRegistry> cancellation_registry {std::make_shared<RequestCancellationRegistry>()};
+    std::shared_ptr<lsp::detail::AsyncResponseState> async_response_state {
+        std::make_shared<lsp::detail::AsyncResponseState>()};
 
     std::atomic<unsigned> next_request_cookie; // To disambiguate reused IDs, see below.
     std::atomic<uint64_t> next_message_sequence {0};
@@ -212,17 +224,17 @@ struct RemoteEndPoint::Data
     }
     void onCancel(Notify_Cancellation::notify* notify, uint64_t sequence)
     {
-        std::lock_guard<std::mutex> Lock(request_cancelers_mutex);
-        auto const it = requestCancelers.find(notify->params.id);
-        if (it != requestCancelers.end())
+        std::lock_guard<std::mutex> lock(cancellation_registry->mutex);
+        auto const it = cancellation_registry->requestCancelers.find(notify->params.id);
+        if (it != cancellation_registry->requestCancelers.end())
         {
             it->second.first(); // Invoke the canceler.
             return;
         }
-        auto pending = pendingCancelRequests.find(notify->params.id);
-        if (pending == pendingCancelRequests.end() || pending->second < sequence)
+        auto pending = cancellation_registry->pendingCancelRequests.find(notify->params.id);
+        if (pending == cancellation_registry->pendingCancelRequests.end() || pending->second < sequence)
         {
-            pendingCancelRequests[notify->params.id] = sequence;
+            cancellation_registry->pendingCancelRequests[notify->params.id] = sequence;
         }
     }
 
@@ -239,23 +251,25 @@ struct RemoteEndPoint::Data
         unsigned cookie;
         bool should_cancel = false;
         Canceler canceler_to_invoke;
+        auto registry = cancellation_registry;
         {
-            std::lock_guard<std::mutex> Lock(request_cancelers_mutex);
+            std::lock_guard<std::mutex> lock(registry->mutex);
             cookie = next_request_cookie.fetch_add(1, std::memory_order_relaxed);
-            requestCancelers[id] = {std::move(task.second), cookie};
-            auto const pending = pendingCancelRequests.find(id);
-            if (pending != pendingCancelRequests.end())
+            registry->requestCancelers[id] = {std::move(task.second), cookie};
+            auto const pending = registry->pendingCancelRequests.find(id);
+            if (pending != registry->pendingCancelRequests.end())
             {
                 // If this id was already used, a pending cancel with an older
                 // sequence belongs to a completed request and must not cancel
                 // the reused id.
-                should_cancel = seenRequestIds.find(id) == seenRequestIds.end() || pending->second > sequence;
-                pendingCancelRequests.erase(pending);
+                should_cancel = registry->seenRequestIds.find(id) == registry->seenRequestIds.end()
+                    || pending->second > sequence;
+                registry->pendingCancelRequests.erase(pending);
             }
-            seenRequestIds.insert(id);
+            registry->seenRequestIds.insert(id);
             if (should_cancel)
             {
-                canceler_to_invoke = requestCancelers[id].first;
+                canceler_to_invoke = registry->requestCancelers[id].first;
             }
         }
         if (canceler_to_invoke)
@@ -266,16 +280,62 @@ struct RemoteEndPoint::Data
         // The cookie lets us check that it hasn't been overwritten due to ID
         // reuse.
         return task.first.derive(lsp::make_scope_exit(
-            [this, id, cookie]
+            [registry, id, cookie]
             {
-                std::lock_guard<std::mutex> lock(request_cancelers_mutex);
-                auto const& it = requestCancelers.find(id);
-                if (it != requestCancelers.end() && it->second.second == cookie)
+                std::lock_guard<std::mutex> lock(registry->mutex);
+                RequestCancellationRegistry::CancelKey key {id, cookie};
+                if (registry->retainedRequestCancelers.find(key) != registry->retainedRequestCancelers.end())
                 {
-                    requestCancelers.erase(it);
+                    return;
+                }
+
+                auto const& it = registry->requestCancelers.find(id);
+                if (it != registry->requestCancelers.end() && it->second.second == cookie)
+                {
+                    registry->requestCancelers.erase(it);
                 }
             }
         ));
+    }
+
+    std::shared_ptr<void> retainRequestCancellation(lsRequestId const& id)
+    {
+        auto registry = cancellation_registry;
+        RequestCancellationRegistry::CancelKey key;
+        {
+            std::lock_guard<std::mutex> lock(registry->mutex);
+            auto const it = registry->requestCancelers.find(id);
+            if (it == registry->requestCancelers.end())
+            {
+                return {};
+            }
+            key = {id, it->second.second};
+            ++registry->retainedRequestCancelers[key];
+        }
+
+        return std::shared_ptr<void>(
+            new char(0),
+            [registry, key](void* ptr)
+            {
+                delete static_cast<char*>(ptr);
+                std::lock_guard<std::mutex> lock(registry->mutex);
+                auto retained = registry->retainedRequestCancelers.find(key);
+                if (retained != registry->retainedRequestCancelers.end())
+                {
+                    if (--retained->second != 0)
+                    {
+                        return;
+                    }
+                    registry->retainedRequestCancelers.erase(retained);
+                }
+
+                auto request = registry->requestCancelers.find(key.first);
+                if (request != registry->requestCancelers.end() && request->second.second == key.second)
+                {
+                    registry->requestCancelers.erase(request);
+                }
+            }
+        );
     }
 
     std::map<lsRequestId, std::shared_ptr<PendingRequestInfo>> _client_request_futures;
@@ -360,10 +420,34 @@ struct RemoteEndPoint::Data
         {
             input->interrupt();
         }
+        if (async_response_state)
         {
-            std::lock_guard<std::mutex> lock(request_cancelers_mutex);
-            pendingCancelRequests.clear();
-            seenRequestIds.clear();
+            async_response_state->active.store(false, std::memory_order_relaxed);
+            if (async_response_state->send_mutex)
+            {
+                std::lock_guard<std::mutex> lock(*async_response_state->send_mutex);
+                async_response_state->output.reset();
+            }
+            else
+            {
+                async_response_state->output.reset();
+            }
+        }
+        std::vector<Canceler> cancelers;
+        {
+            std::lock_guard<std::mutex> lock(cancellation_registry->mutex);
+            for (auto& entry : cancellation_registry->requestCancelers)
+            {
+                cancelers.push_back(entry.second.first);
+            }
+            cancellation_registry->requestCancelers.clear();
+            cancellation_registry->retainedRequestCancelers.clear();
+            cancellation_registry->pendingCancelRequests.clear();
+            cancellation_registry->seenRequestIds.clear();
+        }
+        for (auto& canceler : cancelers)
+        {
+            canceler();
         }
         failPendingRequests();
         if (tp)
@@ -448,6 +532,31 @@ CancelMonitor RemoteEndPoint::getCancelMonitor(lsRequestId const& id)
     return [] { return 0; };
 }
 
+std::shared_ptr<lsp::detail::AsyncResponseState> RemoteEndPoint::getAsyncResponseState() const
+{
+    return d_ptr->async_response_state;
+}
+
+std::shared_ptr<void> RemoteEndPoint::retainRequestCancellation(lsRequestId const& id)
+{
+    return d_ptr->retainRequestCancellation(id);
+}
+
+void RemoteEndPoint::sendAsyncMessage(std::shared_ptr<lsp::detail::AsyncResponseState> const& state, LspMessage& msg)
+{
+    if (!state || !state->active.load(std::memory_order_relaxed) || !state->send_mutex)
+    {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(*state->send_mutex);
+    if (!state->active.load(std::memory_order_relaxed) || !state->output || state->output->bad())
+    {
+        return;
+    }
+    WriterMsg(state->output, msg);
+}
+
 RemoteEndPoint::RemoteEndPoint(
     std::shared_ptr<MessageJsonHandler> const& json_handler, std::shared_ptr<Endpoint> const& localEndPoint,
     lsp::Log& _log, lsp::JSONStreamStyle style, uint8_t max_workers
@@ -456,6 +565,7 @@ RemoteEndPoint::RemoteEndPoint(
 {
     jsonHandler->method2notification[Notify_Cancellation::notify::kMethodInfo] = [](Reader& visitor)
     { return Notify_Cancellation::notify::ReflectReader(visitor); };
+    d_ptr->async_response_state->send_mutex = m_sendMutex;
 
     d_ptr->quit.store(false, std::memory_order_relaxed);
 }
@@ -590,7 +700,7 @@ bool RemoteEndPoint::dispatch(std::string const& content, uint64_t sequence)
 
 bool RemoteEndPoint::internalSendRequest(RequestInMessage& info, GenericResponseHandler handler)
 {
-    std::lock_guard<std::mutex> lock(m_sendMutex);
+    std::lock_guard<std::mutex> lock(*m_sendMutex);
     if (!d_ptr->output || d_ptr->output->bad())
     {
         std::string desc = "Output isn't good any more:\n";
@@ -742,6 +852,9 @@ void RemoteEndPoint::startProcessingMessages(std::shared_ptr<lsp::istream> r, st
     d_ptr->quit.store(false, std::memory_order_relaxed);
     d_ptr->input = r;
     d_ptr->output = w;
+    d_ptr->async_response_state = std::make_shared<lsp::detail::AsyncResponseState>();
+    d_ptr->async_response_state->output = w;
+    d_ptr->async_response_state->send_mutex = m_sendMutex;
     d_ptr->message_producer->bind(r);
     d_ptr->tp = std::make_shared<asio::thread_pool>(d_ptr->max_workers);
     message_producer_thread_ = std::make_shared<std::thread>(
@@ -792,7 +905,7 @@ void RemoteEndPoint::stop()
 void RemoteEndPoint::sendMsg(LspMessage& msg)
 {
 
-    std::lock_guard<std::mutex> lock(m_sendMutex);
+    std::lock_guard<std::mutex> lock(*m_sendMutex);
     if (!d_ptr->output || d_ptr->output->bad())
     {
         std::string info = "Output isn't good any more:\n";

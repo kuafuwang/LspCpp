@@ -1296,6 +1296,285 @@ void TestRemoteEndPointRestartTwice()
 
     Expect(handled_count.load(std::memory_order_relaxed) == 2, "RemoteEndPoint must handle requests across two restarts");
 }
+
+void TestRegisterHandlerThrowsRequestError()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    std::string const request = R"({"jsonrpc":"2.0","id":1501,"method":"initialize","params":{}})";
+    auto input_stream = std::make_shared<StringIStream>(test::MakeLspFrame(request));
+    auto output_stream = std::make_shared<StringOStream>();
+
+    RemoteEndPoint point(json_handler, endpoint, log);
+    point.registerHandler(
+        [](td_initialize::request const&) -> td_initialize::response
+        {
+            throw lsp::RequestError(lsErrorCodes::InvalidParams, "invalid initialize params");
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    std::string const output = WaitForOutputContaining(output_stream, "\"code\":-32602");
+    point.stop();
+
+    Expect(output.find("\"id\":1501") != std::string::npos, "RequestError response must preserve request id");
+    Expect(
+        output.find("invalid initialize params") != std::string::npos,
+        "RequestError response must serialize error message");
+}
+
+void TestAsyncRegisterHandlerCompletesLater()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    std::string const request = R"({"jsonrpc":"2.0","id":1502,"method":"initialize","params":{}})";
+    auto input_stream = std::make_shared<StringIStream>(test::MakeLspFrame(request));
+    auto output_stream = std::make_shared<StringOStream>();
+
+    RemoteEndPoint point(json_handler, endpoint, log);
+    point.registerHandler(
+        [](td_initialize::request const& req) -> lsp::future<td_initialize::response>
+        {
+            auto promise = std::make_shared<lsp::promise<td_initialize::response>>();
+            auto future = promise->get_future();
+            std::thread(
+                [promise, id = req.id]()
+                {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+                    td_initialize::response rsp;
+                    rsp.id = id;
+                    rsp.result.capabilities.hoverProvider = true;
+                    promise->set_value(std::move(rsp));
+                }
+            ).detach();
+            return future;
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    std::string const output = WaitForOutputContaining(output_stream, "\"hoverProvider\":true");
+    point.stop();
+
+    Expect(output.find("\"id\":1502") != std::string::npos, "async handler response must preserve request id");
+    Expect(
+        output.find("\"hoverProvider\":true") != std::string::npos,
+        "async handler response must include handler result");
+}
+
+void TestAsyncRegisterHandlerReturnsErrorResult()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    std::string const request = R"({"jsonrpc":"2.0","id":1503,"method":"initialize","params":{}})";
+    auto input_stream = std::make_shared<StringIStream>(test::MakeLspFrame(request));
+    auto output_stream = std::make_shared<StringOStream>();
+
+    RemoteEndPoint point(json_handler, endpoint, log);
+    point.registerHandler(
+        [](td_initialize::request const&) -> lsp::future<lsp::ResponseOrError<td_initialize::response>>
+        {
+            auto promise = std::make_shared<lsp::promise<lsp::ResponseOrError<td_initialize::response>>>();
+            auto future = promise->get_future();
+            std::thread(
+                [promise]()
+                {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+                    Rsp_Error error;
+                    error.error.code = lsErrorCodes::InvalidParams;
+                    error.error.message = "async invalid params";
+                    promise->set_value(lsp::ResponseOrError<td_initialize::response>(std::move(error)));
+                }
+            ).detach();
+            return future;
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    std::string const output = WaitForOutputContaining(output_stream, "async invalid params");
+    point.stop();
+
+    Expect(output.find("\"id\":1503") != std::string::npos, "async error response must preserve request id");
+    Expect(
+        output.find("\"code\":-32602") != std::string::npos,
+        "async error response must serialize error code");
+}
+
+void TestAsyncRegisterHandlerWithMonitorCompletesLater()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    std::string const request = R"({"jsonrpc":"2.0","id":1504,"method":"initialize","params":{}})";
+    auto input_stream = std::make_shared<StringIStream>(test::MakeLspFrame(request));
+    auto output_stream = std::make_shared<StringOStream>();
+
+    std::atomic<bool> monitor_seen {false};
+    RemoteEndPoint point(json_handler, endpoint, log);
+    point.registerHandler(
+        [&](td_initialize::request const& req, CancelMonitor const& monitor) -> lsp::future<td_initialize::response>
+        {
+            auto promise = std::make_shared<lsp::promise<td_initialize::response>>();
+            auto future = promise->get_future();
+            std::thread(
+                [promise, id = req.id, monitor, &monitor_seen]()
+                {
+                    monitor_seen.store(monitor && monitor(), std::memory_order_relaxed);
+                    td_initialize::response rsp;
+                    rsp.id = id;
+                    promise->set_value(std::move(rsp));
+                }
+            ).detach();
+            return future;
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    std::string const output = WaitForOutputContaining(output_stream, "\"id\":1504");
+    point.stop();
+
+    Expect(output.find("\"id\":1504") != std::string::npos, "async cancellable handler must produce a response");
+    Expect(!monitor_seen.load(std::memory_order_relaxed), "async handler must receive a live cancel monitor");
+}
+
+void TestAsyncHandlerDoesNotBlockDispatchWorker()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    std::atomic<int> handled_count {0};
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 1);
+    point.registerHandler(
+        [&](td_initialize::request const& req) -> lsp::future<td_initialize::response>
+        {
+            int const count = handled_count.fetch_add(1, std::memory_order_relaxed) + 1;
+            auto promise = std::make_shared<lsp::promise<td_initialize::response>>();
+            auto future = promise->get_future();
+            if (count == 2)
+            {
+                td_initialize::response rsp;
+                rsp.id = req.id;
+                promise->set_value(std::move(rsp));
+            }
+            return future;
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":1601,"method":"initialize","params":{}})"));
+    for (int i = 0; i < 100 && handled_count.load(std::memory_order_relaxed) < 1; ++i)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":1602,"method":"initialize","params":{}})"));
+
+    std::string const output = WaitForOutputContaining(output_stream, "\"id\":1602");
+    point.stop();
+
+    Expect(handled_count.load(std::memory_order_relaxed) >= 2, "pending async future must not block dispatch worker");
+    Expect(output.find("\"id\":1602") != std::string::npos, "second request must complete while first future is pending");
+}
+
+void TestAsyncCancellationAfterHandlerReturns()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    std::atomic<bool> handler_started {false};
+    std::atomic<bool> saw_cancel {false};
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 1);
+    point.registerHandler(
+        [&](td_initialize::request const& req, CancelMonitor const& monitor) -> lsp::future<td_initialize::response>
+        {
+            auto promise = std::make_shared<lsp::promise<td_initialize::response>>();
+            auto future = promise->get_future();
+            handler_started.store(true, std::memory_order_relaxed);
+            std::thread(
+                [promise, id = req.id, monitor, &saw_cancel]()
+                {
+                    for (int i = 0; i < 100; ++i)
+                    {
+                        if (monitor && monitor())
+                        {
+                            saw_cancel.store(true, std::memory_order_relaxed);
+                            break;
+                        }
+                        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                    }
+                    td_initialize::response rsp;
+                    rsp.id = id;
+                    promise->set_value(std::move(rsp));
+                }
+            ).detach();
+            return future;
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":1603,"method":"initialize","params":{}})"));
+    for (int i = 0; i < 100 && !handler_started.load(std::memory_order_relaxed); ++i)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":1603}})"));
+
+    std::string const output = WaitForOutputContaining(output_stream, "\"id\":1603");
+    point.stop();
+
+    Expect(output.find("\"id\":1603") != std::string::npos, "cancelled async request must still be able to respond");
+    Expect(saw_cancel.load(std::memory_order_relaxed), "async handler monitor must observe cancel after handler returns");
+}
+
+void TestStopDoesNotWaitForUnfinishedAsyncFuture()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    std::atomic<bool> handler_started {false};
+    auto point = new RemoteEndPoint(json_handler, endpoint, log);
+    point->registerHandler(
+        [&](td_initialize::request const&) -> lsp::future<td_initialize::response>
+        {
+            auto promise = std::make_shared<lsp::promise<td_initialize::response>>();
+            handler_started.store(true, std::memory_order_relaxed);
+            return promise->get_future();
+        });
+    point->startProcessingMessages(input_stream, output_stream);
+
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":1604,"method":"initialize","params":{}})"));
+    for (int i = 0; i < 100 && !handler_started.load(std::memory_order_relaxed); ++i)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    std::atomic<bool> stopped {false};
+    std::thread stopper(
+        [&]()
+        {
+            point->stop();
+            stopped.store(true, std::memory_order_relaxed);
+        });
+    for (int i = 0; i < 100 && !stopped.load(std::memory_order_relaxed); ++i)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    Expect(stopped.load(std::memory_order_relaxed), "stop must not wait for an unfinished async handler future");
+    if (stopped.load(std::memory_order_relaxed))
+    {
+        stopper.join();
+        delete point;
+    }
+    else
+    {
+        stopper.detach();
+    }
+}
 } // namespace
 
 int main()
@@ -1335,6 +1614,13 @@ int main()
     TestDispatchUnknownNotificationReturnsFalse();
     TestDispatchResponseParseFailure();
     TestRegisterHandlerReturnsErrorResponse();
+    TestRegisterHandlerThrowsRequestError();
+    TestAsyncRegisterHandlerCompletesLater();
+    TestAsyncRegisterHandlerReturnsErrorResult();
+    TestAsyncRegisterHandlerWithMonitorCompletesLater();
+    TestAsyncHandlerDoesNotBlockDispatchWorker();
+    TestAsyncCancellationAfterHandlerReturns();
+    TestStopDoesNotWaitForUnfinishedAsyncFuture();
     TestCancelRequestWhenNotWorkingOrUnknownId();
     TestRemoteEndPointRestartTwice();
 
