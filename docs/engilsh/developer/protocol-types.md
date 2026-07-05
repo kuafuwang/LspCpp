@@ -213,6 +213,35 @@ Expect(parsed.field == value.field, "field must round-trip");
 
 This catches reflection macro mistakes early.
 
+## MetaModel coverage checker
+
+LspCpp ships a read-only checker in `tools/check_lsp_metamodel_coverage.py` that compares the hand-maintained method surface against a vendored LSP 3.18 metaModel snapshot (`tools/lsp-metaModel-3.18.json`). It reports:
+
+- standard LSP methods missing `DEFINE_*` type declarations
+- declared methods missing request/response/notification parsers in `ProtocolJsonHandler.cpp`
+- response parsers without matching request parsers
+- duplicate registrations in `ProtocolJsonHandler.cpp`
+
+Run locally:
+
+```shell
+python3 tools/check_lsp_metamodel_coverage.py
+```
+
+Exploratory output without failing on known gaps:
+
+```shell
+python3 tools/check_lsp_metamodel_coverage.py --warn-only
+```
+
+With tests enabled, CTest runs it as well:
+
+```shell
+ctest -R lspcpp.lsp_metamodel_coverage --output-on-failure
+```
+
+Known intentional gaps live in `tools/lsp-metamodel-allowlist.json`. When you **intentionally** defer a standard LSP method, add it to the allowlist. When you **implement** a standard LSP method, update the type declaration and `ProtocolJsonHandler` registration, then remove it from the allowlist. If an allowlist entry no longer matches an actual gap (a stale entry), the checker reports it under `Stale allowlist entries` and **fails**, keeping the allowlist in sync with the implementation. Vendor extensions (`java/*`, `sonarlint/*`, etc.) are reported separately and do not fail CTest.
+
 ## Further reading
 
 - [LSP specification](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/)

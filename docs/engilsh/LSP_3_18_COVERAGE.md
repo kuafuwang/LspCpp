@@ -50,3 +50,9 @@ specification. Status values:
 | Inline completion capabilities | implemented | Added by this upgrade. |
 | Pull diagnostic capabilities/providers | implemented | Added by this upgrade. |
 | Text document content capability/provider | implemented | Added by this upgrade. |
+
+## Automated verification
+
+`tools/check_lsp_metamodel_coverage.py` compares `DEFINE_*` declarations and `ProtocolJsonHandler` registrations against a vendored LSP 3.18 metaModel snapshot. Known intentional gaps are tracked in `tools/lsp-metamodel-allowlist.json`.
+
+The checker also surfaces a doc/source mismatch: `window/showMessageRequest` is a distinct request in the metaModel, but the current `WindowShowMessage` type still uses the `"window/showMessage"` method string (colliding with the `window/showMessage` notification). The request therefore remains classified as missing until that method string is corrected.

@@ -46,3 +46,9 @@
 | Inline completion capabilities | implemented | 本次升级新增。 |
 | Pull diagnostic capabilities/providers | implemented | 本次升级新增。 |
 | Text document content capability/provider | implemented | 本次升级新增。 |
+
+## 自动化校验
+
+`tools/check_lsp_metamodel_coverage.py` 会将 `DEFINE_*` 声明、`ProtocolJsonHandler` 注册与 vendored 的 LSP 3.18 metaModel 快照对比。已知缺口记录在 `tools/lsp-metamodel-allowlist.json`。
+
+校验器还暴露了一处文档/源码不一致：`window/showMessageRequest` 在 metaModel 中是独立 request，但当前 `WindowShowMessage` 类型仍使用 `"window/showMessage"` 作为 method 字符串（与 `window/showMessage` notification 冲突）。该 request 因此仍归类为 `missing`，直到 method 字符串修正为止。
