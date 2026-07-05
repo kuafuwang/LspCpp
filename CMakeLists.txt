@@ -643,6 +643,14 @@ if(LSPCPP_BUILD_TESTS)
         endif()
     endif()
 
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
+    add_test(NAME lspcpp.lsp_metamodel_coverage
+            COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/check_lsp_metamodel_coverage.py
+            --repo-root ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(lspcpp.lsp_metamodel_coverage PROPERTIES TIMEOUT 60)
+
     add_test(NAME lspcpp.jsonrpc
             COMMAND $<TARGET_FILE:lspcpp_jsonrpc_tests>)
     add_test(NAME lspcpp.stream_message_producer

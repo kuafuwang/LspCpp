@@ -213,6 +213,35 @@ Expect(parsed.field == value.field, "field must round-trip");
 
 可尽早发现 reflection 宏错误。
 
+## MetaModel 覆盖校验
+
+LspCpp 在 `tools/check_lsp_metamodel_coverage.py` 中维护一个只读校验器，将手工维护的方法面与 vendored 的 LSP 3.18 metaModel 快照（`tools/lsp-metaModel-3.18.json`）对比。它会检查：
+
+- 标准 LSP 方法是否缺少 `DEFINE_*` 类型声明
+- 已声明的方法是否在 `ProtocolJsonHandler.cpp` 中注册了 request/response/notification 解析器
+- 是否只有 response 解析器、缺少 request 解析器
+- `ProtocolJsonHandler.cpp` 中是否存在重复注册
+
+本地运行：
+
+```shell
+python3 tools/check_lsp_metamodel_coverage.py
+```
+
+探索性报告（不因已知缺口失败）：
+
+```shell
+python3 tools/check_lsp_metamodel_coverage.py --warn-only
+```
+
+开启测试构建后，CTest 也会运行：
+
+```shell
+ctest -R lspcpp.lsp_metamodel_coverage --output-on-failure
+```
+
+已知有意缺口记录在 `tools/lsp-metamodel-allowlist.json`。当你**有意**保留某个标准 LSP 缺口时，把对应 method 加入 allowlist；当你**新实现**某个标准 LSP 方法时，应同时更新类型声明、`ProtocolJsonHandler` 注册，并从 allowlist 中移除该项。若 allowlist 中的条目已不再是实际缺口（过期条目），校验器会在 `Stale allowlist entries` 一节报告并**失败**，以强制保持 allowlist 与实现同步。厂商扩展（`java/*`、`sonarlint/*` 等）单独分组，仅作信息报告，不会导致 CTest 失败。
+
 ## 延伸阅读
 
 - [LSP 规范](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/)
