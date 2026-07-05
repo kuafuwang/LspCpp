@@ -267,8 +267,32 @@ See [Protocol types](../developer/protocol-types.md) for how these types are gen
 |---------|-------------|
 | `MinimalStdIOServerExample.cpp` | Smallest stdio server (no Boost) |
 | `StdIOServerExample.cpp` | stdio with capabilities, definition handler, cancellation |
+| `ProcessClientExample.cpp` | Lightweight client that launches a server with `lsp::Process` over stdio |
 | `TcpServerExample.cpp` | TCP server on a configurable port |
 | `WebsocketExample.cpp` | WebSocket server |
-| `StdIOClientExample.cpp` | Client-side JSON-RPC over stdio |
+| `StdIOClientExample.cpp` | Boost.Process-based client JSON-RPC over stdio |
 
-Build all examples with `-DLSPCPP_BUILD_EXAMPLES=ON` (requires Boost).
+Build all examples with `-DLSPCPP_BUILD_EXAMPLES=ON` (requires Boost; `ProcessClientExample` only needs the in-tree `lsp::Process` helper).
+
+## Launching a server process from a client
+
+LSP clients usually spawn the language server and talk over stdio. Use `lsp::Process` (`LibLsp/JsonRpc/Process.h`):
+
+```cpp
+#include "LibLsp/JsonRpc/Process.h"
+
+lsp::Process process = lsp::Process::start("/path/to/language-server", {"--stdio"});
+RemoteEndPoint point(json_handler, endpoint, log);
+point.startProcessingMessages(process.input(), process.output());
+// send initialize, handle responses...
+Notify_Exit::notify exit_notify;
+point.send(exit_notify);
+point.stop();
+process.wait();
+```
+
+See `examples/ProcessClientExample.cpp` for a full walkthrough. With examples enabled, CTest runs:
+
+```bash
+ProcessClientExample --execPath StdIOServerExample
+```

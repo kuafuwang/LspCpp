@@ -181,6 +181,20 @@ throw lsp::RequestError(lsErrorCodes::InvalidParams, "invalid parameters");
 
 标准错误码在 `lsErrorCodes`（见 LSP 规范附录）。
 
+## `optional<T>` 与 `Nullable<T>`
+
+LSP 里很多字段需要区分 **字段缺省** 与 **字段存在且值为 JSON null**：
+
+| 类型 | 对象成员缺省 | 对象成员显式 null | 顶层/数组元素 null |
+|------|--------------|-------------------|--------------------|
+| `optional<T>` | 省略 key | 不支持（缺省即 omit） | 写出 `null` |
+| `Nullable<T>` | 不适用（成员总会写出） | 写出 `"key": null` | 写出 `null` |
+
+- 规范里的 `field?: T` 用 `optional<T>`。
+- 规范里的 `field: T \| null` 或必须区分 null 与缺省时，用 `Nullable<T>`（定义在 `LibLsp/JsonRpc/serializer.h`）。
+
+例如 `workspace/workspaceFolders` 响应使用 `Nullable<std::vector<WorkspaceFolder>>`，可分别表示 `null`、空数组 `[ ]` 与文件夹列表。
+
 ## JDT.LS 扩展
 
 `include/LibLsp/lsp/extention/jdtls/` 目录包含 Eclipse JDT Language Server 扩展，为基于 LspCpp 的 Java 工具保留兼容性。这些不属于标准 LSP 规范。
