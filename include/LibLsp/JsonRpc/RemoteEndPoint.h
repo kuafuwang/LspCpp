@@ -7,6 +7,7 @@
 #include "LibLsp/JsonRpc/NotificationInMessage.h"
 #include "traits.h"
 #include <atomic>
+#include <chrono>
 #include <functional>
 #include <future>
 #include <memory>
@@ -128,6 +129,20 @@ struct is_lsp_future<lsp::future<T>> : std::true_type
 {
 };
 
+template<typename T, typename ResponseType>
+struct is_valid_async_request_return : std::false_type
+{
+};
+
+template<typename ValueType, typename ResponseType>
+struct is_valid_async_request_return<lsp::future<ValueType>, ResponseType>
+    : std::integral_constant<
+        bool,
+        std::is_same<ValueType, ResponseType>::value
+            || std::is_same<ValueType, lsp::ResponseOrError<ResponseType>>::value>
+{
+};
+
 template<typename F>
 using handler_return_t = typename lsp::traits::SignatureOfT<F>::ret;
 
@@ -177,14 +192,6 @@ class RemoteEndPoint : MessageIssueHandler
     template<typename T>
     using IsNotify = lsp::traits::EnableIfIsType<NotificationInMessage, T>;
 
-    template<typename F, typename ReturnType>
-    using IsRequestHandler = lsp::traits::EnableIf<
-        lsp::traits::CompatibleWith<F, std::function<ReturnType(RequestInMessage const&)>>::value>;
-
-    template<typename F, typename ReturnType>
-    using IsRequestHandlerWithMonitor = lsp::traits::EnableIf<lsp::traits::CompatibleWith<
-        F, std::function<ReturnType(RequestInMessage const&, CancelMonitor const&)>>::value>;
-
     template<typename F, typename RequestType, typename ResponseType>
     using EnableIfSyncRequestHandler = lsp::traits::EnableIf<
         !lsp::detail::is_lsp_future<lsp::detail::handler_return_t<F>>::value
@@ -200,12 +207,12 @@ class RemoteEndPoint : MessageIssueHandler
 
     template<typename F, typename RequestType, typename ResponseType>
     using EnableIfAsyncRequestHandler = lsp::traits::EnableIf<
-        lsp::detail::is_lsp_future<lsp::detail::handler_return_t<F>>::value
+        lsp::detail::is_valid_async_request_return<lsp::detail::handler_return_t<F>, ResponseType>::value
             && lsp::traits::CompatibleWith<F, std::function<lsp::future<ResponseType>(RequestType const&)>>::value>;
 
     template<typename F, typename RequestType, typename ResponseType>
     using EnableIfAsyncRequestHandlerWithMonitor = lsp::traits::EnableIf<
-        lsp::detail::is_lsp_future<lsp::detail::handler_return_t<F>>::value
+        lsp::detail::is_valid_async_request_return<lsp::detail::handler_return_t<F>, ResponseType>::value
             && lsp::traits::CompatibleWith<
                 F, std::function<lsp::future<ResponseType>(RequestType const&, CancelMonitor const&)>>::value>;
 
@@ -416,10 +423,19 @@ public:
 private:
     std::shared_ptr<lsp::detail::AsyncResponseState> getAsyncResponseState() const;
     std::shared_ptr<void> retainRequestCancellation(lsRequestId const& id);
+    void postAsyncCompletion(std::function<bool()>&& completion);
     static void sendAsyncMessage(std::shared_ptr<lsp::detail::AsyncResponseState> const& state, LspMessage& msg);
     void sendRspError(lsRequestId const& id, lsp::RequestError const& error)
     {
         Rsp_Error rsp = lsp::toRspError(id, error);
+        send(rsp);
+    }
+    void sendInternalError(lsRequestId const& id, std::string const& message)
+    {
+        Rsp_Error rsp;
+        rsp.id = id;
+        rsp.error.code = lsErrorCodes::InternalError;
+        rsp.error.message = message;
         send(rsp);
     }
     CancelMonitor getCancelMonitor(lsRequestId const&);
@@ -464,9 +480,13 @@ private:
         auto shared_future = std::make_shared<Future>(std::move(fut));
         auto response_state = getAsyncResponseState();
         auto cancellation_retainer = retainRequestCancellation(id);
-        std::thread(
+        postAsyncCompletion(
             [id, shared_future, response_state, cancellation_retainer]() mutable
             {
+                if (shared_future->wait_for(std::chrono::milliseconds(0)) != lsp::future_status::ready)
+                {
+                    return false;
+                }
                 try
                 {
                     sendAsyncHandlerResult(
@@ -488,8 +508,17 @@ private:
                     rsp.error.message = error.what();
                     sendAsyncMessage(response_state, rsp);
                 }
+                catch (...)
+                {
+                    Rsp_Error rsp;
+                    rsp.id = id;
+                    rsp.error.code = lsErrorCodes::InternalError;
+                    rsp.error.message = "Unhandled exception.";
+                    sendAsyncMessage(response_state, rsp);
+                }
+                return true;
             }
-        ).detach();
+        );
     }
     template<typename F, typename RequestType, typename ResponseType>
     void registerSyncRequestHandler(F&& handler)
@@ -507,6 +536,14 @@ private:
                 catch (lsp::RequestError const& error)
                 {
                     sendRspError(req->id, error);
+                }
+                catch (std::exception const& error)
+                {
+                    sendInternalError(req->id, error.what());
+                }
+                catch (...)
+                {
+                    sendInternalError(req->id, "Unhandled exception.");
                 }
                 return true;
             }
@@ -534,6 +571,14 @@ private:
                 {
                     sendRspError(req->id, error);
                 }
+                catch (std::exception const& error)
+                {
+                    sendInternalError(req->id, error.what());
+                }
+                catch (...)
+                {
+                    sendInternalError(req->id, "Unhandled exception.");
+                }
                 return true;
             }
         );
@@ -555,6 +600,14 @@ private:
                 {
                     sendRspError(req->id, error);
                 }
+                catch (std::exception const& error)
+                {
+                    sendInternalError(req->id, error.what());
+                }
+                catch (...)
+                {
+                    sendInternalError(req->id, "Unhandled exception.");
+                }
                 return true;
             }
         );
@@ -575,6 +628,14 @@ private:
                 catch (lsp::RequestError const& error)
                 {
                     sendRspError(req->id, error);
+                }
+                catch (std::exception const& error)
+                {
+                    sendInternalError(req->id, error.what());
+                }
+                catch (...)
+                {
+                    sendInternalError(req->id, "Unhandled exception.");
                 }
                 return true;
             }
