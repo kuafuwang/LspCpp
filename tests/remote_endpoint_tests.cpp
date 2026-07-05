@@ -14,7 +14,9 @@
 #include <memory>
 #include <mutex>
 #include <set>
+#include <stdexcept>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace
@@ -24,6 +26,40 @@ using test::Expect;
 using test::FeedableIStream;
 using test::StringIStream;
 using test::StringOStream;
+
+static_assert(
+    lsp::detail::is_valid_async_request_return<lsp::future<td_initialize::response>, td_initialize::response>::value,
+    "request handlers must accept future<Response>");
+static_assert(
+    lsp::detail::is_valid_async_request_return<
+        lsp::future<lsp::ResponseOrError<td_initialize::response>>,
+        td_initialize::response>::value,
+    "request handlers must accept future<ResponseOrError<Response>>");
+static_assert(
+    !lsp::detail::is_valid_async_request_return<lsp::future<int>, td_initialize::response>::value,
+    "request handlers must reject futures with unrelated value types");
+
+struct MoveOnlyFutureValue
+{
+    MoveOnlyFutureValue() = default;
+    explicit MoveOnlyFutureValue(int value) : value(value)
+    {
+    }
+    MoveOnlyFutureValue(MoveOnlyFutureValue const&) = delete;
+    MoveOnlyFutureValue& operator=(MoveOnlyFutureValue const&) = delete;
+    MoveOnlyFutureValue(MoveOnlyFutureValue&& other) noexcept : value(other.value)
+    {
+        other.value = 0;
+    }
+    MoveOnlyFutureValue& operator=(MoveOnlyFutureValue&& other) noexcept
+    {
+        value = other.value;
+        other.value = 0;
+        return *this;
+    }
+
+    int value = 0;
+};
 
 std::string WaitForOutputContaining(std::shared_ptr<StringOStream> const& output_stream, std::string const& needle)
 {
@@ -1323,6 +1359,31 @@ void TestRegisterHandlerThrowsRequestError()
         "RequestError response must serialize error message");
 }
 
+void TestRegisterHandlerThrowsStdException()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    std::string const request = R"({"jsonrpc":"2.0","id":1505,"method":"initialize","params":{}})";
+    auto input_stream = std::make_shared<StringIStream>(test::MakeLspFrame(request));
+    auto output_stream = std::make_shared<StringOStream>();
+
+    RemoteEndPoint point(json_handler, endpoint, log);
+    point.registerHandler(
+        [](td_initialize::request const&) -> td_initialize::response
+        {
+            throw std::runtime_error("sync handler failed");
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    std::string const output = WaitForOutputContaining(output_stream, "sync handler failed");
+    point.stop();
+
+    Expect(output.find("\"id\":1505") != std::string::npos, "std::exception response must preserve request id");
+    Expect(output.find("\"code\":-32603") != std::string::npos, "std::exception must become InternalError");
+    Expect(output.find("sync handler failed") != std::string::npos, "std::exception message must be serialized");
+}
+
 void TestAsyncRegisterHandlerCompletesLater()
 {
     DummyLog log;
@@ -1475,6 +1536,52 @@ void TestAsyncHandlerDoesNotBlockDispatchWorker()
     Expect(output.find("\"id\":1602") != std::string::npos, "second request must complete while first future is pending");
 }
 
+void TestMultiplePendingAsyncFuturesBothComplete()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    std::atomic<bool> release {false};
+    RemoteEndPoint point(json_handler, endpoint, log);
+    point.registerHandler(
+        [&](td_initialize::request const& req) -> lsp::future<td_initialize::response>
+        {
+            auto promise = std::make_shared<lsp::promise<td_initialize::response>>();
+            auto future = promise->get_future();
+            std::thread(
+                [promise, id = req.id, &release]()
+                {
+                    for (int i = 0; i < 200 && !release.load(std::memory_order_relaxed); ++i)
+                    {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                    }
+                    td_initialize::response rsp;
+                    rsp.id = id;
+                    promise->set_value(std::move(rsp));
+                }
+            ).detach();
+            return future;
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    // Queue two unready futures at the same time, then release both. The
+    // completion loop must keep rotating through pending futures and answer
+    // each request once its future becomes ready.
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":1605,"method":"initialize","params":{}})"));
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":1606,"method":"initialize","params":{}})"));
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    release.store(true, std::memory_order_relaxed);
+
+    std::string const output = WaitForOutputContainingAll(output_stream, {"\"id\":1605", "\"id\":1606"});
+    point.stop();
+
+    Expect(output.find("\"id\":1605") != std::string::npos, "first pending async future must complete");
+    Expect(output.find("\"id\":1606") != std::string::npos, "second pending async future must complete");
+}
+
 void TestAsyncCancellationAfterHandlerReturns()
 {
     DummyLog log;
@@ -1575,6 +1682,17 @@ void TestStopDoesNotWaitForUnfinishedAsyncFuture()
         stopper.detach();
     }
 }
+
+void TestFutureGetSupportsMoveOnlyValue()
+{
+    lsp::promise<MoveOnlyFutureValue> promise;
+    auto future = promise.get_future();
+
+    promise.set_value(MoveOnlyFutureValue(42));
+    MoveOnlyFutureValue value = future.get();
+
+    Expect(value.value == 42, "future::get must move move-only values out of the shared state");
+}
 } // namespace
 
 int main()
@@ -1615,12 +1733,15 @@ int main()
     TestDispatchResponseParseFailure();
     TestRegisterHandlerReturnsErrorResponse();
     TestRegisterHandlerThrowsRequestError();
+    TestRegisterHandlerThrowsStdException();
     TestAsyncRegisterHandlerCompletesLater();
     TestAsyncRegisterHandlerReturnsErrorResult();
     TestAsyncRegisterHandlerWithMonitorCompletesLater();
     TestAsyncHandlerDoesNotBlockDispatchWorker();
+    TestMultiplePendingAsyncFuturesBothComplete();
     TestAsyncCancellationAfterHandlerReturns();
     TestStopDoesNotWaitForUnfinishedAsyncFuture();
+    TestFutureGetSupportsMoveOnlyValue();
     TestCancelRequestWhenNotWorkingOrUnknownId();
     TestRemoteEndPointRestartTwice();
 

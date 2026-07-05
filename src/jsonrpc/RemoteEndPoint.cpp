@@ -15,7 +15,9 @@
 #include "LibLsp/JsonRpc/ScopeExit.h"
 #include "LibLsp/JsonRpc/stream.h"
 #include <atomic>
+#include <condition_variable>
 #include <cstdint>
+#include <deque>
 #include <optional>
 #include <set>
 #include <thread>
@@ -198,6 +200,7 @@ struct RemoteEndPoint::Data
     }
     ~Data()
     {
+        stopAsyncCompletionLoop();
         if (tp)
         {
             tp->stop();
@@ -346,6 +349,11 @@ struct RemoteEndPoint::Data
     std::shared_ptr<lsp::ostream> output;
 
     std::mutex m_requestInfo;
+    std::mutex async_completion_mutex;
+    std::condition_variable async_completion_cv;
+    std::deque<std::function<bool()>> async_completions;
+    std::thread async_completion_thread;
+    bool async_completion_stop = false;
 
     bool pendingRequest(RequestInMessage& info, PendingResponseHandler&& handler)
     {
@@ -409,6 +417,102 @@ struct RemoteEndPoint::Data
             it.second->complete(msg);
         }
     }
+    void asyncCompletionLoop()
+    {
+        // Number of consecutive completions that were still pending. Once it
+        // reaches the queue size, a full pass made no progress and the loop
+        // must back off instead of busy-polling the same unready futures.
+        size_t pending_streak = 0;
+        for (;;)
+        {
+            std::function<bool()> completion;
+            {
+                std::unique_lock<std::mutex> lock(async_completion_mutex);
+                async_completion_cv.wait(
+                    lock, [&] { return async_completion_stop || !async_completions.empty(); }
+                );
+                if (async_completion_stop)
+                {
+                    return;
+                }
+                if (pending_streak >= async_completions.size())
+                {
+                    size_t const size_before_wait = async_completions.size();
+                    async_completion_cv.wait_for(
+                        lock,
+                        std::chrono::milliseconds(10),
+                        [&] { return async_completion_stop || async_completions.size() > size_before_wait; }
+                    );
+                    if (async_completion_stop)
+                    {
+                        return;
+                    }
+                    pending_streak = 0;
+                }
+                completion = std::move(async_completions.front());
+                async_completions.pop_front();
+            }
+
+            bool completed = true;
+            try
+            {
+                completed = completion();
+            }
+            catch (...)
+            {
+                completed = true;
+            }
+
+            if (completed)
+            {
+                pending_streak = 0;
+                continue;
+            }
+
+            std::lock_guard<std::mutex> lock(async_completion_mutex);
+            if (async_completion_stop)
+            {
+                return;
+            }
+            async_completions.emplace_back(std::move(completion));
+            ++pending_streak;
+        }
+    }
+    void startAsyncCompletionLoop()
+    {
+        std::lock_guard<std::mutex> lock(async_completion_mutex);
+        async_completion_stop = false;
+        if (async_completion_thread.joinable())
+        {
+            return;
+        }
+        async_completion_thread = std::thread([this] { asyncCompletionLoop(); });
+    }
+    void stopAsyncCompletionLoop()
+    {
+        {
+            std::lock_guard<std::mutex> lock(async_completion_mutex);
+            async_completion_stop = true;
+            async_completions.clear();
+        }
+        async_completion_cv.notify_all();
+        if (async_completion_thread.joinable())
+        {
+            async_completion_thread.join();
+        }
+    }
+    void postAsyncCompletion(std::function<bool()>&& completion)
+    {
+        {
+            std::lock_guard<std::mutex> lock(async_completion_mutex);
+            if (async_completion_stop || quit.load(std::memory_order_relaxed))
+            {
+                return;
+            }
+            async_completions.emplace_back(std::move(completion));
+        }
+        async_completion_cv.notify_one();
+    }
     void clear()
     {
         quit.store(true, std::memory_order_relaxed);
@@ -449,6 +553,7 @@ struct RemoteEndPoint::Data
         {
             canceler();
         }
+        stopAsyncCompletionLoop();
         failPendingRequests();
         if (tp)
         {
@@ -540,6 +645,11 @@ std::shared_ptr<lsp::detail::AsyncResponseState> RemoteEndPoint::getAsyncRespons
 std::shared_ptr<void> RemoteEndPoint::retainRequestCancellation(lsRequestId const& id)
 {
     return d_ptr->retainRequestCancellation(id);
+}
+
+void RemoteEndPoint::postAsyncCompletion(std::function<bool()>&& completion)
+{
+    d_ptr->postAsyncCompletion(std::move(completion));
 }
 
 void RemoteEndPoint::sendAsyncMessage(std::shared_ptr<lsp::detail::AsyncResponseState> const& state, LspMessage& msg)
@@ -855,6 +965,7 @@ void RemoteEndPoint::startProcessingMessages(std::shared_ptr<lsp::istream> r, st
     d_ptr->async_response_state = std::make_shared<lsp::detail::AsyncResponseState>();
     d_ptr->async_response_state->output = w;
     d_ptr->async_response_state->send_mutex = m_sendMutex;
+    d_ptr->startAsyncCompletionLoop();
     d_ptr->message_producer->bind(r);
     d_ptr->tp = std::make_shared<asio::thread_pool>(d_ptr->max_workers);
     message_producer_thread_ = std::make_shared<std::thread>(
