@@ -8,8 +8,9 @@ import json
 import re
 import sys
 from collections import Counter, defaultdict
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List, Set, Tuple
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 
 DEFAULT_METAMODEL = "tools/lsp-metaModel-3.18.json"
@@ -250,6 +251,65 @@ def collect_issues(
     return issues, extensions
 
 
+@dataclass
+class CoverageReport:
+    repo_root: Path
+    metamodel_path: Path
+    allowlist_path: Path
+    version: str
+    declared_requests: Dict[str, str]
+    declared_notifications: Dict[str, str]
+    symbol_to_method: Dict[str, str]
+    registrations: Dict[str, List[str]]
+    issues: Dict[str, List[str]] = field(default_factory=dict)
+    extensions: Dict[str, List[str]] = field(default_factory=dict)
+    allowlist: Dict[str, List[str]] = field(default_factory=dict)
+    remaining: Dict[str, List[str]] = field(default_factory=dict)
+    stale: Dict[str, List[str]] = field(default_factory=dict)
+
+
+def analyze_coverage(
+    repo_root: Path,
+    metamodel_path: Optional[Path] = None,
+    allowlist_path: Optional[Path] = None,
+) -> CoverageReport:
+    repo_root = repo_root.resolve()
+    metamodel_path = (metamodel_path or repo_root / DEFAULT_METAMODEL).resolve()
+    allowlist_path = (allowlist_path or repo_root / DEFAULT_ALLOWLIST).resolve()
+    handler_path = repo_root / HANDLER_FILE
+
+    standard_requests, standard_notifications, version = load_metamodel_methods(metamodel_path)
+    declared_requests, declared_notifications, symbol_to_method = load_declarations(repo_root)
+    handler_text = handler_path.read_text(encoding="utf-8")
+    registrations = extract_handler_registrations(handler_text, symbol_to_method)
+    issues, extensions = collect_issues(
+        declared_requests,
+        declared_notifications,
+        registrations,
+        standard_requests,
+        standard_notifications,
+    )
+
+    allowlist = load_json(allowlist_path) if allowlist_path.exists() else {}
+    remaining, stale = subtract_allowlist(issues, allowlist)
+
+    return CoverageReport(
+        repo_root=repo_root,
+        metamodel_path=metamodel_path,
+        allowlist_path=allowlist_path,
+        version=version,
+        declared_requests=declared_requests,
+        declared_notifications=declared_notifications,
+        symbol_to_method=symbol_to_method,
+        registrations=registrations,
+        issues=issues,
+        extensions=extensions,
+        allowlist=allowlist,
+        remaining=remaining,
+        stale=stale,
+    )
+
+
 def subtract_allowlist(
     issues: Dict[str, List[str]], allowlist: Dict[str, List[str]]
 ) -> Tuple[Dict[str, List[str]], Dict[str, List[str]]]:
@@ -279,31 +339,25 @@ def print_section(title: str, items: Iterable[str]) -> None:
 
 def main() -> int:
     args = parse_args()
-    repo_root = args.repo_root.resolve()
-    metamodel_path = (args.metamodel or repo_root / DEFAULT_METAMODEL).resolve()
-    allowlist_path = (args.allowlist or repo_root / DEFAULT_ALLOWLIST).resolve()
-    handler_path = repo_root / HANDLER_FILE
-
-    standard_requests, standard_notifications, version = load_metamodel_methods(metamodel_path)
-    declared_requests, declared_notifications, symbol_to_method = load_declarations(repo_root)
-    handler_text = handler_path.read_text(encoding="utf-8")
-    registrations = extract_handler_registrations(handler_text, symbol_to_method)
-    issues, extensions = collect_issues(
-        declared_requests,
-        declared_notifications,
-        registrations,
-        standard_requests,
-        standard_notifications,
-    )
+    report = analyze_coverage(args.repo_root, args.metamodel, args.allowlist)
+    repo_root = report.repo_root
+    metamodel_path = report.metamodel_path
+    allowlist_path = report.allowlist_path
+    version = report.version
+    declared_requests = report.declared_requests
+    declared_notifications = report.declared_notifications
+    registrations = report.registrations
+    issues = report.issues
+    extensions = report.extensions
+    allowlist = report.allowlist
+    remaining = report.remaining
+    stale = report.stale
 
     if args.write_allowlist:
         payload = {category: issues[category] for category in ISSUE_CATEGORIES}
         write_json(allowlist_path, payload)
         print(f"Wrote allowlist to {allowlist_path}")
         return 0
-
-    allowlist = load_json(allowlist_path) if allowlist_path.exists() else {}
-    remaining, stale = subtract_allowlist(issues, allowlist)
 
     print("LspCpp LSP metaModel coverage report")
     print(f"  metaModel: {metamodel_path} (version {version})")
