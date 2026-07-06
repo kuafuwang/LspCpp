@@ -110,6 +110,11 @@ public:
         }
     }
 
+    bool ready() const
+    {
+        return server.point.isWorking();
+    }
+
 private:
     bool started_ = false;
     bool stopped_ = false;
@@ -157,6 +162,7 @@ public:
         }
 
         stream = std::make_shared<lsp::websocket_stream_wrapper>(websocket);
+        stream->bindMessageCallback();
         websocket_thread = std::thread([this]() {
             websocket->run();
         });
@@ -207,6 +213,22 @@ int main()
     if (!client.connect())
     {
         std::cerr << "websocket client connect time out" << std::endl;
+        return 1;
+    }
+
+    bool server_ready = false;
+    for (int i = 0; i < 100; ++i)
+    {
+        if (server.ready())
+        {
+            server_ready = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    if (!server_ready)
+    {
+        std::cerr << "websocket server endpoint not ready" << std::endl;
         return 1;
     }
 
