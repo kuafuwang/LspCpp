@@ -27,6 +27,7 @@ class MessageJsonHandler;
 class Endpoint;
 struct LspMessage;
 class RemoteEndPoint;
+struct RemoteEndPointTestAccess;
 namespace lsp
 {
 class ostream;
@@ -421,6 +422,8 @@ public:
     void handle(MessageIssue&&) override;
 
 private:
+    friend struct RemoteEndPointTestAccess;
+
     std::shared_ptr<lsp::detail::AsyncResponseState> getAsyncResponseState() const;
     std::shared_ptr<void> retainRequestCancellation(lsRequestId const& id);
     void postAsyncCompletion(std::function<bool()>&& completion);
