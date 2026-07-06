@@ -795,9 +795,15 @@ if(LSPCPP_BUILD_EXAMPLES)
                 DEPENDS lspcpp.process_client_example_build
                 TIMEOUT 30)
 
+        add_test(NAME lspcpp.websocket_example_build
+                COMMAND ${CMAKE_COMMAND} --build "${CMAKE_BINARY_DIR}" --target WebsocketExample)
+        set_tests_properties(lspcpp.websocket_example_build PROPERTIES TIMEOUT 60)
+
         add_test(NAME lspcpp.websocket_example
                 COMMAND $<TARGET_FILE:WebsocketExample>)
-        set_tests_properties(lspcpp.websocket_example PROPERTIES TIMEOUT 30)
+        set_tests_properties(lspcpp.websocket_example PROPERTIES
+                DEPENDS lspcpp.websocket_example_build
+                TIMEOUT 30)
     endif()
 endif()
 
