@@ -242,6 +242,39 @@ ctest -R lspcpp.lsp_metamodel_coverage --output-on-failure
 
 已知有意缺口记录在 `tools/lsp-metamodel-allowlist.json`。当你**有意**保留某个标准 LSP 缺口时，把对应 method 加入 allowlist；当你**新实现**某个标准 LSP 方法时，应同时更新类型声明、`ProtocolJsonHandler` 注册，并从 allowlist 中移除该项。若 allowlist 中的条目已不再是实际缺口（过期条目），校验器会在 `Stale allowlist entries` 一节报告并**失败**，以强制保持 allowlist 与实现同步。厂商扩展（`java/*`、`sonarlint/*` 等）单独分组，仅作信息报告，不会导致 CTest 失败。
 
+## LSP 协议生成器（lspgen）
+
+`tools/lspgen.py` 在 coverage 校验结果基础上，为**未在 allowlist 中**的标准 LSP 缺口生成 C++ 类型、`DEFINE_*` 宏，以及 `ProtocolJsonHandler.cpp` 注册补丁。生成物写入：
+
+- `include/LibLsp/lsp/generated/lsp_generated_protocol.h`
+- `src/lsp/ProtocolJsonHandler.cpp` 中带 `// BEGIN LSPGEN` 标记的注册块
+
+默认是 dry-run，只打印计划与预览，不改文件：
+
+```shell
+python3 tools/lspgen.py
+```
+
+预览指定 method（忽略 allowlist，便于本地验证生成器）：
+
+```shell
+python3 tools/lspgen.py --method window/showDocument
+```
+
+确认无误后写入：
+
+```shell
+python3 tools/lspgen.py --method window/showDocument --write
+```
+
+写入后请：
+
+1. 编译并跑相关测试，确认生成类型可编译、可 round-trip。
+2. 从 `tools/lsp-metamodel-allowlist.json` 移除已实现 method。
+3. 运行 `python3 tools/check_lsp_metamodel_coverage.py` 确认无 stale allowlist 条目。
+
+复杂 union / literal 暂时会回退到 `lsp::Any` 并带 TODO 注释；生成后仍需人工 review。
+
 ## 延伸阅读
 
 - [LSP 规范](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/)

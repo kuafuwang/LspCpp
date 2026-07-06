@@ -651,6 +651,13 @@ if(LSPCPP_BUILD_TESTS)
             --repo-root ${CMAKE_CURRENT_SOURCE_DIR})
     set_tests_properties(lspcpp.lsp_metamodel_coverage PROPERTIES TIMEOUT 60)
 
+    add_test(NAME lspcpp.lspgen_smoke
+            COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/lspgen.py
+            --repo-root ${CMAKE_CURRENT_SOURCE_DIR}
+            --method window/showDocument)
+    set_tests_properties(lspcpp.lspgen_smoke PROPERTIES TIMEOUT 60)
+
     add_test(NAME lspcpp.jsonrpc
             COMMAND $<TARGET_FILE:lspcpp_jsonrpc_tests>)
     add_test(NAME lspcpp.stream_message_producer

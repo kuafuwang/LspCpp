@@ -242,6 +242,39 @@ ctest -R lspcpp.lsp_metamodel_coverage --output-on-failure
 
 Known intentional gaps live in `tools/lsp-metamodel-allowlist.json`. When you **intentionally** defer a standard LSP method, add it to the allowlist. When you **implement** a standard LSP method, update the type declaration and `ProtocolJsonHandler` registration, then remove it from the allowlist. If an allowlist entry no longer matches an actual gap (a stale entry), the checker reports it under `Stale allowlist entries` and **fails**, keeping the allowlist in sync with the implementation. Vendor extensions (`java/*`, `sonarlint/*`, etc.) are reported separately and do not fail CTest.
 
+## LSP protocol generator (lspgen)
+
+`tools/lspgen.py` builds on the coverage checker and generates C++ types, `DEFINE_*` macros, and `ProtocolJsonHandler.cpp` registration patches for standard LSP gaps that are **not** allowlisted. Output goes to:
+
+- `include/LibLsp/lsp/generated/lsp_generated_protocol.h`
+- sentinel-delimited blocks in `src/lsp/ProtocolJsonHandler.cpp` (`// BEGIN LSPGEN`)
+
+Dry-run is the default; it prints the plan and preview without modifying files:
+
+```shell
+python3 tools/lspgen.py
+```
+
+Preview a specific method (bypasses allowlist; useful for validating the generator):
+
+```shell
+python3 tools/lspgen.py --method window/showDocument
+```
+
+Write after review:
+
+```shell
+python3 tools/lspgen.py --method window/showDocument --write
+```
+
+After writing:
+
+1. Build and run focused tests to confirm generated types compile and round-trip.
+2. Remove the implemented method from `tools/lsp-metamodel-allowlist.json`.
+3. Run `python3 tools/check_lsp_metamodel_coverage.py` to ensure no stale allowlist entries remain.
+
+Complex unions / literals may fall back to `lsp::Any` with a TODO comment; always review generated code manually.
+
 ## Further reading
 
 - [LSP specification](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/)
