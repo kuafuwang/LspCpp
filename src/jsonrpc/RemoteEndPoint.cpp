@@ -705,7 +705,8 @@ bool RemoteEndPoint::dispatch(std::string const& content, uint64_t sequence)
     }
 
     JsonReader visitor {&document};
-    if (!visitor.HasMember("jsonrpc") || std::string(visitor["jsonrpc"]->GetString()) != "2.0")
+    if (!visitor.HasMember("jsonrpc") || !visitor["jsonrpc"]->IsString() ||
+        std::string(visitor["jsonrpc"]->GetString()) != "2.0")
     {
         std::string reason;
         reason = "Reason:Bad or missing jsonrpc version\n";
