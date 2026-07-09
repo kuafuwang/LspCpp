@@ -1,8 +1,7 @@
 {
   "duplicate_registrations": [],
   "missing_notification_parser": [
-    "$/cancelRequest",
-    "$/progress"
+    "$/cancelRequest"
   ],
   "missing_request_parser": [
     "callHierarchy/incomingCalls",

@@ -1,5 +1,6 @@
 #include "LibLsp/lsp/ProtocolJsonHandler.h"
 #include "LibLsp/lsp/general/initialize.h"
+#include "LibLsp/lsp/general/progress.h"
 #include "LibLsp/lsp/general/shutdown.h"
 #include "LibLsp/lsp/textDocument/code_action.h"
 #include "LibLsp/lsp/textDocument/completion.h"
@@ -315,6 +316,25 @@ void TestRegisteredMethodsAreNotMarkedMissingInAllowlist()
     }
 }
 
+void TestProgressNotificationIsRegistered()
+{
+    lsp::ProtocolJsonHandler handler;
+    std::unique_ptr<LspMessage> parsed = test::ParseProtocolNotification(
+        handler,
+        Notify_Progress::notify::kMethodInfo,
+        R"({"jsonrpc":"2.0","method":"$/progress","params":{"token":"work","value":{"kind":"begin","title":"Index"}}})");
+
+    auto* progress = dynamic_cast<Notify_Progress::notify*>(parsed.get());
+    Expect(progress != nullptr, "$/progress must be registered as a standard notification");
+    if (progress != nullptr)
+    {
+        Expect(progress->params.token.first && *progress->params.token.first == "work", "$/progress string token must parse");
+        Expect(
+            progress->params.value.Data().find(R"("kind":"begin")") != std::string::npos,
+            "$/progress value payload must be preserved as Any JSON");
+    }
+}
+
 void TestMalformedCoreRequestParamsDoNotEscape()
 {
     lsp::ProtocolJsonHandler handler;
@@ -437,6 +457,7 @@ int main()
     TestEveryRegisteredNotificationParserIsUsable();
     TestEveryRegisteredResponseParserIsUsable();
     TestRegisteredMethodsAreNotMarkedMissingInAllowlist();
+    TestProgressNotificationIsRegistered();
     TestMalformedCoreRequestParamsDoNotEscape();
     TestJdtlsExtensionsAreOptIn();
     TestGoldenLspFixturesParse();

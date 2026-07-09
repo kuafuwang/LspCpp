@@ -626,6 +626,7 @@ if(LSPCPP_BUILD_TESTS)
     lspcpp_add_test_executable(lspcpp_endpoint_serializer_tests endpoint_serializer_tests.cpp)
     lspcpp_add_test_executable(lspcpp_infrastructure_tests infrastructure_tests.cpp)
     lspcpp_add_test_executable(lspcpp_working_files_tests working_files_tests.cpp)
+    lspcpp_add_test_executable(lspcpp_text_document_sync_tests text_document_sync_tests.cpp)
     lspcpp_add_test_executable(lspcpp_lsp_types_tests lsp_types_roundtrip_tests.cpp)
     lspcpp_add_test_executable(lspcpp_protocol_json_handler_tests protocol_json_handler_tests.cpp)
     lspcpp_add_test_executable(lspcpp_language_session_tests language_session_tests.cpp)
@@ -671,6 +672,8 @@ if(LSPCPP_BUILD_TESTS)
             COMMAND $<TARGET_FILE:lspcpp_infrastructure_tests>)
     add_test(NAME lspcpp.working_files
             COMMAND $<TARGET_FILE:lspcpp_working_files_tests>)
+    add_test(NAME lspcpp.text_document_sync
+            COMMAND $<TARGET_FILE:lspcpp_text_document_sync_tests>)
     add_test(NAME lspcpp.lsp_types
             COMMAND $<TARGET_FILE:lspcpp_lsp_types_tests>)
     add_test(NAME lspcpp.protocol_json_handler

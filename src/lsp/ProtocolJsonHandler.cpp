@@ -54,6 +54,7 @@
 #include "LibLsp/lsp/extention/jdtls/organizeImports.h"
 #include "LibLsp/lsp/general/exit.h"
 #include "LibLsp/lsp/general/initialized.h"
+#include "LibLsp/lsp/general/progress.h"
 #include "LibLsp/lsp/extention/jdtls/projectConfigurationUpdate.h"
 #include "LibLsp/lsp/textDocument/did_change.h"
 #include "LibLsp/lsp/textDocument/did_open.h"
@@ -761,6 +762,8 @@ void AddNotifyJsonRpcMethod(MessageJsonHandler& handler)
     { return Notify_LogMessage::notify::ReflectReader(visitor); };
     handler.method2notification[Notify_ShowMessage::notify::kMethodInfo] = [](Reader& visitor)
     { return Notify_ShowMessage::notify::ReflectReader(visitor); };
+    handler.method2notification[Notify_Progress::notify::kMethodInfo] = [](Reader& visitor)
+    { return Notify_Progress::notify::ReflectReader(visitor); };
     handler.method2notification[Notify_WorkspaceDidChangeWorkspaceFolders::notify::kMethodInfo] = [](Reader& visitor)
     { return Notify_WorkspaceDidChangeWorkspaceFolders::notify::ReflectReader(visitor); };
 

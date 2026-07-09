@@ -5,6 +5,7 @@
 #include "LibLsp/lsp/ProtocolJsonHandler.h"
 #include "LibLsp/lsp/general/exit.h"
 #include "LibLsp/lsp/general/initialize.h"
+#include "LibLsp/lsp/general/progress.h"
 #include "test_helpers.h"
 
 #include <atomic>
@@ -27,6 +28,21 @@ struct RemoteEndPointTestAccess
         return endpoint.dispatch(content, sequence);
     }
 };
+
+struct ScalarParams
+{
+    int value = 0;
+    MAKE_SWAP_METHOD(ScalarParams, value);
+};
+MAKE_REFLECT_STRUCT(ScalarParams, value);
+
+struct ScalarResult
+{
+    int value = 0;
+    MAKE_SWAP_METHOD(ScalarResult, value);
+};
+MAKE_REFLECT_STRUCT(ScalarResult, value);
+DEFINE_REQUEST_RESPONSE_TYPE(test_scalar, ScalarParams, ScalarResult, "test/scalar");
 
 namespace
 {
@@ -69,21 +85,6 @@ struct MoveOnlyFutureValue
 
     int value = 0;
 };
-
-std::string WaitForOutputContaining(std::shared_ptr<StringOStream> const& output_stream, std::string const& needle)
-{
-    std::string output;
-    for (int i = 0; i < 100; ++i)
-    {
-        output = output_stream->snapshot();
-        if (output.find(needle) != std::string::npos)
-        {
-            break;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-    return output;
-}
 
 std::string WaitForOutputContainingAll(std::shared_ptr<StringOStream> const& output_stream, std::vector<std::string> const& needles)
 {
@@ -595,6 +596,112 @@ void TestRequestMissingParamsDoesNotCrashEndpoint()
     Expect(
         handled_count.load(std::memory_order_relaxed) >= 1,
         "endpoint must stay alive after a request that omits params");
+}
+
+void TestNullAndZeroParamsDoNotDropValidScalarValues()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    std::atomic<int> handled_count {0};
+    std::atomic<int> last_value {-1};
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 1);
+    point.registerHandler(
+        [&](test_scalar::request const& req) -> lsp::ResponseOrError<test_scalar::response>
+        {
+            handled_count.fetch_add(1, std::memory_order_relaxed);
+            last_value.store(req.params.value, std::memory_order_relaxed);
+            test_scalar::response rsp;
+            rsp.id = req.id;
+            rsp.result.value = req.params.value;
+            return rsp;
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":1910,"method":"test/scalar","params":null})"));
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":1911,"method":"test/scalar","params":{"value":0}})"));
+
+    std::string const output = WaitForOutputContaining(output_stream, "\"id\":1911");
+    point.stop();
+
+    Expect(output.find("\"id\":1911") != std::string::npos, "endpoint must recover after null params");
+    Expect(output.find("\"value\":0") != std::string::npos, "scalar zero params must round-trip");
+    Expect(handled_count.load(std::memory_order_relaxed) >= 1, "valid scalar request must be handled");
+    Expect(last_value.load(std::memory_order_relaxed) == 0, "zero must not be treated as a missing parameter");
+}
+
+void TestWorkDoneTokenParamsPassThroughToHandler()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    std::mutex mutex;
+    optional<lsProgressToken> seen_token;
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 1);
+    point.registerHandler(
+        [&](td_initialize::request const& req) -> lsp::ResponseOrError<td_initialize::response>
+        {
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                seen_token = req.params.workDoneToken;
+            }
+            td_initialize::response rsp;
+            rsp.id = req.id;
+            return rsp;
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    input_stream->append(test::MakeLspFrame(
+        R"({"jsonrpc":"2.0","id":1930,"method":"initialize","params":{"capabilities":{},"workDoneToken":"token"}})"));
+    std::string const output = WaitForOutputContaining(output_stream, "\"id\":1930");
+    point.stop();
+
+    Expect(output.find("\"id\":1930") != std::string::npos, "initialize with workDoneToken must get a response");
+    std::lock_guard<std::mutex> lock(mutex);
+    Expect(
+        seen_token && seen_token->first && *seen_token->first == "token",
+        "workDoneToken must pass through to the request handler unchanged");
+}
+
+void TestPositionalArrayParamsAreHandledWithoutStoppingEndpoint()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    std::atomic<int> handled_count {0};
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 1);
+    point.registerHandler(
+        [&](test_scalar::request const& req) -> lsp::ResponseOrError<test_scalar::response>
+        {
+            handled_count.fetch_add(1, std::memory_order_relaxed);
+            test_scalar::response rsp;
+            rsp.id = req.id;
+            rsp.result.value = req.params.value;
+            return rsp;
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":1920,"method":"test/scalar","params":[0]})"));
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":1921,"method":"test/scalar","params":{"value":7}})"));
+
+    std::string const output = WaitForOutputContaining(output_stream, "\"id\":1921");
+    point.stop();
+
+    Expect(output.find("\"id\":1920") != std::string::npos, "single positional param must produce a response");
+    Expect(output.find("\"id\":1921") != std::string::npos, "endpoint must recover after positional params");
+    Expect(output.find("\"value\":7") != std::string::npos, "named params after positional params must still work");
+    Expect(handled_count.load(std::memory_order_relaxed) == 2, "single positional params must dispatch predictably");
 }
 
 void TestResponseWithNoMatchingRequestIsIgnored()
@@ -1205,6 +1312,77 @@ void TestMultipleWorkersProcessRequestsConcurrently()
     Expect(output.find("\"id\":202") != std::string::npos, "second concurrent request must get a response");
 }
 
+void TestSingleWorkerProcessesRequestsSerially()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    std::string const first = R"({"jsonrpc":"2.0","id":211,"method":"initialize","params":{}})";
+    std::string const second = R"({"jsonrpc":"2.0","id":212,"method":"initialize","params":{}})";
+    auto input_stream = std::make_shared<StringIStream>(test::MakeLspFrame(first) + test::MakeLspFrame(second));
+    auto output_stream = std::make_shared<StringOStream>();
+
+    std::mutex mutex;
+    std::vector<std::string> events;
+
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 1);
+    point.registerHandler(
+        [&](td_initialize::request const& req) -> lsp::ResponseOrError<td_initialize::response>
+        {
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                events.push_back(std::to_string(req.id.value) + "-start");
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(40));
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                events.push_back(std::to_string(req.id.value) + "-end");
+            }
+            td_initialize::response rsp;
+            rsp.id = req.id;
+            return rsp;
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    std::string const output = WaitForOutputContaining(output_stream, "\"id\":212");
+    point.stop();
+
+    Expect(output.find("\"id\":211") != std::string::npos, "single-worker first request must get a response");
+    Expect(output.find("\"id\":212") != std::string::npos, "single-worker second request must get a response");
+    Expect(events.size() == 4, "single-worker test must record four handler events");
+    if (events.size() == 4)
+    {
+        Expect(events[0] == "211-start", "single worker must start first request first");
+        Expect(events[1] == "211-end", "single worker must finish first request before second starts");
+        Expect(events[2] == "212-start", "single worker must start second request after first completes");
+        Expect(events[3] == "212-end", "single worker must finish second request last");
+    }
+}
+
+void TestSendRequestWritesExactContentLengthFrame()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    RemoteEndPoint point(json_handler, endpoint, log);
+    point.startProcessingMessages(input_stream, output_stream);
+
+    test_scalar::request req;
+    req.id.set(7001);
+    req.params.value = 0;
+    auto future = point.send(req);
+
+    std::string const expected_body = R"({"jsonrpc":"2.0","id":7001,"method":"test/scalar","params":{"value":0}})";
+    std::string const output = WaitForOutputContaining(output_stream, expected_body);
+    point.stop();
+
+    (void)future;
+    Expect(output == test::MakeLspFrame(expected_body), "send(request) must write exact Content-Length frame bytes");
+}
+
 void TestConcurrentSendWritesCompleteFrames()
 {
     DummyLog log;
@@ -1287,6 +1465,67 @@ void TestNotificationHandlerReceivesNotification()
     point.stop();
 
     Expect(notified.load(std::memory_order_relaxed), "registered notification handler must receive notifications");
+}
+
+void TestProgressNotificationsDispatchThroughStandardProtocolHandler()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    std::mutex mutex;
+    std::vector<std::string> events;
+    endpoint->registerNotifyHandler(
+        Notify_Progress::notify::kMethodInfo,
+        [&](std::unique_ptr<LspMessage> msg)
+        {
+            auto* progress = dynamic_cast<Notify_Progress::notify*>(msg.get());
+            if (progress == nullptr)
+            {
+                return false;
+            }
+            std::lock_guard<std::mutex> lock(mutex);
+            if (progress->params.token.first)
+            {
+                events.push_back(*progress->params.token.first + ":" + progress->params.value.Data());
+            }
+            else if (progress->params.token.second)
+            {
+                events.push_back(std::to_string(*progress->params.token.second) + ":" + progress->params.value.Data());
+            }
+            return true;
+        });
+
+    // A single worker keeps notification dispatch order deterministic, which
+    // this test asserts on.
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 1);
+    point.startProcessingMessages(input_stream, output_stream);
+
+    input_stream->append(test::MakeLspFrame(
+        R"({"jsonrpc":"2.0","method":"$/progress","params":{"token":"work","value":{"kind":"begin","title":"Index"}}})"));
+    input_stream->append(test::MakeLspFrame(
+        R"({"jsonrpc":"2.0","method":"$/progress","params":{"token":"work","value":{"kind":"report","message":"Half"}}})"));
+    input_stream->append(test::MakeLspFrame(
+        R"({"jsonrpc":"2.0","method":"$/progress","params":{"token":99,"value":[{"uri":"file:///tmp/a.cpp"}]}})"));
+
+    bool const saw_all = WaitUntil(
+        [&]()
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            return events.size() == 3;
+        });
+    point.stop();
+
+    Expect(saw_all, "$/progress notifications must dispatch through ProtocolJsonHandler");
+    if (saw_all)
+    {
+        Expect(events[0].find(R"("kind":"begin")") != std::string::npos, "work-done begin payload must be preserved");
+        Expect(events[1].find(R"("kind":"report")") != std::string::npos, "work-done report payload must be preserved");
+        Expect(events[2].find("99:") == 0, "numeric partial result token must parse");
+        Expect(events[2].find("file:///tmp/a.cpp") != std::string::npos, "partial result payload must be preserved");
+    }
 }
 
 void TestThrowingNotificationHandlerDoesNotStopEndpoint()
@@ -2072,6 +2311,9 @@ int main()
     TestNonStringJsonRpcVersionIsRejected();
     TestNonStringMethodIsRejected();
     TestRequestMissingParamsDoesNotCrashEndpoint();
+    TestNullAndZeroParamsDoNotDropValidScalarValues();
+    TestWorkDoneTokenParamsPassThroughToHandler();
+    TestPositionalArrayParamsAreHandledWithoutStoppingEndpoint();
     TestResponseWithNoMatchingRequestIsIgnored();
     TestMessageWithIdAndMethodUsesRequestPath();
     TestMessageWithNoMethodNoResultIsRejected();
@@ -2089,8 +2331,11 @@ int main()
     TestRunningRequestObservesCancellation();
     TestBurstRequestsAreAllDispatchedAndResponded();
     TestMultipleWorkersProcessRequestsConcurrently();
+    TestSingleWorkerProcessesRequestsSerially();
+    TestSendRequestWritesExactContentLengthFrame();
     TestConcurrentSendWritesCompleteFrames();
     TestNotificationHandlerReceivesNotification();
+    TestProgressNotificationsDispatchThroughStandardProtocolHandler();
     TestThrowingNotificationHandlerDoesNotStopEndpoint();
     TestConditionTimedWaitReturnsNotifiedValue();
     TestConditionTimedWaitStillTimesOut();

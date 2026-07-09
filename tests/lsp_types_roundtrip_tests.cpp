@@ -48,6 +48,7 @@
 #include <rapidjson/writer.h>
 
 #include <cstdio>
+#include <exception>
 #include <fstream>
 #include <memory>
 #include <sstream>
@@ -138,6 +139,26 @@ T ParseJson(char const* json)
     T value;
     Reflect(reader, value);
     return value;
+}
+
+template<typename T>
+bool TryParseJson(char const* json, T& value)
+{
+    try
+    {
+        rapidjson::Document document;
+        JsonReader reader = MakeReader(document, json);
+        Reflect(reader, value);
+        return true;
+    }
+    catch (std::exception const&)
+    {
+        return false;
+    }
+    catch (...)
+    {
+        return false;
+    }
 }
 
 lsDocumentUri MakeDocumentUri(char const* uri)
@@ -1047,6 +1068,125 @@ void TestHoverContentsAllRepresentations()
         "hover MarkupContent must round-trip through JSON");
 }
 
+void TestTypeGuardInspiredMalformedInputs()
+{
+    lsPosition missing_character;
+    Expect(
+        TryParseJson(R"({"line":2})", missing_character),
+        "position with missing character should parse with default character");
+    Expect(
+        missing_character.line == 2 && missing_character.character == 0,
+        "position missing character must default to zero");
+
+    lsPosition wrong_position;
+    bool const parsed_wrong_position = TryParseJson(R"({"line":"bad","character":0})", wrong_position);
+    Expect(
+        !parsed_wrong_position || (wrong_position.line == 0 && wrong_position.character == 0),
+        "position with wrong field type must be rejected or leave default value");
+
+    lsRange missing_end;
+    Expect(TryParseJson(R"({"start":{"line":1,"character":2}})", missing_end), "range with missing end must not crash");
+    Expect(missing_end.start.line == 1 && missing_end.start.character == 2, "range start must parse when end is absent");
+    Expect(missing_end.end == lsPosition(), "range missing end must keep default end");
+
+    lsRange wrong_range;
+    bool const parsed_wrong_range = TryParseJson(
+        R"({"start":{"line":0,"character":0},"end":{"line":"bad","character":1}})", wrong_range);
+    Expect(
+        !parsed_wrong_range || wrong_range.end == lsPosition(),
+        "range with wrong nested position must be rejected or keep default end");
+
+    TextDocumentHover::Result direct_string_hover;
+    Expect(
+        TryParseJson(R"({"contents":"plain hover text"})", direct_string_hover),
+        "hover direct string contents must parse");
+    Expect(
+        direct_string_hover.contents.first && direct_string_hover.contents.first->size() == 1,
+        "hover direct string contents must become a single MarkedString entry");
+    Expect(
+        direct_string_hover.contents.first && (*direct_string_hover.contents.first)[0].first &&
+            *(*direct_string_hover.contents.first)[0].first == "plain hover text",
+        "hover direct string contents must preserve text");
+
+    TextDocumentHover::Result null_range_hover;
+    Expect(
+        TryParseJson(R"({"contents":{"kind":"markdown","value":"docs"},"range":null})", null_range_hover),
+        "hover null range must parse");
+    Expect(!null_range_hover.range, "hover null range must remain unset");
+
+    TextDocumentHover::Result null_contents_hover;
+    Expect(TryParseJson(R"({"contents":null})", null_contents_hover), "hover null contents must not crash");
+    Expect(
+        !null_contents_hover.contents.first && !null_contents_hover.contents.second,
+        "hover null contents must not populate either representation");
+
+    TextDocumentHover::Result array_with_null_hover;
+    Expect(
+        TryParseJson(R"({"contents":[null]})", array_with_null_hover),
+        "hover array containing null must not crash the parser");
+
+    lsTextEdit missing_new_text;
+    Expect(
+        TryParseJson(
+            R"({"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}}})",
+            missing_new_text),
+        "text edit missing newText must not crash");
+    Expect(missing_new_text.newText.empty(), "text edit missing newText must default to empty string");
+
+    lsTextEdit missing_range;
+    Expect(TryParseJson(R"({"newText":"replacement"})", missing_range), "text edit missing range must not crash");
+    Expect(missing_range.range == lsRange(), "text edit missing range must keep default range");
+    Expect(missing_range.newText == "replacement", "text edit missing range must still parse newText");
+
+    std::pair<optional<std::string>, optional<lsMarkedString>> marked_string;
+    Expect(TryParseJson(R"("plain marked string")", marked_string), "MarkedString string form must parse");
+    Expect(marked_string.first && *marked_string.first == "plain marked string", "MarkedString string form mismatch");
+
+    std::pair<optional<std::string>, optional<lsMarkedString>> marked_object;
+    Expect(TryParseJson(R"({"language":"cpp","value":"int main();"})", marked_object), "MarkedString object form must parse");
+    Expect(marked_object.second && marked_object.second->language, "MarkedString object form must parse language");
+    Expect(
+        marked_object.second && marked_object.second->value == "int main();",
+        "MarkedString object form must parse value");
+}
+
+void TestProgressTokenParamsRoundTrip()
+{
+    lsInitializeParams const initialize_params = ParseJson<lsInitializeParams>(
+        R"({"processId":1,"capabilities":{},"workDoneToken":"token"})");
+    Expect(
+        initialize_params.workDoneToken && initialize_params.workDoneToken->first &&
+            *initialize_params.workDoneToken->first == "token",
+        "initialize params must parse a string workDoneToken");
+
+    lsInitializeParams no_token_params;
+    no_token_params.processId = 1;
+    Expect(
+        SerializeJson(no_token_params).find("workDoneToken") == std::string::npos,
+        "unset workDoneToken must be omitted from serialized params");
+
+    lsDocumentSymbolParams const symbol_params = ParseJson<lsDocumentSymbolParams>(
+        R"({"textDocument":{"uri":"file:///tmp/a.cpp"},"workDoneToken":"work","partialResultToken":42})");
+    Expect(
+        symbol_params.workDoneToken && symbol_params.workDoneToken->first &&
+            *symbol_params.workDoneToken->first == "work",
+        "documentSymbol params must parse a string workDoneToken");
+    Expect(
+        symbol_params.partialResultToken && symbol_params.partialResultToken->second &&
+            *symbol_params.partialResultToken->second == 42,
+        "documentSymbol params must parse a numeric partialResultToken");
+
+    lsDocumentSymbolParams const round_tripped = RoundTrip(symbol_params);
+    Expect(
+        round_tripped.workDoneToken && round_tripped.workDoneToken->first &&
+            *round_tripped.workDoneToken->first == "work",
+        "documentSymbol workDoneToken must survive a JSON round-trip");
+    Expect(
+        round_tripped.partialResultToken && round_tripped.partialResultToken->second &&
+            *round_tripped.partialResultToken->second == 42,
+        "documentSymbol partialResultToken must survive a JSON round-trip");
+}
+
 void TestDocumentSymbolEitherVariants()
 {
     TextDocumentDocumentSymbol::Either const symbol_information = ParseJson<TextDocumentDocumentSymbol::Either>(
@@ -1352,6 +1492,8 @@ int main()
     TestCodeActionEitherVariants();
     TestWorkspaceEditDocumentChanges();
     TestHoverContentsAllRepresentations();
+    TestTypeGuardInspiredMalformedInputs();
+    TestProgressTokenParamsRoundTrip();
     TestDocumentSymbolEitherVariants();
     TestProtocolJsonHandlerParsesPolymorphicResponseEnvelopes();
     TestProtocolJsonHandlerParsesErrorResponses();

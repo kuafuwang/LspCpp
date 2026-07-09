@@ -63,7 +63,7 @@ void WarnIf(bool condition, std::string const& name, std::string const& reason, 
     std::cout << "PERF_WARN name=" << name << " reason=\"" << reason << "\" value=" << value << std::endl;
 }
 
-bool WaitForOutputContaining(std::shared_ptr<StringOStream> const& output_stream, std::string const& needle)
+bool WaitForPerfOutputContaining(std::shared_ptr<StringOStream> const& output_stream, std::string const& needle)
 {
     for (int i = 0; i < 200; ++i)
     {
@@ -191,7 +191,8 @@ void PerfRemoteEndpointDispatch()
     Timer timer;
     point.startProcessingMessages(input_stream, output_stream);
     bool const handled_every_request = WaitForCount(handled, count);
-    bool const got_last_response = WaitForOutputContaining(output_stream, "\"id\":" + std::to_string(10000 + count - 1));
+    bool const got_last_response =
+        WaitForPerfOutputContaining(output_stream, "\"id\":" + std::to_string(10000 + count - 1));
     double const elapsed_ms = timer.elapsedMs();
     point.stop();
 

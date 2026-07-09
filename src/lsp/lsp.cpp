@@ -59,7 +59,9 @@ lsTextDocumentIdentifier lsVersionedTextDocumentIdentifier::AsTextDocumentIdenti
 lsPosition::lsPosition()
 {
 }
-lsPosition::lsPosition(int line, int character) : line(line), character(character)
+lsPosition::lsPosition(int line, int character)
+    : line(line < 0 ? 0u : static_cast<unsigned>(line)),
+      character(character < 0 ? 0u : static_cast<unsigned>(character))
 {
 }
 
