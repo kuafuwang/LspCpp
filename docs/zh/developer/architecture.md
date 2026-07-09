@@ -66,7 +66,11 @@ stdin / TCP / WebSocket
         │                                    typed request/notification
         │                                              │
         ▼                                              ▼
-  worker thread queue                    RemoteEndPoint::registerHandler
+ Ordered dispatcher                      RemoteEndPoint::registerHandler
+        │                                              │
+        ├── notifications: FIFO 串行线程                │
+        ├── requests: 等待前序通知完成 ─────────────────┘
+        └── responses: worker 线程池
                                                        │
                                                        ▼
                                               user handler (lambda)
@@ -78,7 +82,12 @@ stdin / TCP / WebSocket
                                                    stdout / socket
 ```
 
-`RemoteEndPoint` 拥有线程队列（`threaded_queue.h`），使消息读取与 handler 执行可重叠。构造函数参数 `max_workers` 控制并发度。
+`RemoteEndPoint` 将消息读取与 handler 执行分离。入站 JSON 按线路顺序解析，然后交给有序分发器：
+
+- 普通通知在专用 FIFO 通知线程上串行执行，因此 `textDocument/didOpen`、增量 `textDocument/didChange` 等顺序敏感通知会按线路顺序生效；
+- 请求只有在其之前的所有通知执行完成后才会投递到 worker 池，因此请求 handler 能看到前序通知建立的文档状态；
+- 请求之间仍可并发执行；构造函数参数 `max_workers` 控制请求/响应 worker 池并发度；
+- 响应和 `$/cancelRequest` 绕过通知队列。响应按 id 匹配，取消会立即处理，不会被慢通知延迟。
 
 ### 传输
 

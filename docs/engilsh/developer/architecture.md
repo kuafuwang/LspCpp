@@ -66,7 +66,11 @@ stdin / TCP / WebSocket
         │                                    typed request/notification
         │                                              │
         ▼                                              ▼
-  worker thread queue                    RemoteEndPoint::registerHandler
+ Ordered dispatcher                      RemoteEndPoint::registerHandler
+        │                                              │
+        ├── notifications: FIFO serial thread          │
+        ├── requests: wait for prior notifications ────┘
+        └── responses: worker thread pool
                                                        │
                                                        ▼
                                               user handler (lambda)
@@ -78,7 +82,12 @@ stdin / TCP / WebSocket
                                                    stdout / socket
 ```
 
-`RemoteEndPoint` owns a threaded queue (`threaded_queue.h`) so message production and handler execution can overlap. The `max_workers` constructor parameter controls concurrency.
+`RemoteEndPoint` keeps message reading separate from handler execution. Incoming JSON is parsed in wire order, then routed through an ordered dispatcher:
+
+- ordinary notifications run on a dedicated FIFO notification thread, so order-sensitive notifications such as `textDocument/didOpen` and incremental `textDocument/didChange` are applied in wire order;
+- requests are posted to the worker pool only after all earlier notifications have completed, so request handlers observe document state established by prior notifications;
+- requests may still run concurrently with each other; the `max_workers` constructor parameter controls this request/response worker-pool concurrency;
+- responses and `$/cancelRequest` bypass the notification queue. Responses are matched by id, while cancellation is handled immediately so it is not delayed behind slow notifications.
 
 ### Transports
 

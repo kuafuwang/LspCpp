@@ -424,6 +424,13 @@ public:
 private:
     friend struct RemoteEndPointTestAccess;
 
+    struct ParsedMessage
+    {
+        bool ok = false;
+        LspMessage::Kind kind = LspMessage::NOTIFICATION_MESSAGE;
+        std::unique_ptr<LspMessage> message;
+    };
+
     std::shared_ptr<lsp::detail::AsyncResponseState> getAsyncResponseState() const;
     std::shared_ptr<void> retainRequestCancellation(lsRequestId const& id);
     void postAsyncCompletion(std::function<bool()>&& completion);
@@ -444,6 +451,9 @@ private:
     CancelMonitor getCancelMonitor(lsRequestId const&);
     void removeRequestInfo(lsRequestId const&);
     void sendMsg(LspMessage& msg);
+    ParsedMessage parseAndClassify(std::string const& content);
+    void mainLoopCatching(std::unique_ptr<LspMessage>, uint64_t sequence, std::string const* content);
+    void routeIncoming(std::string&& content, uint64_t sequence);
     void mainLoop(std::unique_ptr<LspMessage>, uint64_t sequence);
     bool dispatch(std::string const&, uint64_t sequence);
     template<typename ResponseType>

@@ -187,7 +187,7 @@ struct RequestCancellationRegistry
 struct RemoteEndPoint::Data
 {
     explicit Data(lsp::JSONStreamStyle style, uint8_t workers, lsp::Log& _log, RemoteEndPoint* owner)
-        : max_workers(workers), m_id(0), next_request_cookie(0), log(_log)
+        : max_workers(workers), m_id(0), next_request_cookie(0), owner(owner), log(_log)
     {
         if (style == lsp::JSONStreamStyle::Standard)
         {
@@ -200,6 +200,7 @@ struct RemoteEndPoint::Data
     }
     ~Data()
     {
+        stopOrderedDispatcher();
         stopAsyncCompletionLoop();
         if (tp)
         {
@@ -344,6 +345,7 @@ struct RemoteEndPoint::Data
     std::map<lsRequestId, std::shared_ptr<PendingRequestInfo>> _client_request_futures;
     StreamMessageProducer* message_producer;
     std::atomic<bool> quit {};
+    RemoteEndPoint* owner;
     lsp::Log& log;
     std::shared_ptr<lsp::istream> input;
     std::shared_ptr<lsp::ostream> output;
@@ -354,6 +356,200 @@ struct RemoteEndPoint::Data
     std::deque<std::function<bool()>> async_completions;
     std::thread async_completion_thread;
     bool async_completion_stop = false;
+
+    struct ParkedRequest
+    {
+        uint64_t gate = 0;
+        uint64_t sequence = 0;
+        std::unique_ptr<LspMessage> message;
+    };
+
+    std::mutex ordered_mutex;
+    std::condition_variable ordered_cv;
+    std::deque<std::pair<uint64_t, std::unique_ptr<LspMessage>>> notification_queue;
+    std::deque<ParkedRequest> parked_requests;
+    std::thread notification_thread;
+    bool notification_stop = false;
+    bool has_last_ordered_notification = false;
+    uint64_t last_ordered_notification_seq = 0;
+    bool has_completed_notification = false;
+    uint64_t completed_notification_seq = 0;
+
+    bool notificationGateSatisfied(uint64_t gate) const
+    {
+        return has_completed_notification && completed_notification_seq >= gate;
+    }
+
+    void postToWorker(std::unique_ptr<LspMessage> msg, uint64_t sequence)
+    {
+        if (!msg || quit.load(std::memory_order_relaxed) || !tp)
+        {
+            return;
+        }
+        asio::post(
+            *tp,
+            [owner = owner, msg = std::move(msg), sequence]() mutable
+            {
+#ifdef LSPCPP_USEGC
+                GCThreadContext gcContext;
+#endif
+                owner->mainLoopCatching(std::move(msg), sequence, nullptr);
+            }
+        );
+    }
+
+    void releaseParkedRequestsLocked(std::vector<ParkedRequest>& ready)
+    {
+        auto it = parked_requests.begin();
+        while (it != parked_requests.end())
+        {
+            if (notificationGateSatisfied(it->gate))
+            {
+                ready.emplace_back(std::move(*it));
+                it = parked_requests.erase(it);
+            }
+            else
+            {
+                ++it;
+            }
+        }
+    }
+
+    void postReadyParkedRequests(std::vector<ParkedRequest>& ready)
+    {
+        for (auto& request : ready)
+        {
+            postToWorker(std::move(request.message), request.sequence);
+        }
+        ready.clear();
+    }
+
+    void startOrderedDispatcher()
+    {
+        if (notification_thread.joinable() && notification_thread.get_id() != std::this_thread::get_id())
+        {
+            notification_thread.join();
+        }
+        std::lock_guard<std::mutex> lock(ordered_mutex);
+        notification_stop = false;
+        has_last_ordered_notification = false;
+        last_ordered_notification_seq = 0;
+        has_completed_notification = false;
+        completed_notification_seq = 0;
+        notification_queue.clear();
+        parked_requests.clear();
+        if (notification_thread.joinable())
+        {
+            return;
+        }
+        notification_thread = std::thread([this] { notificationLoop(); });
+    }
+
+    void stopOrderedDispatcher()
+    {
+        {
+            std::lock_guard<std::mutex> lock(ordered_mutex);
+            notification_stop = true;
+            notification_queue.clear();
+            parked_requests.clear();
+        }
+        ordered_cv.notify_all();
+        if (notification_thread.joinable())
+        {
+            if (notification_thread.get_id() == std::this_thread::get_id())
+            {
+                return;
+            }
+            else
+            {
+                notification_thread.join();
+            }
+        }
+    }
+
+    void enqueueNotification(std::unique_ptr<LspMessage> msg, uint64_t sequence)
+    {
+        if (!msg || quit.load(std::memory_order_relaxed))
+        {
+            return;
+        }
+        {
+            std::lock_guard<std::mutex> lock(ordered_mutex);
+            if (notification_stop || quit.load(std::memory_order_relaxed))
+            {
+                return;
+            }
+            has_last_ordered_notification = true;
+            last_ordered_notification_seq = sequence;
+            notification_queue.emplace_back(sequence, std::move(msg));
+        }
+        ordered_cv.notify_one();
+    }
+
+    void enqueueRequest(std::unique_ptr<LspMessage> msg, uint64_t sequence)
+    {
+        if (!msg || quit.load(std::memory_order_relaxed))
+        {
+            return;
+        }
+
+        bool post_now = true;
+        {
+            std::lock_guard<std::mutex> lock(ordered_mutex);
+            if (!notification_stop && has_last_ordered_notification &&
+                !notificationGateSatisfied(last_ordered_notification_seq))
+            {
+                ParkedRequest parked;
+                parked.gate = last_ordered_notification_seq;
+                parked.sequence = sequence;
+                parked.message = std::move(msg);
+                parked_requests.emplace_back(std::move(parked));
+                post_now = false;
+            }
+        }
+
+        if (post_now)
+        {
+            postToWorker(std::move(msg), sequence);
+        }
+    }
+
+    void notificationLoop()
+    {
+        for (;;)
+        {
+            uint64_t sequence = 0;
+            std::unique_ptr<LspMessage> msg;
+            {
+                std::unique_lock<std::mutex> lock(ordered_mutex);
+                ordered_cv.wait(lock, [&] { return notification_stop || !notification_queue.empty(); });
+                if (notification_stop && notification_queue.empty())
+                {
+                    return;
+                }
+                sequence = notification_queue.front().first;
+                msg = std::move(notification_queue.front().second);
+                notification_queue.pop_front();
+            }
+
+            try
+            {
+                owner->mainLoopCatching(std::move(msg), sequence, nullptr);
+            }
+            catch (...)
+            {
+            }
+
+            std::vector<ParkedRequest> ready;
+            {
+                std::lock_guard<std::mutex> lock(ordered_mutex);
+                has_completed_notification = true;
+                completed_notification_seq = sequence;
+                releaseParkedRequestsLocked(ready);
+            }
+            postReadyParkedRequests(ready);
+        }
+    }
 
     bool pendingRequest(RequestInMessage& info, PendingResponseHandler&& handler)
     {
@@ -553,8 +749,9 @@ struct RemoteEndPoint::Data
         {
             canceler();
         }
-        stopAsyncCompletionLoop();
         failPendingRequests();
+        stopOrderedDispatcher();
+        stopAsyncCompletionLoop();
         if (tp)
         {
             tp->stop();
@@ -687,8 +884,9 @@ RemoteEndPoint::~RemoteEndPoint()
     d_ptr = nullptr;
 }
 
-bool RemoteEndPoint::dispatch(std::string const& content, uint64_t sequence)
+RemoteEndPoint::ParsedMessage RemoteEndPoint::parseAndClassify(std::string const& content)
 {
+    ParsedMessage result;
     rapidjson::Document document;
     document.Parse(content.c_str(), content.length());
     if (document.HasParseError())
@@ -701,7 +899,7 @@ bool RemoteEndPoint::dispatch(std::string const& content, uint64_t sequence)
         info += content.substr(document.GetErrorOffset());
         d_ptr->log.log(Log::Level::SEVERE, info);
 
-        return false;
+        return result;
     }
 
     JsonReader visitor {&document};
@@ -712,7 +910,7 @@ bool RemoteEndPoint::dispatch(std::string const& content, uint64_t sequence)
         reason = "Reason:Bad or missing jsonrpc version\n";
         reason += "content:\n" + content;
         d_ptr->log.log(Log::Level::SEVERE, reason);
-        return false;
+        return result;
     }
     LspMessage::Kind _kind = LspMessage::NOTIFICATION_MESSAGE;
     try
@@ -723,14 +921,17 @@ bool RemoteEndPoint::dispatch(std::string const& content, uint64_t sequence)
             auto msg = jsonHandler->parseRequstMessage(visitor["method"]->GetString(), visitor);
             if (msg)
             {
-                mainLoop(std::move(msg), sequence);
+                result.ok = true;
+                result.kind = LspMessage::REQUEST_MESSAGE;
+                result.message = std::move(msg);
+                return result;
             }
             else
             {
                 std::string info = "Unknown support request message when consumer message:\n";
                 info += content;
                 d_ptr->log.log(Log::Level::WARNING, info);
-                return false;
+                return result;
             }
         }
         else if (isResponseMessage(visitor))
@@ -745,6 +946,9 @@ bool RemoteEndPoint::dispatch(std::string const& content, uint64_t sequence)
                 std::string info = "Unknown response message :\n";
                 info += content;
                 d_ptr->log.log(Log::Level::INFO, info);
+                result.ok = true;
+                result.kind = LspMessage::RESPONCE_MESSAGE;
+                return result;
             }
             else
             {
@@ -752,14 +956,17 @@ bool RemoteEndPoint::dispatch(std::string const& content, uint64_t sequence)
                 auto msg = jsonHandler->parseResponseMessage(msgInfo->method, visitor);
                 if (msg)
                 {
-                    mainLoop(std::move(msg), sequence);
+                    result.ok = true;
+                    result.kind = LspMessage::RESPONCE_MESSAGE;
+                    result.message = std::move(msg);
+                    return result;
                 }
                 else
                 {
                     std::string info = "Unknown response message :\n";
                     info += content;
                     d_ptr->log.log(Log::Level::SEVERE, info);
-                    return false;
+                    return result;
                 }
             }
         }
@@ -771,16 +978,19 @@ bool RemoteEndPoint::dispatch(std::string const& content, uint64_t sequence)
                 std::string info = "Unknown notification message :\n";
                 info += content;
                 d_ptr->log.log(Log::Level::SEVERE, info);
-                return false;
+                return result;
             }
-            mainLoop(std::move(msg), sequence);
+            result.ok = true;
+            result.kind = LspMessage::NOTIFICATION_MESSAGE;
+            result.message = std::move(msg);
+            return result;
         }
         else
         {
             std::string info = "Unknown lsp message when consumer message:\n";
             info += content;
             d_ptr->log.log(Log::Level::WARNING, info);
-            return false;
+            return result;
         }
     }
     catch (std::exception& e)
@@ -804,9 +1014,85 @@ bool RemoteEndPoint::dispatch(std::string const& content, uint64_t sequence)
         std::string reason = "Reason:" + info + "\n";
         reason += "content:\n" + content;
         d_ptr->log.log(Log::Level::SEVERE, reason);
-        return false;
+        return result;
     }
-    return true;
+    return result;
+}
+
+void RemoteEndPoint::mainLoopCatching(std::unique_ptr<LspMessage> msg, uint64_t sequence, std::string const* content)
+{
+    if (!msg)
+    {
+        return;
+    }
+    auto const kind = msg->GetKid();
+    try
+    {
+        mainLoop(std::move(msg), sequence);
+    }
+    catch (std::exception& e)
+    {
+        std::string info = "Exception  when process ";
+        if (kind == LspMessage::REQUEST_MESSAGE)
+        {
+            info += "request";
+        }
+        else if (kind == LspMessage::RESPONCE_MESSAGE)
+        {
+            info += "response";
+        }
+        else
+        {
+            info += "notification";
+        }
+        info += " message:\n";
+        info += e.what();
+        std::string reason = "Reason:" + info + "\n";
+        if (content != nullptr)
+        {
+            reason += "content:\n" + *content;
+        }
+        d_ptr->log.log(Log::Level::SEVERE, reason);
+    }
+}
+
+bool RemoteEndPoint::dispatch(std::string const& content, uint64_t sequence)
+{
+    ParsedMessage parsed = parseAndClassify(content);
+    if (parsed.ok && parsed.message)
+    {
+        mainLoopCatching(std::move(parsed.message), sequence, &content);
+    }
+    return parsed.ok;
+}
+
+void RemoteEndPoint::routeIncoming(std::string&& content, uint64_t sequence)
+{
+    ParsedMessage parsed = parseAndClassify(content);
+    if (!parsed.ok || !parsed.message || d_ptr->quit.load(std::memory_order_relaxed))
+    {
+        return;
+    }
+
+    if (parsed.kind == LspMessage::NOTIFICATION_MESSAGE)
+    {
+        if (strcmp(Notify_Cancellation::notify::kMethodInfo, parsed.message->GetMethodType()) == 0)
+        {
+            d_ptr->onCancel(static_cast<Notify_Cancellation::notify*>(parsed.message.get()), sequence);
+        }
+        else
+        {
+            d_ptr->enqueueNotification(std::move(parsed.message), sequence);
+        }
+    }
+    else if (parsed.kind == LspMessage::REQUEST_MESSAGE)
+    {
+        d_ptr->enqueueRequest(std::move(parsed.message), sequence);
+    }
+    else
+    {
+        d_ptr->postToWorker(std::move(parsed.message), sequence);
+    }
 }
 
 bool RemoteEndPoint::internalSendRequest(RequestInMessage& info, GenericResponseHandler handler)
@@ -969,6 +1255,7 @@ void RemoteEndPoint::startProcessingMessages(std::shared_ptr<lsp::istream> r, st
     d_ptr->startAsyncCompletionLoop();
     d_ptr->message_producer->bind(r);
     d_ptr->tp = std::make_shared<asio::thread_pool>(d_ptr->max_workers);
+    d_ptr->startOrderedDispatcher();
     message_producer_thread_ = std::make_shared<std::thread>(
         [&]()
         {
@@ -976,17 +1263,7 @@ void RemoteEndPoint::startProcessingMessages(std::shared_ptr<lsp::istream> r, st
                 [&](std::string&& content)
                 {
                     auto const sequence = d_ptr->nextMessageSequence();
-                    asio::post(
-                        *d_ptr->tp,
-                        [this, content = std::move(content), sequence]
-                        {
-#ifdef LSPCPP_USEGC
-                            GCThreadContext gcContext;
-#endif
-
-                            dispatch(content, sequence);
-                        }
-                    );
+                    routeIncoming(std::move(content), sequence);
                 }
             );
         }

@@ -437,12 +437,9 @@ struct EndpointDocumentHarness
     {
         auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
         auto endpoint = std::make_shared<GenericEndpoint>(log);
-        // Document-sync notifications are order-sensitive (a didChange applied
-        // before its didOpen, or two incremental didChange frames swapped,
-        // corrupts the document). RemoteEndPoint only guarantees in-order
-        // handler execution with a single worker, which is the configuration a
-        // real server must use for textDocument/did* notifications.
-        point.reset(new RemoteEndPoint(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 1));
+        // Exercise document-sync ordering under multiple workers: didOpen and
+        // incremental didChange notifications must still be applied in wire order.
+        point.reset(new RemoteEndPoint(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 4));
         point->registerHandler(
             [this](Notify_TextDocumentDidOpen::notify const& notification)
             {

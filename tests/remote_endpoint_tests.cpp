@@ -44,6 +44,14 @@ struct ScalarResult
 MAKE_REFLECT_STRUCT(ScalarResult, value);
 DEFINE_REQUEST_RESPONSE_TYPE(test_scalar, ScalarParams, ScalarResult, "test/scalar");
 
+struct OrderedNotificationParams
+{
+    int value = 0;
+    MAKE_SWAP_METHOD(OrderedNotificationParams, value);
+};
+MAKE_REFLECT_STRUCT(OrderedNotificationParams, value);
+DEFINE_NOTIFICATION_TYPE(test_ordered_notification, OrderedNotificationParams, "test/orderedNotification");
+
 namespace
 {
 using test::DummyLog;
@@ -1467,6 +1475,93 @@ void TestNotificationHandlerReceivesNotification()
     Expect(notified.load(std::memory_order_relaxed), "registered notification handler must receive notifications");
 }
 
+void TestNotificationsRunInWireOrderWithMultipleWorkers()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    std::mutex mutex;
+    std::vector<int> observed;
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 4);
+    point.registerHandler(
+        [&](test_ordered_notification::notify const& notification)
+        {
+            // If notifications are allowed to run concurrently, later messages
+            // can finish first. The endpoint must serialize them by wire order.
+            std::this_thread::sleep_for(std::chrono::milliseconds(20 - notification.params.value));
+            std::lock_guard<std::mutex> lock(mutex);
+            observed.push_back(notification.params.value);
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    for (int i = 0; i < 10; ++i)
+    {
+        input_stream->append(test::MakeLspFrame(
+            std::string(R"({"jsonrpc":"2.0","method":"test/orderedNotification","params":{"value":)") +
+            std::to_string(i) + R"(}})"));
+    }
+
+    bool const saw_all = WaitUntil(
+        [&]()
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            return observed.size() == 10;
+        });
+    point.stop();
+
+    Expect(saw_all, "all ordered notifications must be delivered");
+    if (saw_all)
+    {
+        for (int i = 0; i < 10; ++i)
+        {
+            Expect(observed[static_cast<size_t>(i)] == i, "notifications must run in wire order with multiple workers");
+        }
+    }
+}
+
+void TestRequestWaitsForPriorNotificationWithMultipleWorkers()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    std::atomic<bool> notification_applied {false};
+    std::atomic<bool> request_saw_notification {false};
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 4);
+    point.registerHandler(
+        [&](test_ordered_notification::notify const&)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            notification_applied.store(true, std::memory_order_relaxed);
+        });
+    point.registerHandler(
+        [&](test_scalar::request const& req) -> lsp::ResponseOrError<test_scalar::response>
+        {
+            request_saw_notification.store(notification_applied.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            test_scalar::response rsp;
+            rsp.id = req.id;
+            rsp.result.value = req.params.value;
+            return rsp;
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    input_stream->append(
+        test::MakeLspFrame(R"({"jsonrpc":"2.0","method":"test/orderedNotification","params":{"value":1}})"));
+    input_stream->append(
+        test::MakeLspFrame(R"({"jsonrpc":"2.0","id":4201,"method":"test/scalar","params":{"value":3}})"));
+
+    std::string const output = WaitForOutputContaining(output_stream, "\"id\":4201");
+    point.stop();
+
+    Expect(output.find("\"id\":4201") != std::string::npos, "request after notification must get a response");
+    Expect(request_saw_notification.load(std::memory_order_relaxed), "request must start after prior notification completes");
+}
+
 void TestProgressNotificationsDispatchThroughStandardProtocolHandler()
 {
     DummyLog log;
@@ -1498,9 +1593,7 @@ void TestProgressNotificationsDispatchThroughStandardProtocolHandler()
             return true;
         });
 
-    // A single worker keeps notification dispatch order deterministic, which
-    // this test asserts on.
-    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 1);
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 4);
     point.startProcessingMessages(input_stream, output_stream);
 
     input_stream->append(test::MakeLspFrame(
@@ -1526,6 +1619,263 @@ void TestProgressNotificationsDispatchThroughStandardProtocolHandler()
         Expect(events[2].find("99:") == 0, "numeric partial result token must parse");
         Expect(events[2].find("file:///tmp/a.cpp") != std::string::npos, "partial result payload must be preserved");
     }
+}
+
+void TestNotificationWaitResponseDoesNotDeadlockWithParkedRequest()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+    std::unique_ptr<RemoteEndPoint> point;
+    std::atomic<bool> request_after_notification_ran {false};
+
+    point.reset(new RemoteEndPoint(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 1));
+    point->registerHandler(
+        [&](test_ordered_notification::notify const&)
+        {
+            td_initialize::request req;
+            req.id.set(9100);
+            auto response = point->waitResponse(req, 2000);
+            Expect(response != nullptr && !response->IsError(), "notification waitResponse must complete");
+        });
+    point->registerHandler(
+        [&](test_scalar::request const& req) -> lsp::ResponseOrError<test_scalar::response>
+        {
+            request_after_notification_ran.store(true, std::memory_order_relaxed);
+            test_scalar::response rsp;
+            rsp.id = req.id;
+            rsp.result.value = req.params.value;
+            return rsp;
+        });
+    point->startProcessingMessages(input_stream, output_stream);
+
+    input_stream->append(
+        test::MakeLspFrame(R"({"jsonrpc":"2.0","method":"test/orderedNotification","params":{"value":1}})"));
+    input_stream->append(
+        test::MakeLspFrame(R"({"jsonrpc":"2.0","id":9101,"method":"test/scalar","params":{"value":4}})"));
+
+    std::string const request_output = WaitForOutputContaining(output_stream, "\"id\":9100");
+    Expect(request_output.find("\"id\":9100") != std::string::npos, "notification must send nested request");
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":9100,"result":{"capabilities":{}}})"));
+
+    std::string const output = WaitForOutputContaining(output_stream, "\"id\":9101");
+    point->stop();
+
+    Expect(output.find("\"id\":9101") != std::string::npos, "parked request must run after notification waitResponse");
+    Expect(request_after_notification_ran.load(std::memory_order_relaxed), "request parked behind notification must eventually run");
+}
+
+void TestCancelRequestBypassesBlockedNotificationQueue()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool release_notification = false;
+    std::atomic<bool> request_entered {false};
+    std::atomic<bool> handler_saw_cancel {false};
+
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 4);
+    point.registerHandler(
+        [&](test_ordered_notification::notify const&)
+        {
+            std::unique_lock<std::mutex> lock(mutex);
+            cv.wait(lock, [&] { return release_notification; });
+        });
+    point.registerHandler(
+        [&](td_initialize::request const& req, CancelMonitor const& monitor)
+            -> lsp::ResponseOrError<td_initialize::response>
+        {
+            request_entered.store(true, std::memory_order_relaxed);
+            for (int i = 0; i < 200; ++i)
+            {
+                if (monitor() != 0)
+                {
+                    handler_saw_cancel.store(true, std::memory_order_relaxed);
+                    Rsp_Error error;
+                    error.id = req.id;
+                    error.error.code = lsErrorCodes::RequestCancelled;
+                    error.error.message = "cancelled";
+                    return lsp::ResponseOrError<td_initialize::response>(std::move(error));
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            }
+            td_initialize::response rsp;
+            rsp.id = req.id;
+            return rsp;
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    input_stream->append(
+        test::MakeLspFrame(R"({"jsonrpc":"2.0","id":4300,"method":"initialize","params":{}})"));
+    Expect(WaitUntil([&] { return request_entered.load(std::memory_order_relaxed); }), "request must start before cancel");
+
+    input_stream->append(
+        test::MakeLspFrame(R"({"jsonrpc":"2.0","method":"test/orderedNotification","params":{"value":1}})"));
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":4300}})"));
+
+    std::string const output = WaitForOutputContaining(output_stream, "\"code\":-32800");
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        release_notification = true;
+    }
+    cv.notify_all();
+    point.stop();
+
+    Expect(handler_saw_cancel.load(std::memory_order_relaxed), "cancel must bypass a blocked notification queue");
+    Expect(output.find("\"code\":-32800") != std::string::npos, "cancelled request must report RequestCancelled");
+}
+
+void TestFailedNotificationDoesNotBlockFollowingRequest()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 4);
+    point.registerHandler(
+        [&](test_ordered_notification::notify const&)
+        {
+            throw std::runtime_error("ordered notification failed");
+        });
+    point.registerHandler(
+        [&](test_scalar::request const& req) -> lsp::ResponseOrError<test_scalar::response>
+        {
+            test_scalar::response rsp;
+            rsp.id = req.id;
+            rsp.result.value = req.params.value;
+            return rsp;
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","method":"unknown/notification","params":{}})"));
+    input_stream->append(
+        test::MakeLspFrame(R"({"jsonrpc":"2.0","method":"test/orderedNotification","params":{"value":1}})"));
+    input_stream->append(
+        test::MakeLspFrame(R"({"jsonrpc":"2.0","id":4400,"method":"test/scalar","params":{"value":5}})"));
+
+    std::string const output = WaitForOutputContaining(output_stream, "\"id\":4400");
+    point.stop();
+
+    Expect(output.find("\"id\":4400") != std::string::npos, "failed or unknown notifications must not block requests");
+    Expect(output.find("\"value\":5") != std::string::npos, "request after failed notification must still run");
+}
+
+void TestStopWithParkedRequestDoesNotDeadlockAndCanRestart()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool release_notification = false;
+    std::atomic<bool> notification_entered {false};
+
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 4);
+    point.registerHandler(
+        [&](test_ordered_notification::notify const&)
+        {
+            notification_entered.store(true, std::memory_order_relaxed);
+            std::unique_lock<std::mutex> lock(mutex);
+            cv.wait(lock, [&] { return release_notification; });
+        });
+    point.registerHandler(
+        [&](test_scalar::request const& req) -> lsp::ResponseOrError<test_scalar::response>
+        {
+            test_scalar::response rsp;
+            rsp.id = req.id;
+            rsp.result.value = req.params.value;
+            return rsp;
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    input_stream->append(
+        test::MakeLspFrame(R"({"jsonrpc":"2.0","method":"test/orderedNotification","params":{"value":1}})"));
+    Expect(WaitUntil([&] { return notification_entered.load(std::memory_order_relaxed); }), "slow notification must start");
+    input_stream->append(
+        test::MakeLspFrame(R"({"jsonrpc":"2.0","id":4500,"method":"test/scalar","params":{"value":6}})"));
+
+    std::atomic<bool> stopped {false};
+    std::thread stopper(
+        [&]()
+        {
+            point.stop();
+            stopped.store(true, std::memory_order_relaxed);
+        });
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        release_notification = true;
+    }
+    cv.notify_all();
+    stopper.join();
+    Expect(stopped.load(std::memory_order_relaxed), "stop with parked request must not deadlock");
+
+    auto restart_input = std::make_shared<FeedableIStream>();
+    auto restart_output = std::make_shared<StringOStream>();
+    point.startProcessingMessages(restart_input, restart_output);
+    restart_input->append(
+        test::MakeLspFrame(R"({"jsonrpc":"2.0","id":4501,"method":"test/scalar","params":{"value":7}})"));
+    std::string const output = WaitForOutputContaining(restart_output, "\"id\":4501");
+    point.stop();
+
+    Expect(output.find("\"value\":7") != std::string::npos, "endpoint must restart after stop with parked request");
+}
+
+void TestStopAndRestartFromNotificationHandlerKeepsDispatcherAlive()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+    auto restart_input = std::make_shared<FeedableIStream>();
+    auto restart_output = std::make_shared<StringOStream>();
+
+    std::atomic<bool> restarted {false};
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 4);
+    point.registerHandler(
+        [&](test_ordered_notification::notify const&)
+        {
+            point.stop();
+            point.startProcessingMessages(restart_input, restart_output);
+            restarted.store(true, std::memory_order_relaxed);
+        });
+    point.registerHandler(
+        [&](test_scalar::request const& req) -> lsp::ResponseOrError<test_scalar::response>
+        {
+            test_scalar::response rsp;
+            rsp.id = req.id;
+            rsp.result.value = req.params.value;
+            return rsp;
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    input_stream->append(
+        test::MakeLspFrame(R"({"jsonrpc":"2.0","method":"test/orderedNotification","params":{"value":1}})"));
+    Expect(
+        WaitUntil([&] { return restarted.load(std::memory_order_relaxed); }),
+        "notification handler must be able to stop and restart the endpoint");
+
+    restart_input->append(
+        test::MakeLspFrame(R"({"jsonrpc":"2.0","id":4510,"method":"test/scalar","params":{"value":8}})"));
+    std::string const output = WaitForOutputContaining(restart_output, "\"id\":4510");
+    point.stop();
+
+    Expect(
+        output.find("\"value\":8") != std::string::npos,
+        "self-restarted endpoint must keep ordered dispatcher alive for new messages");
 }
 
 void TestThrowingNotificationHandlerDoesNotStopEndpoint()
@@ -2335,7 +2685,14 @@ int main()
     TestSendRequestWritesExactContentLengthFrame();
     TestConcurrentSendWritesCompleteFrames();
     TestNotificationHandlerReceivesNotification();
+    TestNotificationsRunInWireOrderWithMultipleWorkers();
+    TestRequestWaitsForPriorNotificationWithMultipleWorkers();
     TestProgressNotificationsDispatchThroughStandardProtocolHandler();
+    TestNotificationWaitResponseDoesNotDeadlockWithParkedRequest();
+    TestCancelRequestBypassesBlockedNotificationQueue();
+    TestFailedNotificationDoesNotBlockFollowingRequest();
+    TestStopWithParkedRequestDoesNotDeadlockAndCanRestart();
+    TestStopAndRestartFromNotificationHandlerKeepsDispatcherAlive();
     TestThrowingNotificationHandlerDoesNotStopEndpoint();
     TestConditionTimedWaitReturnsNotifiedValue();
     TestConditionTimedWaitStillTimesOut();
