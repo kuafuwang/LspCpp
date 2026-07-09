@@ -198,6 +198,15 @@ LSP 里很多字段需要区分 **字段缺省** 与 **字段存在且值为 JSO
 ## JDT.LS 扩展
 
 `include/LibLsp/lsp/extention/jdtls/` 目录包含 Eclipse JDT Language Server 扩展，为基于 LspCpp 的 Java 工具保留兼容性。这些不属于标准 LSP 规范。
+`ProtocolJsonHandler` 默认不注册这些方法。构建 Java 工具时需要显式开启：
+
+```cpp
+lsp::ProtocolJsonHandlerOptions options;
+options.enableJdtlsExtensions = true;
+lsp::ProtocolJsonHandler handler(options);
+```
+
+如果使用 `LanguageSession`，设置 `LanguageSessionOptions::protocol.enableJdtlsExtensions`。
 
 ## 测试新类型
 

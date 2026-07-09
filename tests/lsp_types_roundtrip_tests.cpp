@@ -28,6 +28,7 @@
 #include "LibLsp/lsp/workspace/execute_command.h"
 #include "LibLsp/lsp/workspace/symbol.h"
 #include "LibLsp/lsp/out_list.h"
+#include "LibLsp/lsp/general/exit.h"
 #include "LibLsp/lsp/general/shutdown.h"
 #include "LibLsp/lsp/general/initialized.h"
 #include "LibLsp/lsp/lsCodeAction.h"
@@ -39,6 +40,7 @@
 #include "LibLsp/lsp/textDocument/did_save.h"
 #include "LibLsp/lsp/textDocument/willSave.h"
 #include "LibLsp/lsp/windows/MessageNotify.h"
+#include "protocol_test_helpers.h"
 #include "test_helpers.h"
 
 #include <rapidjson/document.h>
@@ -62,6 +64,10 @@
 namespace
 {
 using test::Expect;
+using test::ExpectParsesErrorResponse;
+using test::ExpectParsesNotification;
+using test::ExpectParsesRequest;
+using test::ExpectParsesResponse;
 
 #ifndef _WIN32
 struct ScopedTempDir
@@ -139,45 +145,6 @@ lsDocumentUri MakeDocumentUri(char const* uri)
     lsDocumentUri document_uri;
     document_uri.raw_uri_ = uri;
     return document_uri;
-}
-
-void ExpectParsesRequest(lsp::ProtocolJsonHandler& handler, MethodType method, char const* json, char const* message)
-{
-    rapidjson::Document document;
-    JsonReader reader = MakeReader(document, json);
-    Expect(handler.parseRequstMessage(method, reader) != nullptr, message);
-}
-
-void ExpectParsesNotification(lsp::ProtocolJsonHandler& handler, MethodType method, char const* json, char const* message)
-{
-    rapidjson::Document document;
-    JsonReader reader = MakeReader(document, json);
-    Expect(handler.parseNotificationMessage(method, reader) != nullptr, message);
-}
-
-void ExpectParsesResponse(lsp::ProtocolJsonHandler& handler, MethodType method, char const* json, char const* message)
-{
-    rapidjson::Document document;
-    JsonReader reader = MakeReader(document, json);
-    Expect(handler.parseResponseMessage(method, reader) != nullptr, message);
-}
-
-void ExpectParsesErrorResponse(
-    lsp::ProtocolJsonHandler& handler, MethodType method, char const* json, char const* message)
-{
-    rapidjson::Document document;
-    JsonReader reader = MakeReader(document, json);
-    std::unique_ptr<LspMessage> msg = handler.parseResponseMessage(method, reader);
-    Expect(msg != nullptr, message);
-    auto* error = dynamic_cast<Rsp_Error*>(msg.get());
-    Expect(error != nullptr, "error response must deserialize as Rsp_Error");
-    if (error != nullptr)
-    {
-        Expect(error->error.message == "Request failed", "error response message must round-trip");
-        Expect(
-            error->error.code == lsErrorCodes::InternalError,
-            "error response code must round-trip as InternalError");
-    }
 }
 
 void TestPositionRangeLocationAndTextEditRoundTrip()
@@ -889,6 +856,16 @@ void TestLocationListEitherRoundTrip()
         R"([{"originSelectionRange":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"targetUri":"file:///tmp/b.cpp","targetRange":{"start":{"line":1,"character":0},"end":{"line":1,"character":4}},"targetSelectionRange":{"start":{"line":1,"character":0},"end":{"line":1,"character":4}}}])");
     Expect(parsed_links.second && parsed_links.second->size() == 1, "LocationLink[] JSON must parse as link vector");
     Expect(!parsed_links.first, "LocationLink[] JSON must not populate Location side");
+
+    LocationListEither::Either const parsed_single_location = ParseJson<LocationListEither::Either>(
+        R"({"uri":"file:///tmp/single.cpp","range":{"start":{"line":2,"character":0},"end":{"line":2,"character":8}}})");
+    Expect(
+        parsed_single_location.first && parsed_single_location.first->size() == 1,
+        "single Location JSON must parse as a one-element Location[] union");
+    Expect(!parsed_single_location.second, "single Location JSON must not populate LocationLink side");
+    Expect(
+        parsed_single_location.first && (*parsed_single_location.first)[0].uri.raw_uri_ == "file:///tmp/single.cpp",
+        "single Location JSON must preserve URI");
 }
 
 void TestCompletionResponseArrayVsList()
@@ -966,6 +943,13 @@ void TestCodeActionEitherVariants()
     Expect(
         parsed_action.second && parsed_action.second->title == "Rename",
         "CodeAction JSON with diagnostics must parse as CodeAction variant");
+
+    TextDocumentCodeAction::Either const parsed_title_only =
+        ParseJson<TextDocumentCodeAction::Either>(R"({"title":"Refactor this"})");
+    Expect(
+        parsed_title_only.second && parsed_title_only.second->title == "Refactor this",
+        "title-only CodeAction JSON must parse as CodeAction variant");
+    Expect(!parsed_title_only.first, "title-only CodeAction JSON must not populate Command side");
 }
 
 void TestWorkspaceEditDocumentChanges()
@@ -1061,6 +1045,42 @@ void TestHoverContentsAllRepresentations()
     Expect(
         markup_copy.contents.second && markup_copy.contents.second->value == "**symbol**",
         "hover MarkupContent must round-trip through JSON");
+}
+
+void TestDocumentSymbolEitherVariants()
+{
+    TextDocumentDocumentSymbol::Either const symbol_information = ParseJson<TextDocumentDocumentSymbol::Either>(
+        R"({"name":"legacy","kind":12,"location":{"uri":"file:///tmp/a.cpp","range":{"start":{"line":1,"character":0},"end":{"line":1,"character":6}}}})");
+    Expect(
+        symbol_information.first && symbol_information.first->name == "legacy",
+        "DocumentSymbol Either must parse SymbolInformation objects with location");
+    Expect(!symbol_information.second, "SymbolInformation JSON must not populate hierarchical DocumentSymbol side");
+
+    TextDocumentDocumentSymbol::Either const document_symbol = ParseJson<TextDocumentDocumentSymbol::Either>(
+        R"({"name":"modern","kind":12,"range":{"start":{"line":2,"character":0},"end":{"line":4,"character":1}},"selectionRange":{"start":{"line":2,"character":5},"end":{"line":2,"character":11}},"children":[]})");
+    Expect(
+        document_symbol.second && document_symbol.second->name == "modern",
+        "DocumentSymbol Either must parse hierarchical DocumentSymbol objects");
+    Expect(!document_symbol.first, "hierarchical DocumentSymbol JSON must not populate SymbolInformation side");
+    Expect(
+        document_symbol.second && document_symbol.second->children && document_symbol.second->children->empty(),
+        "DocumentSymbol children array must parse");
+}
+
+void TestProtocolJsonHandlerParsesPolymorphicResponseEnvelopes()
+{
+    lsp::ProtocolJsonHandler handler;
+
+    ExpectParsesResponse(
+        handler,
+        td_hover::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":40,"result":{"contents":[{"language":"cpp","value":"int main();"}]}})",
+        "ProtocolJsonHandler must parse hover MarkedString array response envelopes");
+    ExpectParsesResponse(
+        handler,
+        td_codeAction::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":41,"result":[{"title":"Title-only action"}]})",
+        "ProtocolJsonHandler must parse title-only codeAction response envelopes");
 }
 
 void TestProtocolJsonHandlerParsesErrorResponses()
@@ -1260,6 +1280,28 @@ void TestProtocolJsonHandlerRegistersCoreRequestsAndNotifications()
         td_declaration::request::kMethodInfo,
         R"({"jsonrpc":"2.0","id":28,"result":[{"uri":"file:///a.cpp","range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}}}]})",
         "ProtocolJsonHandler must parse declaration responses");
+
+    ExpectParsesResponse(
+        handler,
+        td_definition::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":29,"result":{"uri":"file:///single.cpp","range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}}}})",
+        "ProtocolJsonHandler must parse single Location definition responses");
+}
+
+void TestProtocolJsonHandlerParsesNoParamsMessages()
+{
+    lsp::ProtocolJsonHandler handler;
+
+    ExpectParsesRequest(
+        handler,
+        td_shutdown::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":30,"method":"shutdown"})",
+        "ProtocolJsonHandler must parse shutdown requests without params");
+    ExpectParsesNotification(
+        handler,
+        Notify_Exit::notify::kMethodInfo,
+        R"({"jsonrpc":"2.0","method":"exit"})",
+        "ProtocolJsonHandler must parse exit notifications without params");
 }
 
 } // namespace
@@ -1310,7 +1352,10 @@ int main()
     TestCodeActionEitherVariants();
     TestWorkspaceEditDocumentChanges();
     TestHoverContentsAllRepresentations();
+    TestDocumentSymbolEitherVariants();
+    TestProtocolJsonHandlerParsesPolymorphicResponseEnvelopes();
     TestProtocolJsonHandlerParsesErrorResponses();
     TestProtocolJsonHandlerRegistersCoreRequestsAndNotifications();
+    TestProtocolJsonHandlerParsesNoParamsMessages();
     return test::Failures() == 0 ? 0 : 1;
 }

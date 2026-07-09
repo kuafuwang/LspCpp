@@ -13,16 +13,32 @@
 namespace lsp
 {
 
+struct LanguageSessionOptions
+{
+    JSONStreamStyle style = JSONStreamStyle::Standard;
+    uint8_t max_workers = 2;
+    ProtocolJsonHandlerOptions protocol;
+};
+
 class LanguageSession
 {
 public:
+    explicit LanguageSession(Log& log, LanguageSessionOptions const& options)
+        : log_(log),
+          protocol_json_handler_(std::make_shared<ProtocolJsonHandler>(options.protocol)),
+          endpoint_(std::make_shared<GenericEndpoint>(log_)),
+          remote_endpoint_(protocol_json_handler_, endpoint_, log_, options.style, options.max_workers)
+    {
+    }
+
     explicit LanguageSession(
         Log& log, JSONStreamStyle style = JSONStreamStyle::Standard, uint8_t max_workers = 2
     )
-        : log_(log),
-          protocol_json_handler_(std::make_shared<ProtocolJsonHandler>()),
-          endpoint_(std::make_shared<GenericEndpoint>(log_)),
-          remote_endpoint_(protocol_json_handler_, endpoint_, log_, style, max_workers)
+        : LanguageSession(log, makeOptions(style, max_workers))
+    {
+    }
+
+    explicit LanguageSession(LanguageSessionOptions const& options) : LanguageSession(defaultLog(), options)
     {
     }
 
@@ -84,6 +100,14 @@ public:
     }
 
 private:
+    static LanguageSessionOptions makeOptions(JSONStreamStyle style, uint8_t max_workers)
+    {
+        LanguageSessionOptions options;
+        options.style = style;
+        options.max_workers = max_workers;
+        return options;
+    }
+
     static Log& defaultLog()
     {
         static NullLog log;

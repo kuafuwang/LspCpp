@@ -11,7 +11,7 @@ cmake --build . -j
 ```
 
 `LSPCPP_BUILD_TESTS=ON` 会自动启用示例并注册全部 CTest target。
-默认 `LSPCPP_BUILD_WEBSOCKETS=ON` 时当前注册 **19** 个 CTest 用例。`LSPCPP_BUILD_PERF_SMOKE=ON` 会添加 `lspcpp.perf_smoke`。
+默认 `LSPCPP_BUILD_WEBSOCKETS=ON` 时当前注册 **25** 个 CTest 用例。`LSPCPP_BUILD_PERF_SMOKE=ON` 会添加 `lspcpp.perf_smoke`。
 
 运行完整测试套件：
 
@@ -45,6 +45,7 @@ ctest -R language_session --output-on-failure
 | `lspcpp_infrastructure_tests` | 工具、Condition、流 |
 | `lspcpp_working_files_tests` | 文档缓冲区管理 |
 | `lspcpp_lsp_types_tests` | LSP 类型 JSON reflection |
+| `lspcpp_protocol_json_handler_tests` | `ProtocolJsonHandler` 注册、allowlist 边界、golden LSP fixture |
 | `lspcpp_lsp_3_16_17_tests` | 协议 3.16/3.17 类型 |
 | `lspcpp_lsp_3_18_tests` | 协议 3.18 类型 |
 | `lspcpp_tcp_write_queue_tests` | TCP 写队列 |
@@ -52,6 +53,18 @@ ctest -R language_session --output-on-failure
 | `lspcpp_perf_smoke_tests` | 可选性能冒烟（默认关闭） |
 
 共享辅助（`FeedableIStream`、`StringOStream`、`MakeLspFrame`）在 `tests/test_helpers.h`。
+Protocol JSON 辅助（`ExpectParsesRequest`、`ExpectParsesResponse`、`ExpectParsesNotification`）在 `tests/protocol_test_helpers.h`。
+
+## Protocol 覆盖策略
+
+`ProtocolJsonHandler` 是 LSP method 的主要 wire-level 注册表。新增或修改已实现 LSP method 时：
+
+1. 在 `src/lsp/ProtocolJsonHandler.cpp` 注册 request、response 或 notification parser。
+2. 在 `tests/protocol_json_handler_tests.cpp`、`tests/lsp_types_roundtrip_tests.cpp` 或版本相关的 `tests/lsp_3_*_tests.cpp` 中添加/扩展解析断言。
+3. 对用户可见或容易回归的 JSON 形状，在 `tests/fixtures/lsp/` 添加精简 golden 消息。
+4. 不要把已实现 method 留在 `tools/lsp-metamodel-allowlist.json`。allowlist 表示“已知尚未实现”，不是“已实现但未测试”。
+
+Protocol handler 测试会迭代当前已注册 parser map，并确认已注册 method 可用，且没有继续被 allowlist 标记为 missing。
 
 以下为 consumer 项目与示例额外注册的 CTest 冒烟检查：
 

@@ -3,13 +3,16 @@
 #include "LibLsp/JsonRpc/MessageIssue.h"
 #include "LibLsp/JsonRpc/stream.h"
 
+#include <chrono>
 #include <condition_variable>
 #include <cstdio>
 #include <deque>
 #include <iostream>
+#include <memory>
 #include <mutex>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace test
@@ -347,6 +350,25 @@ inline int ParseContentLength(std::string const& framed)
         return -1;
     }
     return std::atoi(framed.substr(colon + 1, header_end - colon - 1).c_str());
+}
+
+inline std::string WaitForOutputContaining(
+    std::shared_ptr<StringOStream> const& output_stream,
+    std::string const& needle,
+    int attempts = 100,
+    std::chrono::milliseconds delay = std::chrono::milliseconds(10))
+{
+    std::string output;
+    for (int i = 0; i < attempts; ++i)
+    {
+        output = output_stream->snapshot();
+        if (output.find(needle) != std::string::npos)
+        {
+            break;
+        }
+        std::this_thread::sleep_for(delay);
+    }
+    return output;
 }
 
 } // namespace test

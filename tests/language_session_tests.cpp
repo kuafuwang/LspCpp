@@ -16,21 +16,8 @@ namespace
 using test::Expect;
 using test::FeedableIStream;
 using test::StringOStream;
-
-std::string WaitForOutputContaining(std::shared_ptr<StringOStream> const& output_stream, std::string const& needle)
-{
-    std::string output;
-    for (int i = 0; i < 100; ++i)
-    {
-        output = output_stream->snapshot();
-        if (output.find(needle) != std::string::npos)
-        {
-            break;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-    return output;
-}
+using test::StringIStream;
+using test::WaitForOutputContaining;
 
 void TestLanguageSessionInitializeRoundTrip()
 {
@@ -146,6 +133,35 @@ void TestLanguageSessionCanOverrideBuiltinRequestParser()
     Expect(
         response.find(R"("id":"custom-parser")") != std::string::npos,
         "response must preserve the request id parsed by the custom parser");
+}
+
+void TestLanguageSessionOverrideRequestParserTemplate()
+{
+    lsp::NullLog log;
+    lsp::LanguageSession session(log);
+    auto input = std::make_shared<FeedableIStream>();
+    auto output = std::make_shared<StringOStream>();
+    std::atomic<bool> handled {false};
+
+    session.overrideRequestParser<td_initialize::request>();
+    session.on(
+        [&](td_initialize::request const& req) -> td_initialize::response
+        {
+            handled.store(true, std::memory_order_relaxed);
+            td_initialize::response rsp;
+            rsp.id = req.id;
+            return rsp;
+        });
+    session.start(input, output);
+
+    input->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":"template-parser","method":"initialize","params":{}})"));
+    std::string const response = WaitForOutputContaining(output, R"("id":"template-parser")");
+    session.stop();
+
+    Expect(handled.load(std::memory_order_relaxed), "template overrideRequestParser must leave initialize dispatch usable");
+    Expect(
+        response.find(R"("id":"template-parser")") != std::string::npos,
+        "template overrideRequestParser response must preserve request id");
 }
 
 void TestLanguageServerAliasConstructsUsableSession()
@@ -275,6 +291,133 @@ void TestLanguageSessionAsyncHandlerCompletesLater()
         "LanguageSession async handler response must include handler result");
 }
 
+void TestLanguageSessionRunningRequestObservesCancellation()
+{
+    lsp::NullLog log;
+    lsp::LanguageSession session(log, lsp::JSONStreamStyle::Standard, 2);
+    auto input = std::make_shared<FeedableIStream>();
+    auto output = std::make_shared<StringOStream>();
+    std::atomic<bool> handler_entered {false};
+    std::atomic<bool> handler_saw_cancel {false};
+
+    session.on(
+        [&](td_initialize::request const& req, CancelMonitor const& monitor) -> lsp::ResponseOrError<td_initialize::response>
+        {
+            handler_entered.store(true, std::memory_order_release);
+            for (int i = 0; i < 100; ++i)
+            {
+                if (monitor && monitor())
+                {
+                    handler_saw_cancel.store(true, std::memory_order_relaxed);
+                    Rsp_Error error;
+                    error.id = req.id;
+                    error.error.code = lsErrorCodes::RequestCancelled;
+                    error.error.message = "cancelled";
+                    return error;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            }
+            td_initialize::response rsp;
+            rsp.id = req.id;
+            return rsp;
+        });
+    session.start(input, output);
+
+    input->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":620,"method":"initialize","params":{}})"));
+    for (int i = 0; i < 100 && !handler_entered.load(std::memory_order_acquire); ++i)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    Expect(handler_entered.load(std::memory_order_acquire), "LanguageSession request handler must start before cancel");
+    input->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":620}})"));
+    std::string const response = WaitForOutputContaining(output, "\"code\":-32800");
+    session.stop();
+
+    Expect(handler_saw_cancel.load(std::memory_order_relaxed), "LanguageSession handler must observe cancellation");
+    Expect(response.find("\"code\":-32800") != std::string::npos, "LanguageSession cancelled request must report -32800");
+}
+
+void TestLanguageSessionDelimitedRoundTrip()
+{
+    lsp::NullLog log;
+    lsp::LanguageSession session(log, lsp::JSONStreamStyle::Delimited);
+    auto input = std::make_shared<StringIStream>(
+        "{\"jsonrpc\":\"2.0\",\"id\":\"delimited\",\"method\":\"initialize\",\"params\":{}}\n"
+        "// -----\n");
+    auto output = std::make_shared<StringOStream>();
+    std::atomic<bool> handled {false};
+
+    session.on(
+        [&](td_initialize::request const& req) -> td_initialize::response
+        {
+            handled.store(true, std::memory_order_relaxed);
+            td_initialize::response rsp;
+            rsp.id = req.id;
+            rsp.result.capabilities.hoverProvider = true;
+            return rsp;
+        });
+    session.start(input, output);
+
+    std::string const response = WaitForOutputContaining(output, R"("id":"delimited")");
+    session.stop();
+
+    Expect(handled.load(std::memory_order_relaxed), "LanguageSession delimited stream must dispatch requests");
+    Expect(response.find(R"("id":"delimited")") != std::string::npos, "Delimited LanguageSession response must preserve id");
+    Expect(
+        response.find("\"hoverProvider\":true") != std::string::npos,
+        "Delimited LanguageSession response must include handler result");
+}
+
+void TestLanguageSessionClientRequestRoundTrip()
+{
+    lsp::NullLog log;
+    lsp::LanguageSession session(log);
+    auto input = std::make_shared<FeedableIStream>();
+    auto output = std::make_shared<StringOStream>();
+    session.start(input, output);
+
+    td_initialize::request req = session.endpoint().createRequest<td_initialize::request>();
+    auto response_future = session.endpoint().send(req);
+    std::string const request_json = WaitForOutputContaining(output, "\"method\":\"initialize\"");
+    Expect(
+        request_json.find("\"method\":\"initialize\"") != std::string::npos,
+        "LanguageSession endpoint must write outbound client-role requests");
+
+    input->append(test::MakeLspFrame(
+        std::string(R"({"jsonrpc":"2.0","id":)") + std::to_string(req.id.value) +
+        R"(,"result":{"capabilities":{"hoverProvider":true}}})"));
+    auto const ready = response_future.wait_for(std::chrono::milliseconds(1000));
+    session.stop();
+
+    Expect(ready == lsp::future_status::ready, "LanguageSession outbound request future must resolve");
+    if (ready == lsp::future_status::ready)
+    {
+        auto response = response_future.get();
+        Expect(!response.IsError(), "LanguageSession outbound request must receive a success response");
+        if (!response.IsError())
+        {
+            Expect(
+                response.response.result.capabilities.hoverProvider &&
+                    *response.response.result.capabilities.hoverProvider,
+                "LanguageSession outbound response must parse initialize capabilities");
+        }
+    }
+}
+
+void TestLanguageSessionCanEnableJdtlsExtensions()
+{
+    lsp::LanguageSessionOptions options;
+    options.protocol.enableJdtlsExtensions = true;
+    lsp::LanguageSession session(options);
+
+    Expect(
+        session.protocolJsonHandler()->GetResponseJsonHandler("java/classFileContents") != nullptr,
+        "LanguageSessionOptions must allow opt-in JDTLS response parsers");
+    Expect(
+        session.protocolJsonHandler()->GetNotificationJsonHandler("java/projectConfigurationUpdate") != nullptr,
+        "LanguageSessionOptions must allow opt-in JDTLS notification parsers");
+}
+
 } // namespace
 
 int main()
@@ -283,9 +426,14 @@ int main()
     TestLanguageSessionNotificationHandler();
     TestLanguageSessionEndpointCanSendNotifications();
     TestLanguageSessionCanOverrideBuiltinRequestParser();
+    TestLanguageSessionOverrideRequestParserTemplate();
     TestLanguageServerAliasConstructsUsableSession();
     TestLanguageSessionShutdownSequence();
     TestLanguageSessionThrowsRequestError();
     TestLanguageSessionAsyncHandlerCompletesLater();
+    TestLanguageSessionRunningRequestObservesCancellation();
+    TestLanguageSessionDelimitedRoundTrip();
+    TestLanguageSessionClientRequestRoundTrip();
+    TestLanguageSessionCanEnableJdtlsExtensions();
     return test::Failures() == 0 ? 0 : 1;
 }

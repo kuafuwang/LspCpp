@@ -405,6 +405,33 @@ void TestTcpDisconnectAllowsNewClient()
     Expect(got_response, "new TCP client after disconnect must receive responses");
     Expect(body.find("\"id\":4303") != std::string::npos, "new TCP client response must preserve request id");
 }
+
+void TestTcpStopWithActiveConnectionReturns()
+{
+    lsp::NullLog log;
+    auto protocol_json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+
+    int const port = PickPort();
+    lsp::TcpServer server("127.0.0.1", std::to_string(port), protocol_json_handler, endpoint, log);
+    std::thread server_thread([&]() { server.run(); });
+
+    asio::ip::tcp::iostream client;
+    bool const connected = ConnectWithRetry(client, port);
+    Expect(connected, "TCP active-stop test client must connect");
+    if (connected)
+    {
+        Expect(WaitForServerConnection(server.point), "TcpServer must install streams before active-stop test");
+    }
+
+    server.stop();
+    if (server_thread.joinable())
+    {
+        server_thread.join();
+    }
+
+    Expect(!server.point.isWorking(), "TcpServer stop with an active client must stop the RemoteEndPoint");
+}
 } // namespace
 
 int main()
@@ -414,5 +441,6 @@ int main()
     TestTcpInboundRequestReceivesResponse();
     TestTcpSecondClientPreemptsFirstConnection();
     TestTcpDisconnectAllowsNewClient();
+    TestTcpStopWithActiveConnectionReturns();
     return test::Failures() == 0 ? 0 : 1;
 }

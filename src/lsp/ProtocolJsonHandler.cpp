@@ -487,27 +487,9 @@ void AddStadardResponseJsonRpcMethod(MessageJsonHandler& handler)
 
         return workspaceSymbol_resolve::response::ReflectReader(visitor);
     };
-    handler.method2response[td_didRenameFiles::request::kMethodInfo] = [](Reader& visitor)
-    {
-        if (visitor.HasMember("error"))
-        {
-            return Rsp_Error::ReflectReader(visitor);
-        }
-
-        return td_didRenameFiles::response::ReflectReader(visitor);
-    };
-    handler.method2response[td_willRenameFiles::request::kMethodInfo] = [](Reader& visitor)
-    {
-        if (visitor.HasMember("error"))
-        {
-            return Rsp_Error::ReflectReader(visitor);
-        }
-
-        return td_willRenameFiles::response::ReflectReader(visitor);
-    };
 }
 
-void AddJavaExtentionResponseJsonRpcMethod(MessageJsonHandler& handler)
+void AddJdtlsExtensionJsonRpcMethod(MessageJsonHandler& handler)
 {
     handler.method2response[java_classFileContents::request::kMethodInfo] = [](Reader& visitor)
     {
@@ -712,6 +694,36 @@ void AddJavaExtentionResponseJsonRpcMethod(MessageJsonHandler& handler)
         return java_searchSymbols::response::ReflectReader(visitor);
     };
 
+    handler.method2response[td_didRenameFiles::request::kMethodInfo] = [](Reader& visitor)
+    {
+        if (visitor.HasMember("error"))
+        {
+            return Rsp_Error::ReflectReader(visitor);
+        }
+
+        return td_didRenameFiles::response::ReflectReader(visitor);
+    };
+    handler.method2response[td_willRenameFiles::request::kMethodInfo] = [](Reader& visitor)
+    {
+        if (visitor.HasMember("error"))
+        {
+            return Rsp_Error::ReflectReader(visitor);
+        }
+
+        return td_willRenameFiles::response::ReflectReader(visitor);
+    };
+
+    handler.method2request[td_didRenameFiles::request::kMethodInfo] = [](Reader& visitor)
+    { return td_didRenameFiles::request::ReflectReader(visitor); };
+    handler.method2request[td_willRenameFiles::request::kMethodInfo] = [](Reader& visitor)
+    { return td_willRenameFiles::request::ReflectReader(visitor); };
+
+    handler.method2notification[java_projectConfigurationUpdate::notify::kMethodInfo] = [](Reader& visitor)
+    { return java_projectConfigurationUpdate::notify::ReflectReader(visitor); };
+}
+
+void AddClientRequestJsonRpcMethod(MessageJsonHandler& handler)
+{
     handler.method2request[WorkspaceConfiguration::request::kMethodInfo] = [](Reader& visitor)
     { return WorkspaceConfiguration::request::ReflectReader(visitor); };
     handler.method2request[WorkspaceFolders::request::kMethodInfo] = [](Reader& visitor)
@@ -725,9 +737,6 @@ void AddNotifyJsonRpcMethod(MessageJsonHandler& handler)
     { return Notify_Exit::notify::ReflectReader(visitor); };
     handler.method2notification[Notify_InitializedNotification::notify::kMethodInfo] = [](Reader& visitor)
     { return Notify_InitializedNotification::notify::ReflectReader(visitor); };
-
-    handler.method2notification[java_projectConfigurationUpdate::notify::kMethodInfo] = [](Reader& visitor)
-    { return java_projectConfigurationUpdate::notify::ReflectReader(visitor); };
 
     handler.method2notification[Notify_TextDocumentDidChange::notify::kMethodInfo] = [](Reader& visitor)
     { return Notify_TextDocumentDidChange::notify::ReflectReader(visitor); };
@@ -872,18 +881,22 @@ void AddStandardRequestJsonRpcMethod(MessageJsonHandler& handler)
     handler.method2request[workspaceSymbol_resolve::request::kMethodInfo] = [](Reader& visitor)
     { return workspaceSymbol_resolve::request::ReflectReader(visitor); };
 
-    handler.method2request[td_didRenameFiles::request::kMethodInfo] = [](Reader& visitor)
-    { return td_didRenameFiles::request::ReflectReader(visitor); };
-
-    handler.method2request[td_willRenameFiles::request::kMethodInfo] = [](Reader& visitor)
-    { return td_willRenameFiles::request::ReflectReader(visitor); };
 }
 
 lsp::ProtocolJsonHandler::ProtocolJsonHandler()
+    : ProtocolJsonHandler(lsp::ProtocolJsonHandlerOptions {})
+{
+}
+
+lsp::ProtocolJsonHandler::ProtocolJsonHandler(lsp::ProtocolJsonHandlerOptions const& options)
 {
     AddStadardResponseJsonRpcMethod(*this);
-    AddJavaExtentionResponseJsonRpcMethod(*this);
     AddNotifyJsonRpcMethod(*this);
     AddStandardRequestJsonRpcMethod(*this);
     AddRequstJsonRpcMethod(*this);
+    AddClientRequestJsonRpcMethod(*this);
+    if (options.enableJdtlsExtensions)
+    {
+        AddJdtlsExtensionJsonRpcMethod(*this);
+    }
 }

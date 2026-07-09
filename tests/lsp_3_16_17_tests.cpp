@@ -20,6 +20,7 @@
 #include "LibLsp/lsp/textDocument/code_lens.h"
 #include "LibLsp/lsp/textDocument/code_action.h"
 #include "LibLsp/lsp/textDocument/declaration_definition.h"
+#include "protocol_test_helpers.h"
 #include "test_helpers.h"
 
 #include <rapidjson/document.h>
@@ -31,6 +32,8 @@
 namespace
 {
 using test::Expect;
+using test::ExpectParsesRequest;
+using test::ExpectParsesResponse;
 
 template<typename T>
 std::string SerializeJson(T value)
@@ -53,20 +56,6 @@ lsDocumentUri MakeDocumentUri(char const* uri)
     lsDocumentUri document_uri;
     document_uri.raw_uri_ = uri;
     return document_uri;
-}
-
-void ExpectParsesRequest(lsp::ProtocolJsonHandler& handler, MethodType method, char const* json, char const* message)
-{
-    rapidjson::Document document;
-    JsonReader reader = MakeReader(document, json);
-    Expect(handler.parseRequstMessage(method, reader) != nullptr, message);
-}
-
-void ExpectParsesResponse(lsp::ProtocolJsonHandler& handler, MethodType method, char const* json, char const* message)
-{
-    rapidjson::Document document;
-    JsonReader reader = MakeReader(document, json);
-    Expect(handler.parseResponseMessage(method, reader) != nullptr, message);
 }
 
 void TestProtocolJsonHandlerRegisters316317Requests()

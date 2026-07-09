@@ -428,6 +428,30 @@ void TestMultipleFramesDeliverBothBodies()
     Expect(messages[1] == body2, "second frame body mismatch");
 }
 
+void TestSpuriousCrLfBetweenFramesIsIgnored()
+{
+    std::string const body1 = R"({"jsonrpc":"2.0","method":"one"})";
+    std::string const body2 = R"({"jsonrpc":"2.0","method":"two"})";
+    auto input = std::make_shared<StringIStream>(MakeLspFrame(body1) + "\r\n" + MakeLspFrame(body2));
+    CollectingIssueHandler issues;
+    LSPStreamMessageProducer producer(issues, input);
+
+    std::vector<std::string> messages;
+    producer.listen(
+        [&](std::string&& content)
+        {
+            messages.push_back(std::move(content));
+        });
+
+    Expect(messages.size() == 2, "spurious CRLF between frames must not drop the second frame");
+    if (messages.size() == 2)
+    {
+        Expect(messages[0] == body1, "first frame before spurious CRLF body mismatch");
+        Expect(messages[1] == body2, "second frame after spurious CRLF body mismatch");
+    }
+    Expect(issues.issues.empty(), "spurious CRLF between frames must not report parser issues");
+}
+
 void TestChunkedReadSomeDeliversMultipleBufferedFrames()
 {
     // Verifies the fast buffered path: multiple small frames should be
@@ -1188,6 +1212,7 @@ int main()
 {
     TestValidFrameDeliversBody();
     TestMultipleFramesDeliverBothBodies();
+    TestSpuriousCrLfBetweenFramesIsIgnored();
     TestChunkedReadSomeDeliversMultipleBufferedFrames();
     TestBulkBodyReadFallbackStreamDeliversLargeBody();
     TestFallbackStreamUsesSingleBulkReadForLargeBody();

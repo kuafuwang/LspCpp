@@ -7,6 +7,7 @@
 #include "LibLsp/lsp/textDocument/inlayHint.h"
 #include "LibLsp/lsp/textDocument/signature_help.h"
 #include "LibLsp/lsp/workspace/applyEdit.h"
+#include "protocol_test_helpers.h"
 #include "test_helpers.h"
 
 #include <rapidjson/document.h>
@@ -18,6 +19,8 @@
 namespace
 {
 using test::Expect;
+using test::ExpectParsesRequest;
+using test::ExpectParsesResponse;
 
 template<typename T>
 std::string SerializeJson(T value)
@@ -33,20 +36,6 @@ JsonReader MakeReader(rapidjson::Document& document, char const* json)
 {
     document.Parse(json);
     return JsonReader(&document);
-}
-
-void ExpectParsesRequest(lsp::ProtocolJsonHandler& handler, MethodType method, char const* json, char const* message)
-{
-    rapidjson::Document document;
-    JsonReader reader = MakeReader(document, json);
-    Expect(handler.parseRequstMessage(method, reader) != nullptr, message);
-}
-
-void ExpectParsesResponse(lsp::ProtocolJsonHandler& handler, MethodType method, char const* json, char const* message)
-{
-    rapidjson::Document document;
-    JsonReader reader = MakeReader(document, json);
-    Expect(handler.parseResponseMessage(method, reader) != nullptr, message);
 }
 
 void TestProtocolJsonHandlerRegistersExistingFeatureRequests()
@@ -90,6 +79,12 @@ void TestProtocolJsonHandlerRegistersNew318Requests()
         handler.parseRequstMessage(td_inlineCompletion::request::kMethodInfo, inline_reader) != nullptr,
         "default handler must register textDocument/inlineCompletion requests");
 
+    ExpectParsesRequest(
+        handler,
+        td_inlineValue::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":8,"method":"textDocument/inlineValue","params":{"textDocument":{"uri":"file:///a.cpp"},"range":{"start":{"line":0,"character":0},"end":{"line":1,"character":0}},"context":{"frameId":1,"stoppedLocation":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}}}}})",
+        "default handler must parse textDocument/inlineValue requests");
+
     rapidjson::Document ranges_document;
     JsonReader ranges_reader = MakeReader(
         ranges_document,
@@ -111,6 +106,21 @@ void TestProtocolJsonHandlerRegistersNew318Requests()
         workspace_diagnostic::request::kMethodInfo,
         R"({"jsonrpc":"2.0","id":7,"method":"workspace/diagnostic","params":{"identifier":"cpp"}})",
         "default handler must parse workspace/diagnostic requests");
+    ExpectParsesRequest(
+        handler,
+        workspace_textDocumentContent_refresh::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":9,"method":"workspace/textDocumentContent/refresh","params":null})",
+        "default handler must parse workspace/textDocumentContent/refresh requests");
+    ExpectParsesRequest(
+        handler,
+        workspace_inlineValue_refresh::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":10,"method":"workspace/inlineValue/refresh","params":null})",
+        "default handler must parse workspace/inlineValue/refresh requests");
+    ExpectParsesRequest(
+        handler,
+        workspace_foldingRange_refresh::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":11,"method":"workspace/foldingRange/refresh","params":null})",
+        "default handler must parse workspace/foldingRange/refresh requests");
 }
 
 void TestProtocolJsonHandlerParses318Responses()
@@ -132,6 +142,16 @@ void TestProtocolJsonHandlerParses318Responses()
         td_inlineCompletion::request::kMethodInfo,
         R"({"jsonrpc":"2.0","id":32,"result":{"items":[{"insertText":"x"}]}})",
         "default handler must parse textDocument/inlineCompletion responses");
+    ExpectParsesResponse(
+        handler,
+        td_inlineValue::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":33,"result":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"text":"value"}]})",
+        "default handler must parse textDocument/inlineValue responses");
+    ExpectParsesResponse(
+        handler,
+        workspace_textDocumentContent_refresh::request::kMethodInfo,
+        R"({"jsonrpc":"2.0","id":34,"result":null})",
+        "default handler must parse workspace/textDocumentContent/refresh responses");
 }
 
 void TestNew318ModelsSerializeExpectedFields()

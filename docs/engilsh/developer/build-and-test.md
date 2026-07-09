@@ -11,7 +11,7 @@ cmake --build . -j
 ```
 
 `LSPCPP_BUILD_TESTS=ON` enables examples automatically and registers all CTest targets.
-With the default `LSPCPP_BUILD_WEBSOCKETS=ON`, this currently registers 19 CTest cases. `LSPCPP_BUILD_PERF_SMOKE=ON` adds `lspcpp.perf_smoke`.
+With the default `LSPCPP_BUILD_WEBSOCKETS=ON`, this currently registers 25 CTest cases. `LSPCPP_BUILD_PERF_SMOKE=ON` adds `lspcpp.perf_smoke`.
 
 Run the full suite:
 
@@ -45,6 +45,7 @@ Tests are standalone executables in `tests/`, not a separate framework binary. E
 | `lspcpp_infrastructure_tests` | Utilities, conditions, streams |
 | `lspcpp_working_files_tests` | Document buffer management |
 | `lspcpp_lsp_types_tests` | LSP type JSON reflection |
+| `lspcpp_protocol_json_handler_tests` | `ProtocolJsonHandler` registrations, allowlist boundaries, golden LSP fixtures |
 | `lspcpp_lsp_3_16_17_tests` | Protocol 3.16/3.17 types |
 | `lspcpp_lsp_3_18_tests` | Protocol 3.18 types |
 | `lspcpp_tcp_write_queue_tests` | TCP write queue |
@@ -52,6 +53,18 @@ Tests are standalone executables in `tests/`, not a separate framework binary. E
 | `lspcpp_perf_smoke_tests` | Optional perf smoke (off by default) |
 
 Shared helpers (`FeedableIStream`, `StringOStream`, `MakeLspFrame`) live in `tests/test_helpers.h`.
+Protocol JSON helpers (`ExpectParsesRequest`, `ExpectParsesResponse`, `ExpectParsesNotification`) live in `tests/protocol_test_helpers.h`.
+
+## Protocol coverage policy
+
+`ProtocolJsonHandler` is the main wire-level registry for LSP methods. When adding or changing an implemented LSP method:
+
+1. Register the request, response, or notification parser in `src/lsp/ProtocolJsonHandler.cpp`.
+2. Add or extend a parser assertion in `tests/protocol_json_handler_tests.cpp`, `tests/lsp_types_roundtrip_tests.cpp`, or the version-specific `tests/lsp_3_*_tests.cpp` file.
+3. Add a compact golden message to `tests/fixtures/lsp/` when the JSON shape is user-facing or historically easy to regress.
+4. Do not leave implemented methods in `tools/lsp-metamodel-allowlist.json`. The allowlist means “known not implemented yet”, not “implemented but untested”.
+
+The protocol handler test iterates the currently registered parser maps and checks that registered methods are usable and are not still marked as missing in the allowlist.
 
 Additional CTest-only smoke checks are registered for the consumer project and examples:
 

@@ -163,7 +163,13 @@ void Reflect(Reader& visitor, LocationListEither::Either& value)
 {
     if (!visitor.IsArray())
     {
-        throw std::invalid_argument("Rsp_LocationListEither::Either& value is not array");
+        // LSP definition/declaration responses may be a single Location object,
+        // not only Location[] or LocationLink[].
+        lsLocation location;
+        Reflect(visitor, location);
+        value.first = std::vector<lsLocation> {std::move(location)};
+        value.second.reset();
+        return;
     }
     auto data = ((JsonReader&)visitor).m_->GetArray();
     if (data.Size() && data[0].HasMember("originSelectionRange"))
@@ -204,14 +210,9 @@ void Reflect(Reader& visitor, TextDocumentCodeAction::Either& value)
     }
     else
     {
-        if (visitor.HasMember("diagnostics") || visitor.HasMember("edit"))
-        {
-            Reflect(visitor, value.second);
-        }
-        else
-        {
-            Reflect(visitor, value.first);
-        }
+        // A CodeAction only requires "title"; absence of "command" must not
+        // make title-only actions fall back to the legacy Command variant.
+        Reflect(visitor, value.second);
     }
 }
 

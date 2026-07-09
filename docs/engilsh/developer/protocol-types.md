@@ -198,6 +198,15 @@ For example, the `workspace/workspaceFolders` response uses `Nullable<std::vecto
 ## JDT.LS extensions
 
 The `include/LibLsp/lsp/extention/jdtls/` directory contains Eclipse JDT Language Server extensions retained for compatibility with Java tooling built on LspCpp. These are not part of the standard LSP spec.
+`ProtocolJsonHandler` does not register these methods by default. Enable them explicitly when building Java tooling:
+
+```cpp
+lsp::ProtocolJsonHandlerOptions options;
+options.enableJdtlsExtensions = true;
+lsp::ProtocolJsonHandler handler(options);
+```
+
+For `LanguageSession`, set `LanguageSessionOptions::protocol.enableJdtlsExtensions`.
 
 ## Testing new types
 

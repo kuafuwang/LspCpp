@@ -568,6 +568,44 @@ void TestWebSocketDisconnectAllowsNewClient()
     Expect(got_response, "new WebSocket client after disconnect must receive responses");
     Expect(body.find("\"id\":5303") != std::string::npos, "new WebSocket client response must preserve request id");
 }
+
+void TestWebSocketStopWithActiveConnectionReturns()
+{
+    ix::initNetSystem();
+    lsp::NullLog log;
+    auto protocol_json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+
+    int const port = PickPort();
+    lsp::WebSocketServer server(
+        "lspcpp-websocket-active-stop-test",
+        "127.0.0.1",
+        std::to_string(port),
+        protocol_json_handler,
+        endpoint,
+        log);
+    std::thread server_thread(
+        [&]()
+        {
+            server.run();
+        });
+
+    WebSocketTestClient client(port);
+    bool const connected = client.connect();
+    Expect(connected, "WebSocket active-stop test client must connect");
+    if (connected)
+    {
+        Expect(WaitForServerConnection(server.point), "WebSocketServer must install streams before active-stop test");
+    }
+
+    server.stop();
+    if (server_thread.joinable())
+    {
+        server_thread.join();
+    }
+
+    Expect(!server.point.isWorking(), "WebSocketServer stop with an active client must stop the RemoteEndPoint");
+}
 } // namespace
 
 int main()
@@ -577,5 +615,6 @@ int main()
     TestWebSocketInboundRequestReceivesResponse();
     TestWebSocketSecondClientPreemptsFirstConnection();
     TestWebSocketDisconnectAllowsNewClient();
+    TestWebSocketStopWithActiveConnectionReturns();
     return test::Failures() == 0 ? 0 : 1;
 }
