@@ -1,6 +1,7 @@
 #include "LibLsp/JsonRpc/RemoteEndPoint.h"
 #include "LibLsp/JsonRpc/StreamMessageProducer.h"
 #include "LibLsp/lsp/ProtocolJsonHandler.h"
+#include "LibLsp/lsp/general/exit.h"
 #include "LibLsp/lsp/general/initialize.h"
 #include "LibLsp/lsp/utils.h"
 #include "LibLsp/lsp/working_files.h"
@@ -202,6 +203,63 @@ void PerfRemoteEndpointDispatch()
     WarnIf(elapsed_ms > 2500.0, "remote.dispatch", "elapsed_ms exceeded smoke threshold", elapsed_ms);
 }
 
+double RunRemoteEndpointLargeJsonNotifications(int workers)
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+
+    int const count = 256;
+    std::string body = R"({"jsonrpc":"2.0","method":"exit","params":{"payload":")";
+    body.append(32768, 'x');
+    body += R"("}})";
+
+    std::string input_data;
+    input_data.reserve((body.size() + 64) * static_cast<size_t>(count));
+    for (int i = 0; i < count; ++i)
+    {
+        input_data += MakeLspFrame(body);
+    }
+
+    std::istringstream input_storage(std::move(input_data));
+    auto input_stream = lsp::make_istream(input_storage);
+    auto output_stream = std::make_shared<StringOStream>();
+
+    std::atomic<int> handled {0};
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, static_cast<uint8_t>(workers));
+    point.registerHandler(
+        [&](Notify_Exit::notify const&)
+        {
+            handled.fetch_add(1, std::memory_order_relaxed);
+        });
+
+    Timer timer;
+    point.startProcessingMessages(input_stream, output_stream);
+    bool const handled_every_notification = WaitForCount(handled, count);
+    double const elapsed_ms = timer.elapsedMs();
+    point.stop();
+
+    Expect(handled_every_notification, "perf smoke remote.large_json_notifications must handle every notification");
+    EmitMetric("remote.large_json_notifications.workers" + std::to_string(workers), count, elapsed_ms);
+    return elapsed_ms;
+}
+
+void PerfRemoteEndpointLargeJsonNotifications()
+{
+    // Exercises the full RemoteEndPoint path for large notification bodies,
+    // comparing one worker against a parsing pool to track the expected parallelism.
+    double const one_worker_ms = RunRemoteEndpointLargeJsonNotifications(1);
+    double const four_workers_ms = RunRemoteEndpointLargeJsonNotifications(4);
+    double const speedup = four_workers_ms > 0.0 ? one_worker_ms / four_workers_ms : 0.0;
+    std::cout << "PERF_COMPARE name=remote.large_json_notifications speedup=" << speedup << "x"
+              << " workers1_ms=" << one_worker_ms << " workers4_ms=" << four_workers_ms << std::endl;
+    WarnIf(
+        four_workers_ms > one_worker_ms * 1.5,
+        "remote.large_json_notifications",
+        "four-worker parsing slower than one-worker baseline",
+        four_workers_ms);
+}
+
 void PerfWorkingFilesRangeEdits()
 {
     // Measures repeated tail edits on a large file to watch line-index rebuild
@@ -317,6 +375,7 @@ int main()
     PerfStreamSmallFrames();
     PerfStreamLargeBodies();
     PerfRemoteEndpointDispatch();
+    PerfRemoteEndpointLargeJsonNotifications();
     PerfWorkingFilesRangeEdits();
     PerfWorkingFilesOffsetLookupComparison();
 

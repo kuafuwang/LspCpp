@@ -47,7 +47,7 @@ LspCpp/
 
 | 组件 | 作用 |
 |------|------|
-| **`StreamMessageProducer`** | 从 `istream` 读取 content-length 帧消息，解析 JSON |
+| **`StreamMessageProducer`** | 从 `istream` 读取 content-length 帧消息体 |
 | **`MessageJsonHandler`** | 将 method 名映射到 JSON 解析/序列化函数 |
 | **`ProtocolJsonHandler`** | LSP 专用 `MessageJsonHandler`，预注册所有标准 method |
 | **`RemoteEndPoint`** | 入站分发、出站请求、handler 注册、工作线程 |
@@ -60,7 +60,10 @@ LspCpp/
 stdin / TCP / WebSocket
         │
         ▼
-  StreamMessageProducer  ──►  parse JSON  ──►  MessageJsonHandler
+  StreamMessageProducer  ──►  worker 池：parse JSON
+                                      │
+                                      ▼
+                              sequence 重排序缓冲
         │                                              │
         │                                              ▼
         │                                    typed request/notification
@@ -68,7 +71,8 @@ stdin / TCP / WebSocket
         ▼                                              ▼
  Ordered dispatcher                      RemoteEndPoint::registerHandler
         │                                              │
-        ├── notifications: FIFO 串行线程                │
+        ├── notifications: FIFO 串行线程 ───────────────┤
+        ├── opt-out notifications: worker 线程池 ──────┤
         ├── requests: 等待前序通知完成 ─────────────────┘
         └── responses: worker 线程池
                                                        │
@@ -82,12 +86,13 @@ stdin / TCP / WebSocket
                                                    stdout / socket
 ```
 
-`RemoteEndPoint` 将消息读取与 handler 执行分离。入站 JSON 按线路顺序解析，然后交给有序分发器：
+`RemoteEndPoint` 将消息读取、解析与 handler 执行分离。入站消息体按线路顺序分配 sequence，在 worker 池中解析，然后由重排序缓冲按 sequence 连续放行，因此路由仍然遵守线路顺序：
 
 - 普通通知在专用 FIFO 通知线程上串行执行，因此 `textDocument/didOpen`、增量 `textDocument/didChange` 等顺序敏感通知会按线路顺序生效；
+- 通过 `allowConcurrentNotification` 显式标记的方法会绕过 FIFO 通知线程并直接在 worker 池执行；这些通知不保序，也不会门控后续请求，因此只应给顺序不敏感的 handler 开启；
 - 请求只有在其之前的所有通知执行完成后才会投递到 worker 池，因此请求 handler 能看到前序通知建立的文档状态；
 - 请求之间仍可并发执行；构造函数参数 `max_workers` 控制请求/响应 worker 池并发度；
-- 响应和 `$/cancelRequest` 绕过通知队列。响应按 id 匹配，取消会立即处理，不会被慢通知延迟。
+- 响应和 `$/cancelRequest` 绕过通知队列。响应按 id 匹配，取消只会被前序帧的解析与 sequence 重排序延迟，不会被慢通知 handler 延迟。
 
 ### 传输
 

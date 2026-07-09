@@ -18,6 +18,7 @@
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
+#include <map>
 #include <optional>
 #include <set>
 #include <thread>
@@ -375,6 +376,108 @@ struct RemoteEndPoint::Data
     bool has_completed_notification = false;
     uint64_t completed_notification_seq = 0;
 
+    struct SequencedParsedMessage
+    {
+        SequencedParsedMessage(uint64_t sequence, RemoteEndPoint::ParsedMessage&& parsed)
+            : sequence(sequence), parsed(std::move(parsed))
+        {
+        }
+
+        uint64_t sequence = 0;
+        RemoteEndPoint::ParsedMessage parsed;
+    };
+
+    std::mutex route_mutex;
+    std::mutex route_dispatch_mutex;
+    std::map<uint64_t, RemoteEndPoint::ParsedMessage> reorder_buffer;
+    uint64_t next_route_sequence = 0;
+    std::set<std::string> concurrent_notifications;
+
+    void resetMessageRouting()
+    {
+        std::lock_guard<std::mutex> dispatch_lock(route_dispatch_mutex);
+        std::lock_guard<std::mutex> lock(route_mutex);
+        reorder_buffer.clear();
+        next_route_sequence = next_message_sequence.load(std::memory_order_relaxed);
+    }
+
+    void clearMessageRouting()
+    {
+        std::lock_guard<std::mutex> dispatch_lock(route_dispatch_mutex);
+        std::lock_guard<std::mutex> lock(route_mutex);
+        reorder_buffer.clear();
+    }
+
+    void submitParsedMessage(uint64_t sequence, RemoteEndPoint::ParsedMessage&& parsed)
+    {
+        std::vector<SequencedParsedMessage> ready;
+        std::lock_guard<std::mutex> dispatch_lock(route_dispatch_mutex);
+        {
+            std::lock_guard<std::mutex> lock(route_mutex);
+            if (quit.load(std::memory_order_relaxed))
+            {
+                return;
+            }
+
+            reorder_buffer.emplace(sequence, std::move(parsed));
+            for (;;)
+            {
+                auto it = reorder_buffer.find(next_route_sequence);
+                if (it == reorder_buffer.end())
+                {
+                    break;
+                }
+                ready.emplace_back(next_route_sequence, std::move(it->second));
+                reorder_buffer.erase(it);
+                ++next_route_sequence;
+            }
+        }
+
+        for (auto& item : ready)
+        {
+            owner->routeParsedIncoming(std::move(item.parsed), item.sequence);
+        }
+    }
+
+    void postParseTask(std::string&& content, uint64_t sequence)
+    {
+        if (quit.load(std::memory_order_relaxed) || !tp)
+        {
+            return;
+        }
+
+        asio::post(
+            *tp,
+            [owner = owner, content = std::move(content), sequence]() mutable
+            {
+#ifdef LSPCPP_USEGC
+                GCThreadContext gcContext;
+#endif
+                auto parsed = owner->parseAndClassify(content);
+                if (owner->d_ptr)
+                {
+                    owner->d_ptr->submitParsedMessage(sequence, std::move(parsed));
+                }
+            }
+        );
+    }
+
+    void allowConcurrentNotification(std::string const& method)
+    {
+        std::lock_guard<std::mutex> lock(route_mutex);
+        concurrent_notifications.insert(method);
+    }
+
+    bool allowsConcurrentNotification(char const* method)
+    {
+        if (method == nullptr)
+        {
+            return false;
+        }
+        std::lock_guard<std::mutex> lock(route_mutex);
+        return concurrent_notifications.find(method) != concurrent_notifications.end();
+    }
+
     bool notificationGateSatisfied(uint64_t gate) const
     {
         return has_completed_notification && completed_notification_seq >= gate;
@@ -712,6 +815,7 @@ struct RemoteEndPoint::Data
     void clear()
     {
         quit.store(true, std::memory_order_relaxed);
+        clearMessageRouting();
         if (message_producer)
         {
             message_producer->keepRunning = false;
@@ -1068,7 +1172,11 @@ bool RemoteEndPoint::dispatch(std::string const& content, uint64_t sequence)
 
 void RemoteEndPoint::routeIncoming(std::string&& content, uint64_t sequence)
 {
-    ParsedMessage parsed = parseAndClassify(content);
+    d_ptr->postParseTask(std::move(content), sequence);
+}
+
+void RemoteEndPoint::routeParsedIncoming(ParsedMessage&& parsed, uint64_t sequence)
+{
     if (!parsed.ok || !parsed.message || d_ptr->quit.load(std::memory_order_relaxed))
     {
         return;
@@ -1079,6 +1187,10 @@ void RemoteEndPoint::routeIncoming(std::string&& content, uint64_t sequence)
         if (strcmp(Notify_Cancellation::notify::kMethodInfo, parsed.message->GetMethodType()) == 0)
         {
             d_ptr->onCancel(static_cast<Notify_Cancellation::notify*>(parsed.message.get()), sequence);
+        }
+        else if (d_ptr->allowsConcurrentNotification(parsed.message->GetMethodType()))
+        {
+            d_ptr->postToWorker(std::move(parsed.message), sequence);
         }
         else
         {
@@ -1093,6 +1205,11 @@ void RemoteEndPoint::routeIncoming(std::string&& content, uint64_t sequence)
     {
         d_ptr->postToWorker(std::move(parsed.message), sequence);
     }
+}
+
+void RemoteEndPoint::allowConcurrentNotification(std::string const& method)
+{
+    d_ptr->allowConcurrentNotification(method);
 }
 
 bool RemoteEndPoint::internalSendRequest(RequestInMessage& info, GenericResponseHandler handler)
@@ -1256,6 +1373,7 @@ void RemoteEndPoint::startProcessingMessages(std::shared_ptr<lsp::istream> r, st
     d_ptr->message_producer->bind(r);
     d_ptr->tp = std::make_shared<asio::thread_pool>(d_ptr->max_workers);
     d_ptr->startOrderedDispatcher();
+    d_ptr->resetMessageRouting();
     message_producer_thread_ = std::make_shared<std::thread>(
         [&]()
         {

@@ -123,6 +123,20 @@ std::string MakeDelimitedInput(std::string const& body)
     return body + "\n// -----\n";
 }
 
+std::string MakeOrderedNotificationBody(int value, size_t payload_size = 0)
+{
+    std::string body = std::string(R"({"jsonrpc":"2.0","method":"test/orderedNotification","params":{"value":)") +
+        std::to_string(value);
+    if (payload_size != 0)
+    {
+        body += R"(,"payload":")";
+        body.append(payload_size, 'x');
+        body += "\"";
+    }
+    body += "}}";
+    return body;
+}
+
 std::vector<std::string> ExtractFrameBodies(std::string const& output)
 {
     std::vector<std::string> bodies;
@@ -1522,6 +1536,123 @@ void TestNotificationsRunInWireOrderWithMultipleWorkers()
     }
 }
 
+void TestParallelParsedMessagesRouteInWireOrder()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    std::mutex mutex;
+    std::vector<int> observed;
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 4);
+    point.registerHandler(
+        [&](test_ordered_notification::notify const& notification)
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            observed.push_back(notification.params.value);
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    for (int i = 0; i < 16; ++i)
+    {
+        size_t const payload_size = i == 0 ? 256 * 1024 : 0;
+        input_stream->append(test::MakeLspFrame(MakeOrderedNotificationBody(i, payload_size)));
+    }
+
+    bool const saw_all = WaitUntil(
+        [&]()
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            return observed.size() == 16;
+        });
+    point.stop();
+
+    Expect(saw_all, "all parallel-parsed notifications must be delivered");
+    if (saw_all)
+    {
+        for (int i = 0; i < 16; ++i)
+        {
+            Expect(observed[static_cast<size_t>(i)] == i, "parallel parsed messages must route in wire order");
+        }
+    }
+}
+
+void TestConcurrentNotificationOptOutDoesNotGateRequests()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool release_first = false;
+    std::vector<int> observed_notifications;
+    std::atomic<bool> first_notification_entered {false};
+    std::atomic<bool> request_ran {false};
+
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 4);
+    point.allowConcurrentNotification<test_ordered_notification::notify>();
+    point.registerHandler(
+        [&](test_ordered_notification::notify const& notification)
+        {
+            if (notification.params.value == 1)
+            {
+                first_notification_entered.store(true, std::memory_order_relaxed);
+                std::unique_lock<std::mutex> lock(mutex);
+                cv.wait(lock, [&] { return release_first; });
+            }
+            std::lock_guard<std::mutex> lock(mutex);
+            observed_notifications.push_back(notification.params.value);
+        });
+    point.registerHandler(
+        [&](test_scalar::request const& req) -> lsp::ResponseOrError<test_scalar::response>
+        {
+            request_ran.store(true, std::memory_order_relaxed);
+            test_scalar::response rsp;
+            rsp.id = req.id;
+            rsp.result.value = req.params.value;
+            return rsp;
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    input_stream->append(test::MakeLspFrame(MakeOrderedNotificationBody(1)));
+    Expect(
+        WaitUntil([&] { return first_notification_entered.load(std::memory_order_relaxed); }),
+        "first opt-out notification must start");
+    input_stream->append(test::MakeLspFrame(MakeOrderedNotificationBody(2)));
+    input_stream->append(
+        test::MakeLspFrame(R"({"jsonrpc":"2.0","id":4210,"method":"test/scalar","params":{"value":9}})"));
+
+    std::string const output = WaitForOutputContaining(output_stream, "\"id\":4210");
+    bool const second_notification_finished = WaitUntil(
+        [&]()
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            return observed_notifications.size() == 1 && observed_notifications[0] == 2;
+        });
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        release_first = true;
+    }
+    cv.notify_all();
+    bool const saw_both_notifications = WaitUntil(
+        [&]()
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            return observed_notifications.size() == 2;
+        });
+    point.stop();
+
+    Expect(output.find("\"id\":4210") != std::string::npos, "request behind opt-out notification must get a response");
+    Expect(request_ran.load(std::memory_order_relaxed), "opt-out notification must not gate following request");
+    Expect(second_notification_finished, "later opt-out notification must be able to finish before earlier one");
+    Expect(saw_both_notifications, "all opt-out notifications must eventually complete");
+}
+
 void TestRequestWaitsForPriorNotificationWithMultipleWorkers()
 {
     DummyLog log;
@@ -1537,12 +1668,12 @@ void TestRequestWaitsForPriorNotificationWithMultipleWorkers()
         [&](test_ordered_notification::notify const&)
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            notification_applied.store(true, std::memory_order_relaxed);
+            notification_applied.store(true, std::memory_order_release);
         });
     point.registerHandler(
         [&](test_scalar::request const& req) -> lsp::ResponseOrError<test_scalar::response>
         {
-            request_saw_notification.store(notification_applied.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            request_saw_notification.store(notification_applied.load(std::memory_order_acquire), std::memory_order_relaxed);
             test_scalar::response rsp;
             rsp.id = req.id;
             rsp.result.value = req.params.value;
@@ -1716,8 +1847,7 @@ void TestCancelRequestBypassesBlockedNotificationQueue()
         test::MakeLspFrame(R"({"jsonrpc":"2.0","id":4300,"method":"initialize","params":{}})"));
     Expect(WaitUntil([&] { return request_entered.load(std::memory_order_relaxed); }), "request must start before cancel");
 
-    input_stream->append(
-        test::MakeLspFrame(R"({"jsonrpc":"2.0","method":"test/orderedNotification","params":{"value":1}})"));
+    input_stream->append(test::MakeLspFrame(MakeOrderedNotificationBody(1, 256 * 1024)));
     input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":4300}})"));
 
     std::string const output = WaitForOutputContaining(output_stream, "\"code\":-32800");
@@ -2686,6 +2816,8 @@ int main()
     TestConcurrentSendWritesCompleteFrames();
     TestNotificationHandlerReceivesNotification();
     TestNotificationsRunInWireOrderWithMultipleWorkers();
+    TestParallelParsedMessagesRouteInWireOrder();
+    TestConcurrentNotificationOptOutDoesNotGateRequests();
     TestRequestWaitsForPriorNotificationWithMultipleWorkers();
     TestProgressNotificationsDispatchThroughStandardProtocolHandler();
     TestNotificationWaitResponseDoesNotDeadlockWithParkedRequest();

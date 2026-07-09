@@ -302,6 +302,14 @@ public:
         );
     }
 
+    template<typename NotifyType, typename = IsNotify<NotifyType>>
+    void allowConcurrentNotification()
+    {
+        allowConcurrentNotification(NotifyType::kMethodInfo);
+    }
+
+    void allowConcurrentNotification(std::string const& method);
+
     template<typename T, typename = IsRequest<T>>
     lsp::future<lsp::ResponseOrError<typename T::Response>> send(T& request)
     {
@@ -454,6 +462,7 @@ private:
     ParsedMessage parseAndClassify(std::string const& content);
     void mainLoopCatching(std::unique_ptr<LspMessage>, uint64_t sequence, std::string const* content);
     void routeIncoming(std::string&& content, uint64_t sequence);
+    void routeParsedIncoming(ParsedMessage&& parsed, uint64_t sequence);
     void mainLoop(std::unique_ptr<LspMessage>, uint64_t sequence);
     bool dispatch(std::string const&, uint64_t sequence);
     template<typename ResponseType>
