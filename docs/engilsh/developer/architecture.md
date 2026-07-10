@@ -74,7 +74,7 @@ stdin / TCP / WebSocket
         ├── notifications: FIFO serial thread ─────────┤
         ├── opt-out notifications: handler pool ───────┤
         ├── requests: wait for prior notifications ────┘
-        └── responses: handler pool
+        └── responses: exact pending completion
                                                        │
                                                        ▼
                                               user handler (lambda)
@@ -91,8 +91,10 @@ stdin / TCP / WebSocket
 - ordinary notifications run on a dedicated FIFO notification thread, so order-sensitive notifications such as `textDocument/didOpen` and incremental `textDocument/didChange` are applied in wire order;
 - methods explicitly marked with `allowConcurrentNotification` bypass the FIFO notification thread and run on the handler pool; these notifications are not ordered and do not gate following requests, so only order-insensitive handlers should opt in;
 - requests are posted to the handler pool only after all earlier notifications have completed, so request handlers observe document state established by prior notifications;
-- requests may still run concurrently with each other; the `max_workers` constructor parameter controls this request/response handler-pool concurrency;
-- responses and `$/cancelRequest` bypass the notification queue. Responses are matched by id, while cancellation is delayed only by parsing and sequence reordering of earlier frames, not by slow notification handlers. Parsing uses a separate pool so blocked synchronous handlers cannot starve cancellation parsing.
+- requests may still run concurrently with each other; the `max_workers` constructor parameter controls handler-pool concurrency;
+- outbound responses are matched against the exact pending request captured during parsing. Future and blocking wait APIs complete their promise/condition directly in the routing path, without running user code, so a synchronous handler waiting for a response does not need a free handler worker. Callback-based send APIs preserve their callback semantics by deferring the user callback to the handler pool after the pending entry has been atomically removed;
+- `$/cancelRequest` bypasses the notification queue. Cancellation is delayed only by parsing and sequence reordering of earlier frames, not by slow notification handlers. Parsing uses a separate pool so blocked synchronous handlers cannot starve cancellation parsing;
+- each `startProcessingMessages` run owns an active session output state. Handlers capture that state, so responses from handlers that outlive `stop()` are dropped instead of being written to a later restarted session.
 
 ### Transports
 

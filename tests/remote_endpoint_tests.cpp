@@ -912,6 +912,261 @@ void TestLateResponseAfterTimeoutIsIgnored()
     point.stop();
 }
 
+void TestParsedLateResponseDoesNotCompleteReusedRequestId()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool parser_entered = false;
+    bool release_first_parse = false;
+    bool block_first_parse = true;
+
+    json_handler->SetResponseJsonHandler(
+        td_initialize::request::kMethodInfo,
+        [&](Reader& visitor)
+        {
+            {
+                std::unique_lock<std::mutex> lock(mutex);
+                if (block_first_parse)
+                {
+                    parser_entered = true;
+                    cv.notify_all();
+                    cv.wait(lock, [&] { return release_first_parse; });
+                    block_first_parse = false;
+                }
+            }
+            return td_initialize::response::ReflectReader(visitor);
+        });
+
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 2);
+    point.startProcessingMessages(input_stream, output_stream);
+
+    td_initialize::request timed_out;
+    timed_out.id.set(2404);
+    std::unique_ptr<lsp::ResponseOrError<td_initialize::response>> timed_out_response;
+    std::thread waiter(
+        [&]()
+        {
+            timed_out_response = point.waitResponse(timed_out, 50);
+        });
+    WaitForOutputContaining(output_stream, "\"id\":2404");
+    input_stream->append(test::MakeLspFrame(
+        R"({"jsonrpc":"2.0","id":2404,"result":{"capabilities":{"hoverProvider":false}}})"));
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        bool const entered = cv.wait_for(lock, std::chrono::milliseconds(1000), [&] { return parser_entered; });
+        Expect(entered, "first response parser must capture the original pending request before timeout");
+    }
+    waiter.join();
+    Expect(timed_out_response == nullptr, "first request must time out while its response is still parsing");
+
+    td_initialize::request retry;
+    retry.id.set(2404);
+    auto retry_future = point.send(retry);
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        release_first_parse = true;
+    }
+    cv.notify_all();
+
+    auto const stale_status = retry_future.wait_for(std::chrono::milliseconds(100));
+    Expect(
+        stale_status == lsp::future_status::timeout,
+        "parsed stale response must not complete a later request that reused the same id");
+
+    input_stream->append(test::MakeLspFrame(
+        R"({"jsonrpc":"2.0","id":2404,"result":{"capabilities":{"hoverProvider":true}}})"));
+    auto const retry_status = retry_future.wait_for(std::chrono::milliseconds(1000));
+    Expect(retry_status == lsp::future_status::ready, "reused id must complete from its own response");
+    if (retry_status == lsp::future_status::ready)
+    {
+        auto result = retry_future.get();
+        Expect(!result.is_error, "reused id response must be successful");
+        Expect(
+            result.response.result.capabilities.hoverProvider &&
+                *result.response.result.capabilities.hoverProvider == true,
+            "reused id must receive the second response, not the parsed stale response");
+    }
+    point.stop();
+}
+
+void TestWaitResponseInsideSingleWorkerHandlerDoesNotDeadlock()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 1);
+    point.registerHandler(
+        [&](test_scalar::request const& req) -> lsp::ResponseOrError<test_scalar::response>
+        {
+            td_initialize::request outbound;
+            outbound.id.set(2501);
+            auto response = point.waitResponse(outbound, 5000);
+            test_scalar::response rsp;
+            rsp.id = req.id;
+            rsp.result.value = response ? 1 : -1;
+            return rsp;
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    input_stream->append(
+        test::MakeLspFrame(R"({"jsonrpc":"2.0","id":2500,"method":"test/scalar","params":{"value":0}})"));
+    WaitForOutputContaining(output_stream, "\"id\":2501");
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":2501,"result":{"capabilities":{}}})"));
+
+    std::string const output = WaitForOutputContaining(output_stream, "\"id\":2500", 200);
+    point.stop();
+
+    Expect(output.find("\"id\":2500") != std::string::npos, "handler response must be written");
+    Expect(
+        output.find("\"value\":1") != std::string::npos,
+        "nested waitResponse must complete even when the only handler worker is blocked");
+}
+
+void TestStoppedSynchronousHandlerDoesNotWriteToRestartedOutput()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+    auto restart_input = std::make_shared<FeedableIStream>();
+    auto restart_output = std::make_shared<StringOStream>();
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool release_handler = false;
+    std::atomic<bool> handler_entered {false};
+    std::atomic<bool> restart_returned {false};
+
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 1);
+    point.registerHandler(
+        [&](td_initialize::request const& req) -> lsp::ResponseOrError<td_initialize::response>
+        {
+            handler_entered.store(true, std::memory_order_relaxed);
+            std::unique_lock<std::mutex> lock(mutex);
+            cv.wait(lock, [&] { return release_handler; });
+            td_initialize::response rsp;
+            rsp.id = req.id;
+            return rsp;
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":2600,"method":"initialize","params":{}})"));
+    Expect(
+        WaitUntil([&] { return handler_entered.load(std::memory_order_relaxed); }),
+        "old synchronous handler must enter before stop");
+    point.stop();
+
+    std::thread restarter(
+        [&]()
+        {
+            point.startProcessingMessages(restart_input, restart_output);
+            restart_returned.store(true, std::memory_order_relaxed);
+        });
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        release_handler = true;
+    }
+    cv.notify_all();
+    restarter.join();
+    Expect(restart_returned.load(std::memory_order_relaxed), "restart must complete after old handler exits");
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::string const restarted_output_before_request = restart_output->snapshot();
+    restart_input->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":2601,"method":"initialize","params":{}})"));
+    std::string const restarted_output = WaitForOutputContaining(restart_output, "\"id\":2601");
+    point.stop();
+
+    Expect(
+        restarted_output_before_request.find("\"id\":2600") == std::string::npos,
+        "stopped handler must not write its old response to the restarted output");
+    Expect(restarted_output.find("\"id\":2601") != std::string::npos, "restarted endpoint must still handle new requests");
+}
+
+void TestStartProcessingMessagesWhileWorkingDoesNotTerminate()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto first_input = std::make_shared<FeedableIStream>();
+    auto second_input = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    RemoteEndPoint point(json_handler, endpoint, log);
+    point.registerHandler(
+        [](td_initialize::request const& req) -> lsp::ResponseOrError<td_initialize::response>
+        {
+            td_initialize::response rsp;
+            rsp.id = req.id;
+            return rsp;
+        });
+    point.startProcessingMessages(first_input, output_stream);
+    point.startProcessingMessages(second_input, output_stream);
+
+    first_input->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":2700,"method":"initialize","params":{}})"));
+    std::string const output = WaitForOutputContaining(output_stream, "\"id\":2700");
+    point.stop();
+
+    Expect(output.find("\"id\":2700") != std::string::npos, "duplicate start must leave existing session usable");
+}
+
+void TestResponseParseFailureCompletesFutureAndClearsPendingRequest()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    json_handler->SetResponseJsonHandler(
+        td_initialize::request::kMethodInfo,
+        [](Reader&) -> std::unique_ptr<LspMessage>
+        {
+            return {};
+        });
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    RemoteEndPoint point(json_handler, endpoint, log);
+    point.startProcessingMessages(input_stream, output_stream);
+
+    td_initialize::request req;
+    req.id.set(2800);
+    auto future = point.send(req);
+    WaitForOutputContaining(output_stream, "\"id\":2800");
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":2800,"result":{"capabilities":{}}})"));
+
+    auto const failed_status = future.wait_for(std::chrono::milliseconds(1000));
+    Expect(failed_status == lsp::future_status::ready, "response parse failure must complete the pending future");
+    if (failed_status == lsp::future_status::ready)
+    {
+        auto result = future.get();
+        Expect(result.is_error, "response parse failure must complete with an error result");
+    }
+
+    json_handler->SetResponseJsonHandler(
+        td_initialize::request::kMethodInfo,
+        [](Reader& visitor)
+        {
+            return td_initialize::response::ReflectReader(visitor);
+        });
+    td_initialize::request retry;
+    retry.id.set(2800);
+    auto retry_future = point.send(retry);
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":2800,"result":{"capabilities":{}}})"));
+    auto const retry_status = retry_future.wait_for(std::chrono::milliseconds(1000));
+    point.stop();
+
+    Expect(retry_status == lsp::future_status::ready, "id must be reusable after response parse failure");
+}
+
 void TestCreateRequestAssignsMonotonicIds()
 {
     DummyLog log;
@@ -2786,7 +3041,12 @@ void TestDispatchResponseParseFailure()
     waiter.join();
     point.stop();
 
-    Expect(response == nullptr, "response parse failure must not deliver a parsed message");
+    Expect(response != nullptr, "response parse failure must complete the pending request");
+    if (response)
+    {
+        auto* error = static_cast<ResponseInMessage*>(response.get());
+        Expect(error->IsErrorType(), "response parse failure must complete with an error response");
+    }
 }
 
 void TestRegisterHandlerReturnsErrorResponse()
@@ -3285,6 +3545,11 @@ int main()
     TestRejectedCompletionConsumesResponseAndClearsPendingRequest();
     TestSendRequestAndReceiveSuccessResponseWithStringId();
     TestLateResponseAfterTimeoutIsIgnored();
+    TestParsedLateResponseDoesNotCompleteReusedRequestId();
+    TestWaitResponseInsideSingleWorkerHandlerDoesNotDeadlock();
+    TestStoppedSynchronousHandlerDoesNotWriteToRestartedOutput();
+    TestStartProcessingMessagesWhileWorkingDoesNotTerminate();
+    TestResponseParseFailureCompletesFutureAndClearsPendingRequest();
     TestCreateRequestAssignsMonotonicIds();
     TestCancelRequestSendsCancelNotification();
     TestPendingCancelArrivingBeforeRequestIsNotLost();

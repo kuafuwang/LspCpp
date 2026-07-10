@@ -146,11 +146,25 @@ struct is_valid_async_request_return<lsp::future<ValueType>, ResponseType>
 template<typename F>
 using handler_return_t = typename lsp::traits::SignatureOfT<F>::ret;
 
-struct AsyncResponseState
+// Output state for one startProcessingMessages() session.
+//
+// Request handlers may finish after stop(), or even after the endpoint has
+// restarted with a different d_ptr->output. They must therefore write through
+// the session snapshot they were dispatched with, not by rereading the mutable
+// endpoint output. active=false means this session is no longer allowed to emit
+// late responses; output may still be kept alive only so in-flight handlers can
+// safely observe and drop their work.
+//
+// A global "endpoint is active" flag is not enough: after restart, d_ptr->output
+// may point at the new connection and be active again. The old handler must
+// check the active flag that belongs to its captured output snapshot, otherwise
+// an old-session response can be written to the new session.
+struct SessionOutputState
 {
     std::atomic<bool> active {true};
     std::shared_ptr<lsp::ostream> output;
     std::shared_ptr<std::mutex> send_mutex;
+    uint64_t generation = 0;
 };
 
 template<typename ResponseType>
@@ -215,6 +229,18 @@ class RemoteEndPoint : MessageIssueHandler
         lsp::detail::is_valid_async_request_return<lsp::detail::handler_return_t<F>, ResponseType>::value
             && lsp::traits::CompatibleWith<
                 F, std::function<lsp::future<ResponseType>(RequestType const&, CancelMonitor const&)>>::value>;
+
+    enum class PendingCompletionPolicy
+    {
+        FastStateOnly,
+        DeferredCallback,
+    };
+
+    bool internalSendRequestWithPolicy(
+        RequestInMessage& info,
+        GenericResponseHandler handler,
+        PendingCompletionPolicy policy
+    );
 
 public:
     RemoteEndPoint(
@@ -339,7 +365,7 @@ public:
             }
             return true;
         };
-        if (!internalSendRequest(request, cb))
+        if (!internalSendRequestWithPolicy(request, cb, PendingCompletionPolicy::FastStateOnly))
         {
             Rsp_Error error;
             error.id = request.id;
@@ -429,21 +455,17 @@ public:
     void handle(MessageIssue&&) override;
 
 private:
-    struct ParsedMessage
-    {
-        bool ok = false;
-        LspMessage::Kind kind = LspMessage::NOTIFICATION_MESSAGE;
-        std::unique_ptr<LspMessage> message;
-    };
+    struct ParsedMessage;
+    using PendingRequestToken = std::shared_ptr<void>;
 
-    std::shared_ptr<lsp::detail::AsyncResponseState> getAsyncResponseState() const;
+    std::shared_ptr<lsp::detail::SessionOutputState> getSessionOutputState() const;
     std::shared_ptr<void> retainRequestCancellation(lsRequestId const& id);
     void postAsyncCompletion(std::function<bool()>&& completion);
-    static void sendAsyncMessage(std::shared_ptr<lsp::detail::AsyncResponseState> const& state, LspMessage& msg);
+    static void sendSessionMessage(std::shared_ptr<lsp::detail::SessionOutputState> const& state, LspMessage& msg);
     void sendRspError(lsRequestId const& id, lsp::RequestError const& error)
     {
         Rsp_Error rsp = lsp::toRspError(id, error);
-        send(rsp);
+        sendSessionMessage(getSessionOutputState(), rsp);
     }
     void sendInternalError(lsRequestId const& id, std::string const& message)
     {
@@ -451,52 +473,66 @@ private:
         rsp.id = id;
         rsp.error.code = lsErrorCodes::InternalError;
         rsp.error.message = message;
-        send(rsp);
+        sendSessionMessage(getSessionOutputState(), rsp);
     }
     CancelMonitor getCancelMonitor(lsRequestId const&);
     void removeRequestInfo(lsRequestId const&);
     void sendMsg(LspMessage& msg);
     ParsedMessage parseAndClassify(std::string const& content);
-    void mainLoopCatching(std::unique_ptr<LspMessage>, uint64_t sequence);
+    void mainLoopCatching(
+        std::unique_ptr<LspMessage>,
+        uint64_t sequence,
+        std::shared_ptr<lsp::detail::SessionOutputState> response_state,
+        PendingRequestToken pending
+    );
     void routeIncoming(std::string&& content, uint64_t sequence) const;
     void routeParsedIncoming(ParsedMessage&& parsed, uint64_t sequence) const;
-    void mainLoop(std::unique_ptr<LspMessage>, uint64_t sequence);
+    void mainLoop(
+        std::unique_ptr<LspMessage>,
+        uint64_t sequence,
+        std::shared_ptr<lsp::detail::SessionOutputState> response_state,
+        PendingRequestToken pending
+    );
     template<typename ResponseType>
     static void sendAsyncHandlerResult(
-        std::shared_ptr<lsp::detail::AsyncResponseState> const& state,
+        std::shared_ptr<lsp::detail::SessionOutputState> const& state,
         lsp::ResponseOrError<ResponseType>&& res, lsRequestId const& id
     )
     {
         if (res.is_error)
         {
             res.error.id = id;
-            sendAsyncMessage(state, res.error);
+            sendSessionMessage(state, res.error);
         }
         else
         {
             res.response.id = id;
-            sendAsyncMessage(state, res.response);
+            sendSessionMessage(state, res.response);
         }
     }
     template<typename ResponseType>
-    void sendHandlerResult(lsp::ResponseOrError<ResponseType>&& res, lsRequestId const& id)
+    static void sendHandlerResult(
+        std::shared_ptr<lsp::detail::SessionOutputState> const& state,
+        lsp::ResponseOrError<ResponseType>&& res,
+        lsRequestId const& id
+    )
     {
         if (res.is_error)
         {
             res.error.id = id;
-            send(res.error);
+            sendSessionMessage(state, res.error);
         }
         else
         {
             res.response.id = id;
-            send(res.response);
+            sendSessionMessage(state, res.response);
         }
     }
     template<typename ResponseType, typename Future>
     void completeAsyncHandler(Future fut, lsRequestId const& id)
     {
         auto shared_future = std::make_shared<Future>(std::move(fut));
-        auto response_state = getAsyncResponseState();
+        auto response_state = getSessionOutputState();
         auto cancellation_retainer = retainRequestCancellation(id);
         postAsyncCompletion(
             [id, shared_future, response_state, cancellation_retainer]() mutable
@@ -516,7 +552,7 @@ private:
                 catch (lsp::RequestError const& error)
                 {
                     Rsp_Error rsp = lsp::toRspError(id, error);
-                    sendAsyncMessage(response_state, rsp);
+                    sendSessionMessage(response_state, rsp);
                 }
                 catch (std::exception const& error)
                 {
@@ -524,7 +560,7 @@ private:
                     rsp.id = id;
                     rsp.error.code = lsErrorCodes::InternalError;
                     rsp.error.message = error.what();
-                    sendAsyncMessage(response_state, rsp);
+                    sendSessionMessage(response_state, rsp);
                 }
                 catch (...)
                 {
@@ -532,7 +568,7 @@ private:
                     rsp.id = id;
                     rsp.error.code = lsErrorCodes::InternalError;
                     rsp.error.message = "Unhandled exception.";
-                    sendAsyncMessage(response_state, rsp);
+                    sendSessionMessage(response_state, rsp);
                 }
                 return true;
             }
@@ -547,9 +583,14 @@ private:
             [this, handler = std::forward<F>(handler)](std::unique_ptr<LspMessage> msg) mutable
             {
                 auto req = static_cast<RequestType const*>(msg.get());
+                auto response_state = getSessionOutputState();
                 try
                 {
-                    sendHandlerResult(lsp::detail::normalizeHandlerResult<ResponseType>(handler(*req)), req->id);
+                    sendHandlerResult(
+                        response_state,
+                        lsp::detail::normalizeHandlerResult<ResponseType>(handler(*req)),
+                        req->id
+                    );
                 }
                 catch (lsp::RequestError const& error)
                 {
@@ -576,9 +617,11 @@ private:
             [this, handler = std::forward<F>(handler)](std::unique_ptr<LspMessage> msg) mutable
             {
                 auto req = static_cast<RequestType const*>(msg.get());
+                auto response_state = getSessionOutputState();
                 try
                 {
                     sendHandlerResult(
+                        response_state,
                         lsp::detail::normalizeHandlerResult<ResponseType>(
                             handler(*req, getCancelMonitor(req->id))
                         ),

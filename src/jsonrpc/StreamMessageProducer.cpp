@@ -180,9 +180,9 @@ void LSPStreamMessageProducer::listen(MessageConsumer callBack)
         return;
     }
 
-    keepRunning = true;
+    keepRunning.store(true, std::memory_order_relaxed);
     std::string buffer;
-    while (keepRunning)
+    while (keepRunning.load(std::memory_order_relaxed))
     {
         if (!reportInputState(input, issueHandler))
         {
@@ -191,11 +191,11 @@ void LSPStreamMessageProducer::listen(MessageConsumer callBack)
 
         size_t delimiterSize = 0;
         auto headerEnd = findHeaderEnd(buffer, delimiterSize);
-        while (headerEnd == std::string::npos && keepRunning)
+        while (headerEnd == std::string::npos && keepRunning.load(std::memory_order_relaxed))
         {
             if (!readMore(input, buffer))
             {
-                keepRunning = false;
+                keepRunning.store(false, std::memory_order_relaxed);
                 if (!buffer.empty())
                 {
                     MessageIssue issue("No more input when reading message headers", lsp::Log::Level::INFO);
@@ -209,7 +209,7 @@ void LSPStreamMessageProducer::listen(MessageConsumer callBack)
             }
             headerEnd = findHeaderEnd(buffer, delimiterSize);
         }
-        if (!keepRunning)
+        if (!keepRunning.load(std::memory_order_relaxed))
         {
             return;
         }
@@ -252,14 +252,14 @@ void LSPStreamMessageProducer::listen(MessageConsumer callBack)
                 }
                 MessageIssue issue(info, lsp::Log::Level::SEVERE);
                 issueHandler.handle(std::move(issue));
-                keepRunning = false;
+                keepRunning.store(false, std::memory_order_relaxed);
                 return;
             }
             if (input->eof())
             {
                 MessageIssue issue("No more input when reading content body", lsp::Log::Level::INFO);
                 issueHandler.handle(std::move(issue));
-                keepRunning = false;
+                keepRunning.store(false, std::memory_order_relaxed);
                 return;
             }
             if (input->fail())
@@ -273,7 +273,7 @@ void LSPStreamMessageProducer::listen(MessageConsumer callBack)
                 }
                 MessageIssue issue(info, lsp::Log::Level::WARNING);
                 issueHandler.handle(std::move(issue));
-                keepRunning = false;
+                keepRunning.store(false, std::memory_order_relaxed);
                 return;
             }
         }
@@ -283,7 +283,7 @@ void LSPStreamMessageProducer::listen(MessageConsumer callBack)
         callBack(std::move(content));
         if (input->eof() && buffer.empty())
         {
-            keepRunning = false;
+            keepRunning.store(false, std::memory_order_relaxed);
         }
     }
 }
@@ -354,11 +354,11 @@ void DelimitedStreamMessageProducer::listen(MessageConsumer callBack)
         return;
     }
 
-    keepRunning = true;
+    keepRunning.store(true, std::memory_order_relaxed);
 
     auto readLine = [&](std::string_ref& lineBuilder) -> bool
     {
-        while (keepRunning)
+        while (keepRunning.load(std::memory_order_relaxed))
         {
             if (input->bad())
             {
@@ -397,7 +397,7 @@ void DelimitedStreamMessageProducer::listen(MessageConsumer callBack)
             if (c == EOF)
             {
                 // End of input stream has been reached
-                keepRunning = false;
+                keepRunning.store(false, std::memory_order_relaxed);
             }
             else
             {

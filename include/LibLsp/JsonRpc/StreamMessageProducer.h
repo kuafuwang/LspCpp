@@ -2,6 +2,7 @@
 #include <string>
 #include <functional>
 #include "MessageProducer.h"
+#include <atomic>
 #include <iostream>
 #include <memory>
 #include "MessageIssue.h"
@@ -22,7 +23,7 @@ public:
     {
     }
 
-    bool keepRunning = false;
+    std::atomic<bool> keepRunning {false};
 
     virtual void bind(std::shared_ptr<lsp::istream>) = 0;
 

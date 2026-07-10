@@ -74,7 +74,7 @@ stdin / TCP / WebSocket
         ├── notifications: FIFO 串行线程 ───────────────┤
         ├── opt-out notifications: handler 线程池 ─────┤
         ├── requests: 等待前序通知完成 ─────────────────┘
-        └── responses: handler 线程池
+        └── responses: 精确 pending 完成
                                                        │
                                                        ▼
                                               user handler (lambda)
@@ -91,8 +91,10 @@ stdin / TCP / WebSocket
 - 普通通知在专用 FIFO 通知线程上串行执行，因此 `textDocument/didOpen`、增量 `textDocument/didChange` 等顺序敏感通知会按线路顺序生效；
 - 通过 `allowConcurrentNotification` 显式标记的方法会绕过 FIFO 通知线程并直接在 handler 池执行；这些通知不保序，也不会门控后续请求，因此只应给顺序不敏感的 handler 开启；
 - 请求只有在其之前的所有通知执行完成后才会投递到 handler 池，因此请求 handler 能看到前序通知建立的文档状态；
-- 请求之间仍可并发执行；构造函数参数 `max_workers` 控制请求/响应 handler 池并发度；
-- 响应和 `$/cancelRequest` 绕过通知队列。响应按 id 匹配，取消只会被前序帧的解析与 sequence 重排序延迟，不会被慢通知 handler 延迟。解析使用独立线程池，因此阻塞的同步 handler 不会饿死取消消息的解析。
+- 请求之间仍可并发执行；构造函数参数 `max_workers` 控制 handler 池并发度；
+- 出站请求的响应会匹配解析时捕获的精确 pending request。future 与阻塞等待 API 会在路由阶段直接完成 promise/condition，且不执行用户代码，因此同步 handler 在等待响应时不需要额外空闲的 handler worker。callback 形式的 send API 会先原子移除 pending，再把用户 callback 延后投递到 handler 池，以保留原有 callback 执行语义；
+- `$/cancelRequest` 绕过通知队列。取消只会被前序帧的解析与 sequence 重排序延迟，不会被慢通知 handler 延迟。解析使用独立线程池，因此阻塞的同步 handler 不会饿死取消消息的解析；
+- 每次 `startProcessingMessages` 运行都拥有独立的 active session output state。handler 捕获该 state，因此在 `stop()` 之后才返回的旧 handler 响应会被丢弃，不会写入后续 restart 的新会话。
 
 ### 传输
 
