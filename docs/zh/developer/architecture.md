@@ -94,7 +94,10 @@ stdin / TCP / WebSocket
 - 请求之间仍可并发执行；构造函数参数 `max_workers` 控制 handler 池并发度；
 - 出站请求的响应会匹配解析时捕获的精确 pending request。future 与阻塞等待 API 会在路由阶段直接完成 promise/condition，且不执行用户代码，因此同步 handler 在等待响应时不需要额外空闲的 handler worker。callback 形式的 send API 会先原子移除 pending，再把用户 callback 延后投递到 handler 池，以保留原有 callback 执行语义；
 - `$/cancelRequest` 绕过通知队列。取消只会被前序帧的解析与 sequence 重排序延迟，不会被慢通知 handler 延迟。解析使用独立线程池，因此阻塞的同步 handler 不会饿死取消消息的解析；
-- 每次 `startProcessingMessages` 运行都拥有独立的 active session output state。handler 捕获该 state，因此在 `stop()` 之后才返回的旧 handler 响应会被丢弃，不会写入后续 restart 的新会话。
+- 每次 `startProcessingMessages` 运行都拥有独立的 active session output state。handler 捕获该 state，因此在 `stop()` 之后才返回的旧 handler 响应会被丢弃，不会写入后续 restart 的新会话；
+- 嵌入方可以通过 `RemoteEndPointLimits` 配置 frame size、parse backlog、reorder buffer、FIFO notification queue、parked request queue、pending cancel 表和 seen request-id 表的上限。默认所有上限关闭；启用上限后，默认过载策略会停止当前 session，而不是静默丢弃有序 JSON-RPC 流中的消息并破坏协议状态；
+- 显式 handler 注册、parser override、自定义 response parser 注册和 `allowConcurrentNotification` 都是 start 前契约。运行期解析和 handler dispatch 不会给注册表加锁；`ProtocolJsonHandler` 会在构造时预注册标准 LSP parser，自定义扩展也必须在 `startProcessingMessages()` 前完成注册。注册 API 会通过返回 `false`、记录 warning，并在 Debug 构建下触发断言来报告误用；
+- 如果将来确实出现运行期注册需求，不应回到在 parse/handler 热路径加互斥锁。优先采用 snapshot-swap 设计：注册表通过 `std::shared_ptr<const map>` 快照持有，写侧 copy-on-write 后原子替换指针，读侧只付出一次原子加载快照的成本。
 
 ### 传输
 

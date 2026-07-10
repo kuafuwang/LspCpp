@@ -200,14 +200,77 @@ struct RequestCancellationRegistry
     std::mutex mutex;
     std::map<lsRequestId, std::pair<Canceler, /*Cookie*/ unsigned>> requestCancelers;
     std::map<lsRequestId, uint64_t> pendingCancelRequests;
-    std::set<lsRequestId> seenRequestIds;
+    std::deque<std::pair<lsRequestId, uint64_t>> pendingCancelOrder;
+    std::map<lsRequestId, uint64_t> seenRequestIds;
+    std::deque<std::pair<lsRequestId, uint64_t>> seenRequestOrder;
     std::map<CancelKey, size_t> retainedRequestCancelers;
+
+    void recordPendingCancel(lsRequestId const& id, uint64_t sequence, size_t limit)
+    {
+        pendingCancelRequests[id] = sequence;
+        pendingCancelOrder.emplace_back(id, sequence);
+        prunePendingCancels(limit);
+    }
+
+    void recordSeenRequest(lsRequestId const& id, uint64_t sequence, size_t limit)
+    {
+        seenRequestIds[id] = sequence;
+        seenRequestOrder.emplace_back(id, sequence);
+        pruneSeenRequests(limit);
+    }
+
+    void prunePendingCancels(size_t limit)
+    {
+        if (limit == 0)
+        {
+            return;
+        }
+        while (pendingCancelRequests.size() > limit && !pendingCancelOrder.empty())
+        {
+            auto const oldest = pendingCancelOrder.front();
+            pendingCancelOrder.pop_front();
+            auto const it = pendingCancelRequests.find(oldest.first);
+            if (it != pendingCancelRequests.end() && it->second == oldest.second)
+            {
+                pendingCancelRequests.erase(it);
+            }
+        }
+    }
+
+    void pruneSeenRequests(size_t limit)
+    {
+        if (limit == 0)
+        {
+            return;
+        }
+        while (seenRequestIds.size() > limit && !seenRequestOrder.empty())
+        {
+            auto const oldest = seenRequestOrder.front();
+            seenRequestOrder.pop_front();
+            auto const it = seenRequestIds.find(oldest.first);
+            if (it != seenRequestIds.end() && it->second == oldest.second)
+            {
+                seenRequestIds.erase(it);
+            }
+        }
+    }
 };
 
 struct RemoteEndPoint::Data
 {
-    explicit Data(lsp::JSONStreamStyle style, uint8_t workers, lsp::Log& _log, RemoteEndPoint* owner)
-        : max_workers(workers), m_id(0), next_request_cookie(0), owner(owner), log(_log)
+    explicit Data(
+        lsp::JSONStreamStyle style,
+        uint8_t workers,
+        RemoteEndPointLimits configured_limits,
+        lsp::Log& _log,
+        RemoteEndPoint* owner
+    )
+        : max_workers(workers),
+          limits(configured_limits),
+          m_id(0),
+          next_request_cookie(0),
+          owner(owner),
+          log(_log)
     {
         if (style == lsp::JSONStreamStyle::Standard)
         {
@@ -217,6 +280,8 @@ struct RemoteEndPoint::Data
         {
             message_producer = (new DelimitedStreamMessageProducer(*owner));
         }
+        message_producer->setMaxFrameSize(limits.max_frame_size);
+        message_producer->setOverloadHandler([this](std::string const& message) { return handleOverload(message); });
     }
     ~Data()
     {
@@ -228,6 +293,7 @@ struct RemoteEndPoint::Data
         delete message_producer;
     }
     uint8_t max_workers;
+    RemoteEndPointLimits limits;
     std::atomic<int> m_id;
     std::shared_ptr<asio::thread_pool> parse_pool;
     std::shared_ptr<asio::thread_pool> handler_pool;
@@ -245,6 +311,27 @@ struct RemoteEndPoint::Data
     {
         return next_message_sequence.fetch_add(1, std::memory_order_relaxed);
     }
+
+    bool handleOverload(std::string const& message)
+    {
+        std::string info = "RemoteEndPoint overload: ";
+        info += message;
+        log.log(Log::Level::WARNING, info);
+        if (limits.overload_policy == RemoteEndPointOverloadPolicy::DropNewest)
+        {
+            return true;
+        }
+        owner->stop();
+        return false;
+    }
+
+    bool acquireParseQueueSlot(uint64_t sequence);
+
+    void releaseParseQueueSlot()
+    {
+        parse_queue_size.fetch_sub(1, std::memory_order_relaxed);
+    }
+
     void onCancel(Notify_Cancellation::notify* notify, uint64_t sequence)
     {
         std::lock_guard<std::mutex> lock(cancellation_registry->mutex);
@@ -257,7 +344,11 @@ struct RemoteEndPoint::Data
         auto pending = cancellation_registry->pendingCancelRequests.find(notify->params.id);
         if (pending == cancellation_registry->pendingCancelRequests.end() || pending->second < sequence)
         {
-            cancellation_registry->pendingCancelRequests[notify->params.id] = sequence;
+            cancellation_registry->recordPendingCancel(
+                notify->params.id,
+                sequence,
+                limits.max_pending_cancel_requests
+            );
         }
     }
 
@@ -289,7 +380,7 @@ struct RemoteEndPoint::Data
                     || pending->second > sequence;
                 registry->pendingCancelRequests.erase(pending);
             }
-            registry->seenRequestIds.insert(id);
+            registry->recordSeenRequest(id, sequence, limits.max_seen_request_ids);
             if (should_cancel)
             {
                 canceler_to_invoke = registry->requestCancelers[id].first;
@@ -379,6 +470,7 @@ struct RemoteEndPoint::Data
     std::deque<std::function<bool()>> async_completions;
     std::thread async_completion_thread;
     bool async_completion_stop = false;
+    std::atomic<size_t> parse_queue_size {0};
 
     struct ParkedRequest
     {
@@ -440,10 +532,16 @@ struct RemoteEndPoint::Data
         reorder_buffer.clear();
     }
 
-    void submitParsedMessage(uint64_t sequence, RemoteEndPoint::ParsedMessage&& parsed)
+    void submitParsedMessage(
+        uint64_t sequence,
+        RemoteEndPoint::ParsedMessage&& parsed,
+        bool bypass_reorder_limit = false
+    )
     {
         std::vector<SequencedParsedMessage> ready;
-        std::lock_guard<std::mutex> dispatch_lock(route_dispatch_mutex);
+        bool overloaded = false;
+        std::string overload_message;
+        std::unique_lock<std::mutex> dispatch_lock(route_dispatch_mutex);
         {
             std::lock_guard<std::mutex> lock(route_mutex);
             if (quit.load(std::memory_order_relaxed))
@@ -451,18 +549,56 @@ struct RemoteEndPoint::Data
                 return;
             }
 
-            reorder_buffer.emplace(sequence, std::move(parsed));
-            for (;;)
+            if (sequence == next_route_sequence)
             {
-                auto it = reorder_buffer.find(next_route_sequence);
-                if (it == reorder_buffer.end())
-                {
-                    break;
-                }
-                ready.emplace_back(next_route_sequence, std::move(it->second));
-                reorder_buffer.erase(it);
+                ready.emplace_back(next_route_sequence, std::move(parsed));
                 ++next_route_sequence;
             }
+            else
+            {
+                if (!bypass_reorder_limit && limits.max_reorder_buffer_size != 0 &&
+                    reorder_buffer.size() >= limits.max_reorder_buffer_size)
+                {
+                    overload_message = "reorder buffer size would exceed configured maximum ";
+                    overload_message += std::to_string(limits.max_reorder_buffer_size);
+                    overload_message += ".";
+                    if (limits.overload_policy == RemoteEndPointOverloadPolicy::DropNewest)
+                    {
+                        parsed = RemoteEndPoint::ParsedMessage();
+                        bypass_reorder_limit = true;
+                    }
+                    else
+                    {
+                        overloaded = true;
+                    }
+                }
+                if (!overloaded)
+                {
+                    reorder_buffer.emplace(sequence, std::move(parsed));
+                }
+            }
+
+            if (!overloaded)
+            {
+                for (;;)
+                {
+                    auto it = reorder_buffer.find(next_route_sequence);
+                    if (it == reorder_buffer.end())
+                    {
+                        break;
+                    }
+                    ready.emplace_back(next_route_sequence, std::move(it->second));
+                    reorder_buffer.erase(it);
+                    ++next_route_sequence;
+                }
+            }
+        }
+
+        if (overloaded)
+        {
+            dispatch_lock.unlock();
+            handleOverload(overload_message);
+            return;
         }
 
         for (auto& item : ready)
@@ -477,6 +613,10 @@ struct RemoteEndPoint::Data
         {
             return;
         }
+        if (!acquireParseQueueSlot(sequence))
+        {
+            return;
+        }
 
         asio::post(
             *parse_pool,
@@ -485,6 +625,15 @@ struct RemoteEndPoint::Data
 #ifdef LSPCPP_USEGC
                 GCThreadContext gcContext;
 #endif
+                auto release_parse_slot = lsp::make_scope_exit(
+                    [owner]
+                    {
+                        if (owner->d_ptr)
+                        {
+                            owner->d_ptr->releaseParseQueueSlot();
+                        }
+                    }
+                );
                 auto parsed = owner->parseAndClassify(content);
                 if (owner->d_ptr)
                 {
@@ -670,19 +819,37 @@ struct RemoteEndPoint::Data
         {
             return;
         }
+        bool overloaded = false;
+        std::string overload_message;
         {
             std::lock_guard<std::mutex> lock(ordered_mutex);
             if (notification_stop || quit.load(std::memory_order_relaxed))
             {
                 return;
             }
-            has_last_ordered_notification = true;
-            last_ordered_notification_seq = sequence;
-            DispatchItem item;
-            item.sequence = sequence;
-            item.message = std::move(msg);
-            item.response_state = std::move(response_state);
-            notification_queue.emplace_back(std::move(item));
+            if (limits.max_notification_queue_size != 0 &&
+                notification_queue.size() >= limits.max_notification_queue_size)
+            {
+                overload_message = "notification queue size would exceed configured maximum ";
+                overload_message += std::to_string(limits.max_notification_queue_size);
+                overload_message += ".";
+                overloaded = true;
+            }
+            else
+            {
+                has_last_ordered_notification = true;
+                last_ordered_notification_seq = sequence;
+                DispatchItem item;
+                item.sequence = sequence;
+                item.message = std::move(msg);
+                item.response_state = std::move(response_state);
+                notification_queue.emplace_back(std::move(item));
+            }
+        }
+        if (overloaded)
+        {
+            handleOverload(overload_message);
+            return;
         }
         ordered_cv.notify_one();
     }
@@ -699,21 +866,39 @@ struct RemoteEndPoint::Data
         }
 
         bool post_now = true;
+        bool overloaded = false;
+        std::string overload_message;
         {
             std::lock_guard<std::mutex> lock(ordered_mutex);
             if (!notification_stop && has_last_ordered_notification &&
                 !notificationGateSatisfied(last_ordered_notification_seq))
             {
-                ParkedRequest parked;
-                parked.gate = last_ordered_notification_seq;
-                parked.sequence = sequence;
-                parked.message = std::move(msg);
-                parked.response_state = std::move(response_state);
-                parked_requests.emplace_back(std::move(parked));
                 post_now = false;
+                if (limits.max_parked_request_queue_size != 0 &&
+                    parked_requests.size() >= limits.max_parked_request_queue_size)
+                {
+                    overload_message = "parked request queue size would exceed configured maximum ";
+                    overload_message += std::to_string(limits.max_parked_request_queue_size);
+                    overload_message += ".";
+                    overloaded = true;
+                }
+                else
+                {
+                    ParkedRequest parked;
+                    parked.gate = last_ordered_notification_seq;
+                    parked.sequence = sequence;
+                    parked.message = std::move(msg);
+                    parked.response_state = std::move(response_state);
+                    parked_requests.emplace_back(std::move(parked));
+                }
             }
         }
 
+        if (overloaded)
+        {
+            handleOverload(overload_message);
+            return;
+        }
         if (post_now)
         {
             postToWorker(std::move(msg), sequence, std::move(response_state));
@@ -974,7 +1159,9 @@ struct RemoteEndPoint::Data
             cancellation_registry->requestCancelers.clear();
             cancellation_registry->retainedRequestCancelers.clear();
             cancellation_registry->pendingCancelRequests.clear();
+            cancellation_registry->pendingCancelOrder.clear();
             cancellation_registry->seenRequestIds.clear();
+            cancellation_registry->seenRequestOrder.clear();
         }
         for (auto& canceler : cancelers)
         {
@@ -1003,6 +1190,34 @@ struct RemoteEndPoint::Data
         }
     }
 };
+
+bool RemoteEndPoint::Data::acquireParseQueueSlot(uint64_t sequence)
+{
+    size_t current = parse_queue_size.load(std::memory_order_relaxed);
+    for (;;)
+    {
+        if (limits.max_parse_queue_size != 0 && current >= limits.max_parse_queue_size)
+        {
+            std::string info = "parse queue size would exceed configured maximum ";
+            info += std::to_string(limits.max_parse_queue_size);
+            info += ".";
+            if (handleOverload(info))
+            {
+                submitParsedMessage(sequence, RemoteEndPoint::ParsedMessage(), true);
+            }
+            return false;
+        }
+        if (parse_queue_size.compare_exchange_weak(
+                current,
+                current + 1,
+                std::memory_order_relaxed,
+                std::memory_order_relaxed
+            ))
+        {
+            return true;
+        }
+    }
+}
 
 namespace
 {
@@ -1126,10 +1341,24 @@ RemoteEndPoint::RemoteEndPoint(
     std::shared_ptr<MessageJsonHandler> const& json_handler, std::shared_ptr<Endpoint> const& localEndPoint,
     lsp::Log& _log, lsp::JSONStreamStyle style, uint8_t max_workers
 )
-    : d_ptr(new Data(style, max_workers, _log, this)), jsonHandler(json_handler), local_endpoint(localEndPoint)
+    : RemoteEndPoint(json_handler, localEndPoint, _log, style, max_workers, RemoteEndPointLimits())
 {
-    jsonHandler->method2notification[Notify_Cancellation::notify::kMethodInfo] = [](Reader& visitor)
-    { return Notify_Cancellation::notify::ReflectReader(visitor); };
+}
+
+RemoteEndPoint::RemoteEndPoint(
+    std::shared_ptr<MessageJsonHandler> const& json_handler,
+    std::shared_ptr<Endpoint> const& localEndPoint,
+    lsp::Log& _log,
+    lsp::JSONStreamStyle style,
+    uint8_t max_workers,
+    RemoteEndPointLimits limits
+)
+    : d_ptr(new Data(style, max_workers, limits, _log, this)), jsonHandler(json_handler), local_endpoint(localEndPoint)
+{
+    jsonHandler->SetNotificationJsonHandler(
+        Notify_Cancellation::notify::kMethodInfo,
+        [](Reader& visitor) { return Notify_Cancellation::notify::ReflectReader(visitor); }
+    );
     d_ptr->session_output_state->send_mutex = m_sendMutex;
 
     d_ptr->quit.store(false, std::memory_order_relaxed);
@@ -1180,7 +1409,8 @@ RemoteEndPoint::ParsedMessage RemoteEndPoint::parseAndClassify(std::string const
             _kind = LspMessage::REQUEST_MESSAGE;
             ReflectMember(visitor, "id", current_id);
             has_current_id = current_id.has_value();
-            auto msg = jsonHandler->parseRequstMessage(visitor["method"]->GetString(), visitor);
+            auto const method = visitor["method"]->GetString();
+            auto msg = jsonHandler->parseRequstMessage(method, visitor);
             if (msg)
             {
                 result.ok = true;
@@ -1201,7 +1431,7 @@ RemoteEndPoint::ParsedMessage RemoteEndPoint::parseAndClassify(std::string const
                     result.message = makeErrorMessage(
                         current_id,
                         lsErrorCodes::MethodNotFound,
-                        "Method not found: " + std::string(visitor["method"]->GetString())
+                        "Method not found: " + method
                     );
                 }
                 return result;
@@ -1227,7 +1457,6 @@ RemoteEndPoint::ParsedMessage RemoteEndPoint::parseAndClassify(std::string const
             }
             else
             {
-
                 auto msg = jsonHandler->parseResponseMessage(msgInfo->method, visitor);
                 if (msg)
                 {
@@ -1256,7 +1485,8 @@ RemoteEndPoint::ParsedMessage RemoteEndPoint::parseAndClassify(std::string const
         }
         else if (isNotificationMessage(visitor))
         {
-            auto msg = jsonHandler->parseNotificationMessage(visitor["method"]->GetString(), visitor);
+            auto const method = visitor["method"]->GetString();
+            auto msg = jsonHandler->parseNotificationMessage(method, visitor);
             if (!msg)
             {
                 std::string info = "Unknown notification message :\n";
@@ -1411,9 +1641,28 @@ void RemoteEndPoint::routeParsedIncoming(ParsedMessage&& parsed, uint64_t sequen
     }
 }
 
-void RemoteEndPoint::allowConcurrentNotification(std::string const& method)
+bool RemoteEndPoint::allowConcurrentNotification(std::string const& method)
 {
+    if (!canRegisterBeforeStart("allowConcurrentNotification"))
+    {
+        return false;
+    }
     d_ptr->allowConcurrentNotification(method);
+    return true;
+}
+
+bool RemoteEndPoint::canRegisterBeforeStart(char const* operation)
+{
+    std::lock_guard<std::mutex> lock(d_ptr->lifecycle_mutex);
+    if (!d_ptr->working)
+    {
+        return true;
+    }
+    std::string message = operation ? operation : "registration";
+    message += " must be called before startProcessingMessages().";
+    d_ptr->log.log(Log::Level::WARNING, message);
+    assert(false && "RemoteEndPoint registration must happen before startProcessingMessages()");
+    return false;
 }
 
 bool RemoteEndPoint::internalSendRequest(RequestInMessage& info, GenericResponseHandler handler)

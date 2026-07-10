@@ -1,6 +1,7 @@
 
 #include "LibLsp/JsonRpc/StreamMessageProducer.h"
 #include <cassert>
+#include <algorithm>
 #include <array>
 #include <cerrno>
 #include <climits>
@@ -97,6 +98,34 @@ bool readMore(std::shared_ptr<lsp::istream> const& input, std::string& buffer)
     return true;
 }
 
+bool discardBytes(
+    std::shared_ptr<lsp::istream> const& input,
+    size_t count,
+    MessageIssueHandler& issueHandler
+)
+{
+    std::array<char, 4096> chunk {};
+    while (count != 0)
+    {
+        auto const toRead = std::min(count, chunk.size());
+        input->read(chunk.data(), static_cast<std::streamsize>(toRead));
+        if (input->bad())
+        {
+            MessageIssue issue("Input stream is bad while discarding oversized frame.", lsp::Log::Level::SEVERE);
+            issueHandler.handle(std::move(issue));
+            return false;
+        }
+        if (input->eof() || input->fail())
+        {
+            MessageIssue issue("Input ended while discarding oversized frame.", lsp::Log::Level::WARNING);
+            issueHandler.handle(std::move(issue));
+            return false;
+        }
+        count -= toRead;
+    }
+    return true;
+}
+
 std::string::size_type findHeaderEnd(std::string const& buffer, size_t& delimiterSize)
 {
     auto const crlf = buffer.find("\r\n\r\n");
@@ -147,6 +176,17 @@ void parseHeaderBlock(std::string const& block, LSPStreamMessageProducer& produc
 }
 
 } // namespace
+
+bool StreamMessageProducer::reportOverload(std::string const& message)
+{
+    MessageIssue issue(message, lsp::Log::Level::WARNING);
+    issueHandler.handle(std::move(issue));
+    if (!overloadHandler)
+    {
+        return false;
+    }
+    return overloadHandler(message);
+}
 
 void LSPStreamMessageProducer::parseHeader(std::string& line, LSPStreamMessageProducer::Headers& headers)
 {
@@ -229,6 +269,29 @@ void LSPStreamMessageProducer::listen(MessageConsumer callBack)
         }
 
         auto const contentLength = static_cast<size_t>(headers.contentLength);
+        if (maxFrameSize != 0 && contentLength > maxFrameSize)
+        {
+            std::string info = "LSP frame size ";
+            info += std::to_string(contentLength);
+            info += " exceeds configured maximum ";
+            info += std::to_string(maxFrameSize);
+            info += ".";
+            if (!reportOverload(info))
+            {
+                keepRunning.store(false, std::memory_order_relaxed);
+                return;
+            }
+
+            auto const buffered = std::min(buffer.size(), contentLength);
+            buffer.erase(0, buffered);
+            auto const remaining = contentLength - buffered;
+            if (remaining != 0 && !discardBytes(input, remaining, issueHandler))
+            {
+                keepRunning.store(false, std::memory_order_relaxed);
+                return;
+            }
+            continue;
+        }
         if (buffer.size() < contentLength)
         {
             // Bulk-read the remaining body with a single istream::read() call.
@@ -450,6 +513,18 @@ void DelimitedStreamMessageProducer::listen(MessageConsumer callBack)
             else
             {
                 json += lineBuilder;
+                if (maxFrameSize != 0 && json.size() > maxFrameSize)
+                {
+                    std::string info = "Delimited frame size exceeds configured maximum ";
+                    info += std::to_string(maxFrameSize);
+                    info += ".";
+                    if (!reportOverload(info))
+                    {
+                        keepRunning.store(false, std::memory_order_relaxed);
+                        return false;
+                    }
+                    json.clear();
+                }
             }
             lineBuilder.clear();
         }

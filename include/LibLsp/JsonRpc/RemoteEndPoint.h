@@ -6,8 +6,10 @@
 #include "LibLsp/JsonRpc/RequestInMessage.h"
 #include "LibLsp/JsonRpc/NotificationInMessage.h"
 #include "traits.h"
+#include <cassert>
 #include <atomic>
 #include <chrono>
+#include <cstddef>
 #include <functional>
 #include <future>
 #include <memory>
@@ -27,6 +29,32 @@ class MessageJsonHandler;
 class Endpoint;
 struct LspMessage;
 class RemoteEndPoint;
+
+enum class RemoteEndPointOverloadPolicy
+{
+    // Safest for a JSON-RPC stream: stop the current session instead of
+    // silently dropping an ordered frame and corrupting protocol state.
+    StopProcessing,
+    // Intended for embedders that prefer best-effort processing under pressure.
+    // Ordered gaps are converted to no-op parsed messages so routing can
+    // continue, but request/notification semantics for the dropped frame are
+    // not preserved.
+    DropNewest,
+};
+
+struct RemoteEndPointLimits
+{
+    // Zero means unlimited for every field.
+    size_t max_frame_size = 0;
+    size_t max_parse_queue_size = 0;
+    size_t max_reorder_buffer_size = 0;
+    size_t max_notification_queue_size = 0;
+    size_t max_parked_request_queue_size = 0;
+    size_t max_pending_cancel_requests = 0;
+    size_t max_seen_request_ids = 0;
+    RemoteEndPointOverloadPolicy overload_policy = RemoteEndPointOverloadPolicy::StopProcessing;
+};
+
 namespace lsp
 {
 class ostream;
@@ -210,25 +238,29 @@ class RemoteEndPoint : MessageIssueHandler
     using EnableIfSyncRequestHandler = lsp::traits::EnableIf<
         !lsp::detail::is_lsp_future<lsp::detail::handler_return_t<F>>::value
             && lsp::traits::CompatibleWith<
-                F, std::function<lsp::ResponseOrError<ResponseType>(RequestType const&)>>::value>;
+                F, std::function<lsp::ResponseOrError<ResponseType>(RequestType const&)>>::value,
+        bool>;
 
     template<typename F, typename RequestType, typename ResponseType>
     using EnableIfSyncRequestHandlerWithMonitor = lsp::traits::EnableIf<
         !lsp::detail::is_lsp_future<lsp::detail::handler_return_t<F>>::value
             && lsp::traits::CompatibleWith<
                 F,
-                std::function<lsp::ResponseOrError<ResponseType>(RequestType const&, CancelMonitor const&)>>::value>;
+                std::function<lsp::ResponseOrError<ResponseType>(RequestType const&, CancelMonitor const&)>>::value,
+        bool>;
 
     template<typename F, typename RequestType, typename ResponseType>
     using EnableIfAsyncRequestHandler = lsp::traits::EnableIf<
         lsp::detail::is_valid_async_request_return<lsp::detail::handler_return_t<F>, ResponseType>::value
-            && lsp::traits::CompatibleWith<F, std::function<lsp::future<ResponseType>(RequestType const&)>>::value>;
+            && lsp::traits::CompatibleWith<F, std::function<lsp::future<ResponseType>(RequestType const&)>>::value,
+        bool>;
 
     template<typename F, typename RequestType, typename ResponseType>
     using EnableIfAsyncRequestHandlerWithMonitor = lsp::traits::EnableIf<
         lsp::detail::is_valid_async_request_return<lsp::detail::handler_return_t<F>, ResponseType>::value
             && lsp::traits::CompatibleWith<
-                F, std::function<lsp::future<ResponseType>(RequestType const&, CancelMonitor const&)>>::value>;
+                F, std::function<lsp::future<ResponseType>(RequestType const&, CancelMonitor const&)>>::value,
+        bool>;
 
     enum class PendingCompletionPolicy
     {
@@ -247,34 +279,70 @@ public:
         std::shared_ptr<MessageJsonHandler> const& json_handler, std::shared_ptr<Endpoint> const& localEndPoint,
         lsp::Log& _log, lsp::JSONStreamStyle style = lsp::JSONStreamStyle::Standard, uint8_t max_workers = 2
     );
+    RemoteEndPoint(
+        std::shared_ptr<MessageJsonHandler> const& json_handler,
+        std::shared_ptr<Endpoint> const& localEndPoint,
+        lsp::Log& _log,
+        lsp::JSONStreamStyle style,
+        uint8_t max_workers,
+        RemoteEndPointLimits limits
+    );
 
     ~RemoteEndPoint() override;
     template<typename F, typename RequestType = ParamType<F, 0>, typename ResponseType = typename RequestType::Response>
     EnableIfSyncRequestHandler<F, RequestType, ResponseType> registerHandler(F&& handler)
     {
+        if (!canRegisterBeforeStart("registerHandler"))
+        {
+            return false;
+        }
         registerSyncRequestHandler<F, RequestType, ResponseType>(std::forward<F>(handler));
+        return true;
     }
     template<typename F, typename RequestType = ParamType<F, 0>, typename ResponseType = typename RequestType::Response>
     EnableIfSyncRequestHandlerWithMonitor<F, RequestType, ResponseType> registerHandler(F&& handler)
     {
+        if (!canRegisterBeforeStart("registerHandler"))
+        {
+            return false;
+        }
         registerSyncRequestHandlerWithMonitor<F, RequestType, ResponseType>(std::forward<F>(handler));
+        return true;
     }
     template<typename F, typename RequestType = ParamType<F, 0>, typename ResponseType = typename RequestType::Response>
     EnableIfAsyncRequestHandler<F, RequestType, ResponseType> registerHandler(F&& handler)
     {
+        if (!canRegisterBeforeStart("registerHandler"))
+        {
+            return false;
+        }
         registerAsyncRequestHandler<F, RequestType, ResponseType>(std::forward<F>(handler));
+        return true;
     }
     template<typename F, typename RequestType = ParamType<F, 0>, typename ResponseType = typename RequestType::Response>
     EnableIfAsyncRequestHandlerWithMonitor<F, RequestType, ResponseType> registerHandler(F&& handler)
     {
+        if (!canRegisterBeforeStart("registerHandler"))
+        {
+            return false;
+        }
         registerAsyncRequestHandlerWithMonitor<F, RequestType, ResponseType>(std::forward<F>(handler));
+        return true;
     }
     using RequestErrorCallback = std::function<void(Rsp_Error const&)>;
 
     template<typename T, typename F, typename ResponseType = ParamType<F, 0>>
     void send(T& request, F&& handler, RequestErrorCallback onError)
     {
-        registerResponseJsonHandlerIfMissing<T>();
+        if (!ensureResponseJsonHandler<T>())
+        {
+            Rsp_Error error;
+            error.id = request.id;
+            error.error.code = lsErrorCodes::InternalError;
+            error.error.message = "Response parser must be registered before startProcessingMessages().";
+            onError(error);
+            return;
+        }
         auto cb = [=](std::unique_ptr<LspMessage> msg)
         {
             if (!msg)
@@ -306,16 +374,17 @@ public:
     }
 
     template<typename F, typename NotifyType = ParamType<F, 0>>
-    IsNotify<NotifyType> registerHandler(F&& handler)
+    lsp::traits::EnableIfIsType<NotificationInMessage, NotifyType, bool> registerHandler(F&& handler)
     {
+        if (!canRegisterBeforeStart("registerHandler"))
         {
-            std::lock_guard<std::mutex> lock(*m_sendMutex);
-            if (!jsonHandler->GetNotificationJsonHandler(NotifyType::kMethodInfo))
-            {
-                jsonHandler->SetNotificationJsonHandler(
-                    NotifyType::kMethodInfo, [](Reader& visitor) { return NotifyType::ReflectReader(visitor); }
-                );
-            }
+            return false;
+        }
+        if (!jsonHandler->GetNotificationJsonHandler(NotifyType::kMethodInfo))
+        {
+            jsonHandler->SetNotificationJsonHandler(
+                NotifyType::kMethodInfo, [](Reader& visitor) { return NotifyType::ReflectReader(visitor); }
+            );
         }
         local_endpoint->registerNotifyHandler(
             NotifyType::kMethodInfo,
@@ -325,21 +394,22 @@ public:
                 return true;
             }
         );
+        return true;
     }
 
     template<typename NotifyType, typename = IsNotify<NotifyType>>
-    void allowConcurrentNotification()
+    bool allowConcurrentNotification()
     {
-        allowConcurrentNotification(NotifyType::kMethodInfo);
+        return allowConcurrentNotification(NotifyType::kMethodInfo);
     }
 
-    void allowConcurrentNotification(std::string const& method);
+    bool allowConcurrentNotification(std::string const& method);
 
     template<typename T, typename = IsRequest<T>>
     lsp::future<lsp::ResponseOrError<typename T::Response>> send(T& request)
     {
 
-        registerResponseJsonHandlerIfMissing<T>();
+        bool const has_response_parser = ensureResponseJsonHandler<T>();
         using Response = typename T::Response;
         auto promise = std::make_shared<lsp::promise<lsp::ResponseOrError<Response>>>();
         auto cb = [=](std::unique_ptr<LspMessage> msg)
@@ -365,12 +435,14 @@ public:
             }
             return true;
         };
-        if (!internalSendRequestWithPolicy(request, cb, PendingCompletionPolicy::FastStateOnly))
+        if (!has_response_parser || !internalSendRequestWithPolicy(request, cb, PendingCompletionPolicy::FastStateOnly))
         {
             Rsp_Error error;
             error.id = request.id;
             error.error.code = lsErrorCodes::InternalError;
-            error.error.message = "Failed to send request.";
+            error.error.message =
+                has_response_parser ? "Failed to send request."
+                                    : "Response parser must be registered before startProcessingMessages().";
             promise->set_value(lsp::ResponseOrError<Response>(std::move(error)));
         }
         return promise->get_future();
@@ -424,18 +496,43 @@ public:
         return req;
     }
 
-    void overrideRequestParser(std::string const& method, GenericRequestJsonHandler handler)
+    bool overrideRequestParser(std::string const& method, GenericRequestJsonHandler handler)
     {
-        std::lock_guard<std::mutex> lock(*m_sendMutex);
+        if (!canRegisterBeforeStart("overrideRequestParser"))
+        {
+            return false;
+        }
         jsonHandler->SetRequestJsonHandler(method, std::move(handler));
+        return true;
     }
 
     template<typename RequestType, typename = IsRequest<RequestType>>
-    void overrideRequestParser()
+    bool overrideRequestParser()
     {
-        overrideRequestParser(
+        return overrideRequestParser(
             RequestType::kMethodInfo, [](Reader& visitor) { return RequestType::ReflectReader(visitor); }
         );
+    }
+
+    bool overrideResponseParser(std::string const& method, GenericResponseJsonHandler handler)
+    {
+        if (!canRegisterBeforeStart("overrideResponseParser"))
+        {
+            return false;
+        }
+        jsonHandler->SetResponseJsonHandler(method, std::move(handler));
+        return true;
+    }
+
+    template<typename T, typename = IsRequest<T>>
+    bool registerResponseParser()
+    {
+        if (!canRegisterBeforeStart("registerResponseParser"))
+        {
+            return false;
+        }
+        registerResponseJsonHandler<T>();
+        return true;
     }
 
     int getNextRequestId();
@@ -477,6 +574,7 @@ private:
     }
     CancelMonitor getCancelMonitor(lsRequestId const&);
     void removeRequestInfo(lsRequestId const&);
+    bool canRegisterBeforeStart(char const* operation);
     void sendMsg(LspMessage& msg);
     ParsedMessage parseAndClassify(std::string const& content);
     void mainLoopCatching(
@@ -705,7 +803,6 @@ private:
     template<typename RequestType, typename = IsRequest<RequestType>>
     void registerRequestJsonHandlerIfMissing()
     {
-        std::lock_guard<std::mutex> lock(*m_sendMutex);
         if (!jsonHandler->GetRequestJsonHandler(RequestType::kMethodInfo))
         {
             jsonHandler->SetRequestJsonHandler(
@@ -714,10 +811,23 @@ private:
         }
     }
     template<typename T, typename = IsRequest<T>>
-    void registerResponseJsonHandlerIfMissing()
+    bool ensureResponseJsonHandler()
+    {
+        if (jsonHandler->GetResponseJsonHandler(T::kMethodInfo))
+        {
+            return true;
+        }
+        if (!canRegisterBeforeStart("registerResponseJsonHandler"))
+        {
+            return false;
+        }
+        registerResponseJsonHandler<T>();
+        return true;
+    }
+    template<typename T, typename = IsRequest<T>>
+    void registerResponseJsonHandler()
     {
         using Response = typename T::Response;
-        std::lock_guard<std::mutex> lock(*m_sendMutex);
         if (!jsonHandler->GetResponseJsonHandler(T::kMethodInfo))
         {
             jsonHandler->SetResponseJsonHandler(

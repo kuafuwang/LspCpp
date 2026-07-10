@@ -13,6 +13,7 @@
 #include <condition_variable>
 #include <cstdlib>
 #include <functional>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <set>
@@ -1858,6 +1859,7 @@ void TestSendRequestWritesExactContentLengthFrame()
     auto output_stream = std::make_shared<StringOStream>();
 
     RemoteEndPoint point(json_handler, endpoint, log);
+    point.registerResponseParser<test_scalar::request>();
     point.startProcessingMessages(input_stream, output_stream);
 
     test_scalar::request req;
@@ -3026,6 +3028,12 @@ void TestDispatchResponseParseFailure()
     auto output_stream = std::make_shared<StringOStream>();
 
     RemoteEndPoint point(json_handler, endpoint, log);
+    point.overrideResponseParser(
+        td_initialize::request::kMethodInfo,
+        [](Reader&) -> std::unique_ptr<LspMessage>
+        {
+            return {};
+        });
     point.startProcessingMessages(input_stream, output_stream);
 
     td_initialize::request req;
@@ -3514,6 +3522,159 @@ void TestFutureGetSupportsMoveOnlyValue()
 
     Expect(value.value == 42, "future::get must move move-only values out of the shared state");
 }
+
+void TestFrameSizeLimitStopsEndpointBeforeDispatch()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<StringIStream>(
+        test::MakeLspFrame(R"({"jsonrpc":"2.0","id":9101,"method":"initialize","params":{}})")
+    );
+    auto output_stream = std::make_shared<StringOStream>();
+
+    std::atomic<bool> handler_called {false};
+    RemoteEndPointLimits limits;
+    limits.max_frame_size = 8;
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 1, limits);
+    point.registerHandler(
+        [&](td_initialize::request const& req) -> lsp::ResponseOrError<td_initialize::response>
+        {
+            handler_called.store(true, std::memory_order_relaxed);
+            td_initialize::response rsp;
+            rsp.id = req.id;
+            return rsp;
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    Expect(
+        WaitUntil([&] { return !point.isWorking(); }),
+        "oversized frame must stop the endpoint");
+    Expect(!handler_called.load(std::memory_order_relaxed), "oversized frame must not dispatch a handler");
+    point.stop();
+}
+
+void TestParseQueueLimitStopsEndpoint()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool release_parser = false;
+    std::atomic<bool> parser_entered {false};
+
+    RemoteEndPointLimits limits;
+    limits.max_parse_queue_size = 1;
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 1, limits);
+    point.overrideRequestParser(
+        td_initialize::request::kMethodInfo,
+        [&](Reader& visitor)
+        {
+            parser_entered.store(true, std::memory_order_relaxed);
+            std::unique_lock<std::mutex> lock(mutex);
+            cv.wait(lock, [&] { return release_parser; });
+            return td_initialize::request::ReflectReader(visitor);
+        });
+    point.registerHandler(
+        [](td_initialize::request const& req) -> lsp::ResponseOrError<td_initialize::response>
+        {
+            td_initialize::response rsp;
+            rsp.id = req.id;
+            return rsp;
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":9102,"method":"initialize","params":{}})"));
+    Expect(
+        WaitUntil([&] { return parser_entered.load(std::memory_order_relaxed); }),
+        "first parse task must occupy the parse queue slot");
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":9103,"method":"initialize","params":{}})"));
+    Expect(
+        WaitUntil([&] { return !point.isWorking(); }),
+        "parse queue overload must stop the endpoint");
+
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        release_parser = true;
+    }
+    cv.notify_all();
+    point.stop();
+}
+
+void TestPendingCancelRequestsArePrunedByLimit()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    std::string input;
+    input += test::MakeLspFrame(R"({"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":9201}})");
+    input += test::MakeLspFrame(R"({"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":9202}})");
+    input += test::MakeLspFrame(R"({"jsonrpc":"2.0","id":9201,"method":"initialize","params":{}})");
+    input += test::MakeLspFrame(R"({"jsonrpc":"2.0","id":9202,"method":"initialize","params":{}})");
+    auto input_stream = std::make_shared<StringIStream>(input);
+    auto output_stream = std::make_shared<StringOStream>();
+
+    std::mutex mutex;
+    std::map<int, bool> cancelled_by_id;
+    RemoteEndPointLimits limits;
+    limits.max_pending_cancel_requests = 1;
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 1, limits);
+    point.registerHandler(
+        [&](td_initialize::request const& req, CancelMonitor const& monitor) -> lsp::ResponseOrError<td_initialize::response>
+        {
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                cancelled_by_id[req.id.value] = monitor && monitor();
+            }
+            td_initialize::response rsp;
+            rsp.id = req.id;
+            return rsp;
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    WaitForOutputContaining(output_stream, "\"id\":9202");
+    point.stop();
+
+    std::lock_guard<std::mutex> lock(mutex);
+    Expect(cancelled_by_id[9201] == false, "oldest pending cancel must be pruned when the limit is exceeded");
+    Expect(cancelled_by_id[9202] == true, "newest pending cancel must be retained within the limit");
+}
+
+void TestRegisterHandlerAfterStartIsIgnored()
+{
+#ifndef NDEBUG
+    return;
+#endif
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    std::atomic<bool> handler_called {false};
+    RemoteEndPoint point(json_handler, endpoint, log);
+    point.startProcessingMessages(input_stream, output_stream);
+    bool const registered = point.registerHandler(
+        [&](td_initialize::request const& req) -> lsp::ResponseOrError<td_initialize::response>
+        {
+            handler_called.store(true, std::memory_order_relaxed);
+            td_initialize::response rsp;
+            rsp.id = req.id;
+            return rsp;
+        });
+
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":9301,"method":"initialize","params":{}})"));
+    std::string const output = WaitForOutputContaining(output_stream, "Method not found");
+    point.stop();
+
+    Expect(!handler_called.load(std::memory_order_relaxed), "handler registered after start must not run");
+    Expect(!registered, "registerHandler after start must report failure");
+    Expect(output.find("Method not found") != std::string::npos, "late handler registration must leave request unhandled");
+}
 } // namespace
 
 int main()
@@ -3595,6 +3756,10 @@ int main()
     TestAsyncCancellationAfterHandlerReturns();
     TestStopDoesNotWaitForUnfinishedAsyncFuture();
     TestFutureGetSupportsMoveOnlyValue();
+    TestFrameSizeLimitStopsEndpointBeforeDispatch();
+    TestParseQueueLimitStopsEndpoint();
+    TestPendingCancelRequestsArePrunedByLimit();
+    TestRegisterHandlerAfterStartIsIgnored();
     TestCancelRequestWhenNotWorkingOrUnknownId();
     TestSendNotificationBeforeStartDoesNotCrash();
     TestRemoteEndPointRestartTwice();
