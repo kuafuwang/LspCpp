@@ -496,7 +496,7 @@ struct RemoteEndPoint::Data
 #ifdef LSPCPP_USEGC
                 GCThreadContext gcContext;
 #endif
-                owner->mainLoopCatching(std::move(msg), sequence, nullptr);
+                owner->mainLoopCatching(std::move(msg), sequence);
             }
         );
     }
@@ -637,7 +637,7 @@ struct RemoteEndPoint::Data
 
             try
             {
-                owner->mainLoopCatching(std::move(msg), sequence, nullptr);
+                owner->mainLoopCatching(std::move(msg), sequence);
             }
             catch (...)
             {
@@ -1123,7 +1123,7 @@ RemoteEndPoint::ParsedMessage RemoteEndPoint::parseAndClassify(std::string const
     return result;
 }
 
-void RemoteEndPoint::mainLoopCatching(std::unique_ptr<LspMessage> msg, uint64_t sequence, std::string const* content)
+void RemoteEndPoint::mainLoopCatching(std::unique_ptr<LspMessage> msg, uint64_t sequence)
 {
     if (!msg)
     {
@@ -1152,22 +1152,8 @@ void RemoteEndPoint::mainLoopCatching(std::unique_ptr<LspMessage> msg, uint64_t 
         info += " message:\n";
         info += e.what();
         std::string reason = "Reason:" + info + "\n";
-        if (content != nullptr)
-        {
-            reason += "content:\n" + *content;
-        }
         d_ptr->log.log(Log::Level::SEVERE, reason);
     }
-}
-
-bool RemoteEndPoint::dispatch(std::string const& content, uint64_t sequence)
-{
-    ParsedMessage parsed = parseAndClassify(content);
-    if (parsed.ok && parsed.message)
-    {
-        mainLoopCatching(std::move(parsed.message), sequence, &content);
-    }
-    return parsed.ok;
 }
 
 void RemoteEndPoint::routeIncoming(std::string&& content, uint64_t sequence)

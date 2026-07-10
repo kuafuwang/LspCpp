@@ -21,14 +21,6 @@
 #include <utility>
 #include <vector>
 
-struct RemoteEndPointTestAccess
-{
-    static bool Dispatch(RemoteEndPoint& endpoint, std::string const& content, uint64_t sequence)
-    {
-        return endpoint.dispatch(content, sequence);
-    }
-};
-
 struct ScalarParams
 {
     int value = 0;
@@ -1059,46 +1051,267 @@ void TestLateCancelAfterCompletedRequestDoesNotCancelReusedId()
 
 void TestOutOfOrderPendingCancelAppliesToReusedRequestId()
 {
-    DummyLog log;
-    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
-    auto endpoint = std::make_shared<GenericEndpoint>(log);
-
-    std::vector<bool> saw_cancel;
-    RemoteEndPoint point(json_handler, endpoint, log);
-    point.registerHandler(
-        [&](td_initialize::request const& req, CancelMonitor const& monitor) -> lsp::ResponseOrError<td_initialize::response>
-        {
-            saw_cancel.push_back(monitor && monitor());
-            td_initialize::response rsp;
-            rsp.id = req.id;
-            return rsp;
-        });
-
-    std::string const first_request = R"({"jsonrpc":"2.0","id":1750,"method":"initialize","params":{}})";
-    std::string const cancel_after_reused_request =
-        R"({"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":1750}})";
-    std::string const reused_request = R"({"jsonrpc":"2.0","id":1750,"method":"initialize","params":{}})";
-
-    Expect(
-        RemoteEndPointTestAccess::Dispatch(point, first_request, 0),
-        "first request must dispatch before testing id reuse");
-    Expect(
-        saw_cancel.size() == 1 && !saw_cancel[0],
-        "first request must complete without a pending cancellation");
-
-    // Deterministically model worker reordering: the cancel is later on the
-    // wire than the reused request, but it reaches dispatch first.
-    Expect(
-        RemoteEndPointTestAccess::Dispatch(point, cancel_after_reused_request, 2),
-        "out-of-order cancel notification must dispatch");
-    Expect(
-        RemoteEndPointTestAccess::Dispatch(point, reused_request, 1),
-        "reused request must dispatch after the pending out-of-order cancel");
-
-    Expect(saw_cancel.size() == 2, "both original and reused requests must be handled");
-    if (saw_cancel.size() >= 2)
+    // Scenario A: cancel is earlier on the wire than a reused request id. Sequential
+    // routing gives the reused request a higher sequence, so the pending cancel must
+    // not pre-cancel the reused request.
     {
-        Expect(saw_cancel[1], "newer pending cancel must apply to the reused request id when sequence is higher");
+        DummyLog log;
+        auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+        auto endpoint = std::make_shared<GenericEndpoint>(log);
+        auto input_stream = std::make_shared<FeedableIStream>();
+        auto output_stream = std::make_shared<StringOStream>();
+
+        std::mutex mutex;
+        std::condition_variable cv;
+        std::vector<bool> saw_cancel;
+
+        RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 4);
+        point.registerHandler(
+            [&](td_initialize::request const& req, CancelMonitor const& monitor) -> lsp::ResponseOrError<td_initialize::response>
+            {
+                bool const cancelled = monitor && monitor();
+                {
+                    std::lock_guard<std::mutex> lock(mutex);
+                    saw_cancel.push_back(cancelled);
+                }
+                cv.notify_all();
+                td_initialize::response rsp;
+                rsp.id = req.id;
+                return rsp;
+            });
+        point.startProcessingMessages(input_stream, output_stream);
+
+        input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":1750,"method":"initialize","params":{}})"));
+        Expect(
+            WaitUntil(
+                [&]()
+                {
+                    std::lock_guard<std::mutex> lock(mutex);
+                    return saw_cancel.size() >= 1;
+                }),
+            "first request must complete before testing pending cancel");
+
+        input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":1750}})"));
+        input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":1750,"method":"initialize","params":{}})"));
+        Expect(
+            WaitUntil(
+                [&]()
+                {
+                    std::lock_guard<std::mutex> lock(mutex);
+                    return saw_cancel.size() >= 2;
+                }),
+            "reused request id must be handled after pending cancel on wire");
+        point.stop();
+
+        Expect(saw_cancel.size() == 2, "both original and reused requests must be handled");
+        if (saw_cancel.size() >= 2)
+        {
+            Expect(!saw_cancel[0], "first request must not be pre-cancelled");
+            Expect(!saw_cancel[1], "pending cancel before reused request must not pre-cancel reuse");
+        }
+    }
+
+    // Scenario B: cancel is later on the wire than a reused request id, but the
+    // reused request is still in flight when the cancel is routed. Sequential routing
+    // must still deliver the cancel to the active request via the live canceler.
+    {
+        DummyLog log;
+        auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+        auto endpoint = std::make_shared<GenericEndpoint>(log);
+        auto input_stream = std::make_shared<FeedableIStream>();
+        auto output_stream = std::make_shared<StringOStream>();
+
+        std::mutex mutex;
+        std::condition_variable cv;
+        bool release_reused = false;
+        std::atomic<int> handled_count {0};
+        std::atomic<bool> reused_entered {false};
+        std::atomic<bool> reused_saw_cancel {false};
+        std::vector<bool> saw_cancel;
+
+        RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 4);
+        point.registerHandler(
+            [&](td_initialize::request const& req, CancelMonitor const& monitor) -> lsp::ResponseOrError<td_initialize::response>
+            {
+                int const count = handled_count.fetch_add(1, std::memory_order_relaxed) + 1;
+                bool cancelled = false;
+                if (count == 2)
+                {
+                    reused_entered.store(true, std::memory_order_relaxed);
+                    std::unique_lock<std::mutex> lock(mutex);
+                    for (int i = 0; i < 200; ++i)
+                    {
+                        if (monitor && monitor())
+                        {
+                            cancelled = true;
+                            reused_saw_cancel.store(true, std::memory_order_relaxed);
+                            break;
+                        }
+                        cv.wait_for(lock, std::chrono::milliseconds(5), [&] { return release_reused; });
+                        if (release_reused)
+                        {
+                            break;
+                        }
+                    }
+                    if (!cancelled)
+                    {
+                        cancelled = monitor && monitor();
+                        reused_saw_cancel.store(cancelled, std::memory_order_relaxed);
+                    }
+                }
+                else
+                {
+                    cancelled = monitor && monitor();
+                }
+
+                {
+                    std::lock_guard<std::mutex> lock(mutex);
+                    saw_cancel.push_back(cancelled);
+                }
+                cv.notify_all();
+                td_initialize::response rsp;
+                rsp.id = req.id;
+                return rsp;
+            });
+        point.startProcessingMessages(input_stream, output_stream);
+
+        input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":1750,"method":"initialize","params":{}})"));
+        Expect(
+            WaitUntil(
+                [&]()
+                {
+                    std::lock_guard<std::mutex> lock(mutex);
+                    return saw_cancel.size() >= 1;
+                }),
+            "first request must complete before reused request blocks");
+
+        input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":1750,"method":"initialize","params":{}})"));
+        Expect(
+            WaitUntil([&] { return reused_entered.load(std::memory_order_relaxed); }),
+            "reused request must start before cancel is routed");
+        input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":1750}})"));
+
+        Expect(
+            WaitUntil([&] { return reused_saw_cancel.load(std::memory_order_relaxed); }),
+            "cancel routed after reused request must cancel the in-flight request");
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            release_reused = true;
+        }
+        cv.notify_all();
+        Expect(
+            WaitUntil(
+                [&]()
+                {
+                    std::lock_guard<std::mutex> lock(mutex);
+                    return saw_cancel.size() >= 2;
+                }),
+            "reused request must finish after cancel");
+        point.stop();
+
+        Expect(saw_cancel.size() == 2, "both original and reused requests must be handled");
+        if (saw_cancel.size() >= 2)
+        {
+            Expect(!saw_cancel[0], "first request must not be pre-cancelled");
+            Expect(saw_cancel[1], "wire-order cancel after reused request must apply while request is active");
+        }
+    }
+
+    // Scenario C: a reused request is earlier on the wire than its cancel, but is
+    // parked behind a prior ordered notification. The cancel bypasses the blocked
+    // notification queue and becomes pending before the reused request registers
+    // its canceler, so pending->sequence > request->sequence must pre-cancel it.
+    {
+        DummyLog log;
+        auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+        auto endpoint = std::make_shared<GenericEndpoint>(log);
+        auto input_stream = std::make_shared<FeedableIStream>();
+        auto output_stream = std::make_shared<StringOStream>();
+
+        std::mutex mutex;
+        std::condition_variable cv;
+        bool release_notification = false;
+        std::atomic<bool> notification_entered {false};
+        std::atomic<bool> cancel_routed {false};
+        std::vector<bool> saw_cancel;
+
+        RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 4);
+        point.allowConcurrentNotification<Notify_Exit::notify>();
+        point.registerHandler(
+            [&](test_ordered_notification::notify const&)
+            {
+                notification_entered.store(true, std::memory_order_relaxed);
+                std::unique_lock<std::mutex> lock(mutex);
+                cv.wait(lock, [&] { return release_notification; });
+            });
+        point.registerHandler(
+            [&](Notify_Exit::notify const&)
+            {
+                cancel_routed.store(true, std::memory_order_relaxed);
+            });
+        point.registerHandler(
+            [&](td_initialize::request const& req, CancelMonitor const& monitor) -> lsp::ResponseOrError<td_initialize::response>
+            {
+                bool const cancelled = monitor && monitor();
+                {
+                    std::lock_guard<std::mutex> lock(mutex);
+                    saw_cancel.push_back(cancelled);
+                }
+                cv.notify_all();
+                td_initialize::response rsp;
+                rsp.id = req.id;
+                return rsp;
+            });
+        point.startProcessingMessages(input_stream, output_stream);
+
+        input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":1750,"method":"initialize","params":{}})"));
+        Expect(
+            WaitUntil(
+                [&]()
+                {
+                    std::lock_guard<std::mutex> lock(mutex);
+                    return saw_cancel.size() >= 1;
+                }),
+            "first request must complete before parking reused request");
+
+        input_stream->append(test::MakeLspFrame(MakeOrderedNotificationBody(1)));
+        Expect(
+            WaitUntil([&] { return notification_entered.load(std::memory_order_relaxed); }),
+            "ordered notification must block following request");
+        input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":1750,"method":"initialize","params":{}})"));
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            Expect(saw_cancel.size() == 1, "reused request must remain parked behind ordered notification");
+        }
+
+        input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":1750}})"));
+        input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","method":"exit","params":{}})"));
+        Expect(
+            WaitUntil([&] { return cancel_routed.load(std::memory_order_relaxed); }),
+            "concurrent notification after cancel must prove cancel was routed");
+
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            release_notification = true;
+        }
+        cv.notify_all();
+        Expect(
+            WaitUntil(
+                [&]()
+                {
+                    std::lock_guard<std::mutex> lock(mutex);
+                    return saw_cancel.size() >= 2;
+                }),
+            "parked reused request must run after ordered notification completes");
+        point.stop();
+
+        Expect(saw_cancel.size() == 2, "both original and parked reused requests must be handled");
+        if (saw_cancel.size() >= 2)
+        {
+            Expect(!saw_cancel[0], "first request must not be pre-cancelled");
+            Expect(saw_cancel[1], "pending cancel with higher sequence must apply to parked reused request");
+        }
     }
 }
 

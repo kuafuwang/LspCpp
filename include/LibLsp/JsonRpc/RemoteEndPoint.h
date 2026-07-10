@@ -27,7 +27,6 @@ class MessageJsonHandler;
 class Endpoint;
 struct LspMessage;
 class RemoteEndPoint;
-struct RemoteEndPointTestAccess;
 namespace lsp
 {
 class ostream;
@@ -430,8 +429,6 @@ public:
     void handle(MessageIssue&&) override;
 
 private:
-    friend struct RemoteEndPointTestAccess;
-
     struct ParsedMessage
     {
         bool ok = false;
@@ -460,11 +457,10 @@ private:
     void removeRequestInfo(lsRequestId const&);
     void sendMsg(LspMessage& msg);
     ParsedMessage parseAndClassify(std::string const& content);
-    void mainLoopCatching(std::unique_ptr<LspMessage>, uint64_t sequence, std::string const* content);
+    void mainLoopCatching(std::unique_ptr<LspMessage>, uint64_t sequence);
     void routeIncoming(std::string&& content, uint64_t sequence);
     void routeParsedIncoming(ParsedMessage&& parsed, uint64_t sequence);
     void mainLoop(std::unique_ptr<LspMessage>, uint64_t sequence);
-    bool dispatch(std::string const&, uint64_t sequence);
     template<typename ResponseType>
     static void sendAsyncHandlerResult(
         std::shared_ptr<lsp::detail::AsyncResponseState> const& state,
