@@ -2457,6 +2457,275 @@ void TestSendWithOnErrorCallback()
         "send(onError) must report failed send through onError");
 }
 
+void TestSelectiveCancelAmongConcurrentInFlightRequests()
+{
+    // Production defaults to max_workers=2. Two overlapping requests must be able to run
+    // concurrently, and cancel must affect only the targeted request id.
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    int entered_handlers = 0;
+    std::atomic<bool> release_handlers {false};
+    std::atomic<bool> cancelled_handler_saw_cancel {false};
+    std::atomic<bool> live_handler_saw_cancel {false};
+
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 2);
+    point.registerHandler(
+        [&](td_initialize::request const& req, CancelMonitor const& monitor)
+            -> lsp::ResponseOrError<td_initialize::response>
+        {
+            int const id = static_cast<int>(req.id.value);
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                ++entered_handlers;
+            }
+            cv.notify_all();
+
+            for (int i = 0; i < 400; ++i)
+            {
+                if (monitor && monitor())
+                {
+                    if (id == 630)
+                    {
+                        cancelled_handler_saw_cancel.store(true, std::memory_order_relaxed);
+                    }
+                    else
+                    {
+                        live_handler_saw_cancel.store(true, std::memory_order_relaxed);
+                    }
+                    Rsp_Error error;
+                    error.id = req.id;
+                    error.error.code = lsErrorCodes::RequestCancelled;
+                    error.error.message = "cancelled";
+                    return error;
+                }
+                if (release_handlers.load(std::memory_order_relaxed))
+                {
+                    break;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            }
+
+            td_initialize::response rsp;
+            rsp.id = req.id;
+            return rsp;
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":630,"method":"initialize","params":{}})"));
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":631,"method":"initialize","params":{}})"));
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        bool const both_entered = cv.wait_for(
+            lock,
+            std::chrono::milliseconds(1000),
+            [&]()
+            {
+                return entered_handlers >= 2;
+            });
+        Expect(both_entered, "both concurrent requests must enter handlers before selective cancel");
+    }
+
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":630}})"));
+    Expect(
+        WaitUntil([&]() { return cancelled_handler_saw_cancel.load(std::memory_order_relaxed); }, 200, 10),
+        "targeted synchronous in-flight request must observe cancellation even when handlers fill the worker pool");
+    release_handlers.store(true, std::memory_order_relaxed);
+
+    std::string const output = WaitForOutputContainingAll(output_stream, {"\"id\":630", "\"id\":631"});
+    point.stop();
+
+    Expect(entered_handlers >= 2, "both concurrent requests must enter handlers");
+    Expect(cancelled_handler_saw_cancel.load(std::memory_order_relaxed), "cancelled request must observe cancellation");
+    Expect(!live_handler_saw_cancel.load(std::memory_order_relaxed), "non-cancelled concurrent request must not observe cancellation");
+    Expect(output.find("\"id\":630") != std::string::npos, "cancelled request must produce a response frame");
+    Expect(output.find("\"id\":631") != std::string::npos, "non-cancelled request must still complete");
+    Expect(output.find("\"code\":-32800") != std::string::npos, "cancelled request must report RequestCancelled");
+}
+
+void TestDelimitedTransportPreservesOrderedDispatchAndCancelBypass()
+{
+    {
+        DummyLog log;
+        auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+        auto endpoint = std::make_shared<GenericEndpoint>(log);
+        auto input_stream = std::make_shared<FeedableIStream>();
+        auto output_stream = std::make_shared<StringOStream>();
+
+        std::mutex mutex;
+        std::vector<int> observed;
+        RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Delimited, 4);
+        point.registerHandler(
+            [&](test_ordered_notification::notify const& notification)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(20 - notification.params.value));
+                std::lock_guard<std::mutex> lock(mutex);
+                observed.push_back(notification.params.value);
+            });
+        point.startProcessingMessages(input_stream, output_stream);
+
+        for (int i = 0; i < 3; ++i)
+        {
+            input_stream->append(MakeDelimitedInput(
+                std::string(R"({"jsonrpc":"2.0","method":"test/orderedNotification","params":{"value":)") +
+                std::to_string(i) + R"(}})"));
+        }
+
+        bool const saw_ordered = WaitUntil(
+            [&]()
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                return observed.size() == 3;
+            });
+        point.stop();
+
+        Expect(saw_ordered, "delimited transport must preserve ordered notification delivery");
+        if (saw_ordered)
+        {
+            for (int i = 0; i < 3; ++i)
+            {
+                Expect(
+                    observed[static_cast<size_t>(i)] == i,
+                    "delimited transport notifications must run in wire order");
+            }
+        }
+    }
+
+    {
+        DummyLog log;
+        auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+        auto endpoint = std::make_shared<GenericEndpoint>(log);
+        auto input_stream = std::make_shared<FeedableIStream>();
+        auto output_stream = std::make_shared<StringOStream>();
+
+        std::mutex mutex;
+        std::condition_variable cv;
+        bool release_notification = false;
+        std::atomic<bool> request_entered {false};
+        std::atomic<bool> handler_saw_cancel {false};
+
+        RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Delimited, 4);
+        point.registerHandler(
+            [&](test_ordered_notification::notify const&)
+            {
+                std::unique_lock<std::mutex> lock(mutex);
+                cv.wait(lock, [&] { return release_notification; });
+            });
+        point.registerHandler(
+            [&](td_initialize::request const& req, CancelMonitor const& monitor)
+                -> lsp::ResponseOrError<td_initialize::response>
+            {
+                request_entered.store(true, std::memory_order_relaxed);
+                for (int i = 0; i < 200; ++i)
+                {
+                    if (monitor() != 0)
+                    {
+                        handler_saw_cancel.store(true, std::memory_order_relaxed);
+                        Rsp_Error error;
+                        error.id = req.id;
+                        error.error.code = lsErrorCodes::RequestCancelled;
+                        error.error.message = "cancelled";
+                        return lsp::ResponseOrError<td_initialize::response>(std::move(error));
+                    }
+                    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                }
+                td_initialize::response rsp;
+                rsp.id = req.id;
+                return rsp;
+            });
+        point.startProcessingMessages(input_stream, output_stream);
+
+        input_stream->append(MakeDelimitedInput(R"({"jsonrpc":"2.0","id":4400,"method":"initialize","params":{}})"));
+        Expect(
+            WaitUntil([&] { return request_entered.load(std::memory_order_relaxed); }),
+            "delimited request must start before cancel");
+        input_stream->append(MakeDelimitedInput(MakeOrderedNotificationBody(99, 256 * 1024)));
+        input_stream->append(MakeDelimitedInput(R"({"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":4400}})"));
+
+        std::string const output = WaitForOutputContaining(output_stream, "\"code\":-32800");
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            release_notification = true;
+        }
+        cv.notify_all();
+        point.stop();
+
+        Expect(
+            handler_saw_cancel.load(std::memory_order_relaxed),
+            "delimited cancel must bypass a blocked notification queue");
+        Expect(
+            output.find("\"code\":-32800") != std::string::npos,
+            "delimited cancelled request must report RequestCancelled");
+    }
+}
+
+void TestRejectedCompletionConsumesResponseAndClearsPendingRequest()
+{
+    // When a pending completion handler rejects a response, mainLoop clears the pending
+    // entry without routing the consumed message to GenericEndpoint::onResponse.
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    std::atomic<bool> pending_rejected {false};
+    std::atomic<bool> retry_completed {false};
+    std::atomic<bool> endpoint_received {false};
+
+    endpoint->method2response["initialize"] =
+        [&](std::unique_ptr<LspMessage> msg)
+        {
+            endpoint_received.store(msg != nullptr, std::memory_order_relaxed);
+            return true;
+        };
+
+    RemoteEndPoint point(json_handler, endpoint, log);
+    point.startProcessingMessages(input_stream, output_stream);
+
+    td_initialize::request req;
+    req.id.set(9401);
+    Expect(
+        point.internalSendRequest(
+            req,
+            [&](std::unique_ptr<LspMessage>)
+            {
+                pending_rejected.store(true, std::memory_order_relaxed);
+                return false;
+            }),
+        "internalSendRequest must accept a rejecting completion handler");
+
+    input_stream->append(
+        test::MakeLspFrame(R"({"jsonrpc":"2.0","id":9401,"result":{"capabilities":{}}})"));
+    Expect(
+        WaitUntil([&]() { return pending_rejected.load(std::memory_order_relaxed); }),
+        "pending completion handler must reject the inbound response");
+    Expect(
+        !endpoint_received.load(std::memory_order_relaxed),
+        "rejected pending completion must not route to endpoint onResponse");
+
+    Expect(
+        point.internalSendRequest(
+            req,
+            [&](std::unique_ptr<LspMessage> msg)
+            {
+                retry_completed.store(msg != nullptr, std::memory_order_relaxed);
+                return true;
+            }),
+        "rejected completion must clear pending state so the request id can be reused");
+    input_stream->append(
+        test::MakeLspFrame(R"({"jsonrpc":"2.0","id":9401,"result":{"capabilities":{}}})"));
+    Expect(
+        WaitUntil([&]() { return retry_completed.load(std::memory_order_relaxed); }),
+        "reused request id must complete after rejected completion clears pending state");
+    point.stop();
+}
+
 void TestDelimitedRemoteEndPointRoundTrip()
 {
     DummyLog log;
@@ -3013,6 +3282,7 @@ int main()
     TestSendRequestAndReceiveSuccessResponse();
     TestSendRequestAndReceiveErrorResponse();
     TestDuplicateResponseCompletesFutureOnce();
+    TestRejectedCompletionConsumesResponseAndClearsPendingRequest();
     TestSendRequestAndReceiveSuccessResponseWithStringId();
     TestLateResponseAfterTimeoutIsIgnored();
     TestCreateRequestAssignsMonotonicIds();
@@ -3022,6 +3292,7 @@ int main()
     TestOutOfOrderPendingCancelAppliesToReusedRequestId();
     TestStopClearsPendingCancelRequests();
     TestRunningRequestObservesCancellation();
+    TestSelectiveCancelAmongConcurrentInFlightRequests();
     TestBurstRequestsAreAllDispatchedAndResponded();
     TestMultipleWorkersProcessRequestsConcurrently();
     TestSingleWorkerProcessesRequestsSerially();
@@ -3044,6 +3315,7 @@ int main()
     TestConditionWaitZeroBlocksUntilNotify();
     TestInternalWaitResponseSuccessTimeoutAndSendFailure();
     TestSendWithOnErrorCallback();
+    TestDelimitedTransportPreservesOrderedDispatchAndCancelBypass();
     TestDelimitedRemoteEndPointRoundTrip();
     TestDispatchUnknownNotificationReturnsFalse();
     TestDispatchResponseParseFailure();

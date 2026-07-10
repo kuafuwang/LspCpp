@@ -60,7 +60,7 @@ LspCpp/
 stdin / TCP / WebSocket
         │
         ▼
-  StreamMessageProducer  ──►  worker pool: parse JSON
+  StreamMessageProducer  ──►  parse pool: parse JSON
                                       │
                                       ▼
                              sequence reorder buffer
@@ -72,9 +72,9 @@ stdin / TCP / WebSocket
  Ordered dispatcher                      RemoteEndPoint::registerHandler
         │                                              │
         ├── notifications: FIFO serial thread ─────────┤
-        ├── opt-out notifications: worker pool ────────┤
+        ├── opt-out notifications: handler pool ───────┤
         ├── requests: wait for prior notifications ────┘
-        └── responses: worker pool
+        └── responses: handler pool
                                                        │
                                                        ▼
                                               user handler (lambda)
@@ -86,13 +86,13 @@ stdin / TCP / WebSocket
                                                    stdout / socket
 ```
 
-`RemoteEndPoint` keeps message reading separate from parsing and handler execution. Incoming message bodies are assigned a sequence number in wire order, parsed in the worker pool, then released by a reorder buffer so routing still observes wire order:
+`RemoteEndPoint` keeps message reading separate from parsing and handler execution. Incoming message bodies are assigned a sequence number in wire order, parsed in a dedicated parse pool, then released by a reorder buffer so routing still observes wire order:
 
 - ordinary notifications run on a dedicated FIFO notification thread, so order-sensitive notifications such as `textDocument/didOpen` and incremental `textDocument/didChange` are applied in wire order;
-- methods explicitly marked with `allowConcurrentNotification` bypass the FIFO notification thread and run on the worker pool; these notifications are not ordered and do not gate following requests, so only order-insensitive handlers should opt in;
-- requests are posted to the worker pool only after all earlier notifications have completed, so request handlers observe document state established by prior notifications;
-- requests may still run concurrently with each other; the `max_workers` constructor parameter controls this request/response worker-pool concurrency;
-- responses and `$/cancelRequest` bypass the notification queue. Responses are matched by id, while cancellation is delayed only by parsing and sequence reordering of earlier frames, not by slow notification handlers.
+- methods explicitly marked with `allowConcurrentNotification` bypass the FIFO notification thread and run on the handler pool; these notifications are not ordered and do not gate following requests, so only order-insensitive handlers should opt in;
+- requests are posted to the handler pool only after all earlier notifications have completed, so request handlers observe document state established by prior notifications;
+- requests may still run concurrently with each other; the `max_workers` constructor parameter controls this request/response handler-pool concurrency;
+- responses and `$/cancelRequest` bypass the notification queue. Responses are matched by id, while cancellation is delayed only by parsing and sequence reordering of earlier frames, not by slow notification handlers. Parsing uses a separate pool so blocked synchronous handlers cannot starve cancellation parsing.
 
 ### Transports
 

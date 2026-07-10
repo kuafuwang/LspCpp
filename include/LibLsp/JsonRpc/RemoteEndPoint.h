@@ -458,8 +458,8 @@ private:
     void sendMsg(LspMessage& msg);
     ParsedMessage parseAndClassify(std::string const& content);
     void mainLoopCatching(std::unique_ptr<LspMessage>, uint64_t sequence);
-    void routeIncoming(std::string&& content, uint64_t sequence);
-    void routeParsedIncoming(ParsedMessage&& parsed, uint64_t sequence);
+    void routeIncoming(std::string&& content, uint64_t sequence) const;
+    void routeParsedIncoming(ParsedMessage&& parsed, uint64_t sequence) const;
     void mainLoop(std::unique_ptr<LspMessage>, uint64_t sequence);
     template<typename ResponseType>
     static void sendAsyncHandlerResult(

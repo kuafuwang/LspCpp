@@ -203,16 +203,15 @@ struct RemoteEndPoint::Data
     {
         stopOrderedDispatcher();
         stopAsyncCompletionLoop();
-        if (tp)
-        {
-            tp->stop();
-            tp.reset();
-        }
+        stopWorkerPools();
+        parse_pool.reset();
+        handler_pool.reset();
         delete message_producer;
     }
     uint8_t max_workers;
     std::atomic<int> m_id;
-    std::shared_ptr<asio::thread_pool> tp;
+    std::shared_ptr<asio::thread_pool> parse_pool;
+    std::shared_ptr<asio::thread_pool> handler_pool;
     // Method calls may be cancelled by ID, so keep track of their state.
     // Async handlers may outlive the endpoint, so cancellation bookkeeping is
     // kept in a shared registry that retained async completions can release
@@ -441,13 +440,13 @@ struct RemoteEndPoint::Data
 
     void postParseTask(std::string&& content, uint64_t sequence)
     {
-        if (quit.load(std::memory_order_relaxed) || !tp)
+        if (quit.load(std::memory_order_relaxed) || !parse_pool)
         {
             return;
         }
 
         asio::post(
-            *tp,
+            *parse_pool,
             [owner = owner, content = std::move(content), sequence]() mutable
             {
 #ifdef LSPCPP_USEGC
@@ -485,12 +484,12 @@ struct RemoteEndPoint::Data
 
     void postToWorker(std::unique_ptr<LspMessage> msg, uint64_t sequence)
     {
-        if (!msg || quit.load(std::memory_order_relaxed) || !tp)
+        if (!msg || quit.load(std::memory_order_relaxed) || !handler_pool)
         {
             return;
         }
         asio::post(
-            *tp,
+            *handler_pool,
             [owner = owner, msg = std::move(msg), sequence]() mutable
             {
 #ifdef LSPCPP_USEGC
@@ -856,15 +855,24 @@ struct RemoteEndPoint::Data
         failPendingRequests();
         stopOrderedDispatcher();
         stopAsyncCompletionLoop();
-        if (tp)
-        {
-            tp->stop();
-        }
+        stopWorkerPools();
     }
 
     int getNextRequestId()
     {
         return m_id.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    void stopWorkerPools()
+    {
+        if (parse_pool)
+        {
+            parse_pool->stop();
+        }
+        if (handler_pool)
+        {
+            handler_pool->stop();
+        }
     }
 };
 
@@ -1156,12 +1164,12 @@ void RemoteEndPoint::mainLoopCatching(std::unique_ptr<LspMessage> msg, uint64_t 
     }
 }
 
-void RemoteEndPoint::routeIncoming(std::string&& content, uint64_t sequence)
+void RemoteEndPoint::routeIncoming(std::string&& content, uint64_t sequence) const
 {
     d_ptr->postParseTask(std::move(content), sequence);
 }
 
-void RemoteEndPoint::routeParsedIncoming(ParsedMessage&& parsed, uint64_t sequence)
+void RemoteEndPoint::routeParsedIncoming(ParsedMessage&& parsed, uint64_t sequence) const
 {
     if (!parsed.ok || !parsed.message || d_ptr->quit.load(std::memory_order_relaxed))
     {
@@ -1357,7 +1365,8 @@ void RemoteEndPoint::startProcessingMessages(std::shared_ptr<lsp::istream> r, st
     d_ptr->async_response_state->send_mutex = m_sendMutex;
     d_ptr->startAsyncCompletionLoop();
     d_ptr->message_producer->bind(r);
-    d_ptr->tp = std::make_shared<asio::thread_pool>(d_ptr->max_workers);
+    d_ptr->parse_pool = std::make_shared<asio::thread_pool>(d_ptr->max_workers);
+    d_ptr->handler_pool = std::make_shared<asio::thread_pool>(d_ptr->max_workers);
     d_ptr->startOrderedDispatcher();
     d_ptr->resetMessageRouting();
     message_producer_thread_ = std::make_shared<std::thread>(
