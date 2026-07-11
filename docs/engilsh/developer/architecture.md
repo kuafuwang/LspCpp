@@ -56,6 +56,8 @@ LspCpp/
 
 ### Message flow (server)
 
+#### Inbound overview
+
 ```
 stdin / TCP / WebSocket
         │
@@ -85,6 +87,149 @@ stdin / TCP / WebSocket
                                                        ▼
                                                    stdout / socket
 ```
+
+#### Inbound pipeline (detailed)
+
+Same visual style as the overview above. Parsing may run in parallel; **routing** and **ordered notifications** after `submitParsedMessage` advance serially by `sequence`.
+
+**Threads and execution units**
+
+```
+                    ┌─────────────────────────────────────────────────────────┐
+                    │  reader thread ×1                                        │
+                    │  message_producer.listen → seq++ → postParseTask         │
+                    └──────────────────────────┬──────────────────────────────┘
+                                               │
+                    ┌──────────────────────────▼──────────────────────────────┐
+                    │  parse pool ×N  (N = max_workers, 0→1)                     │
+                    │  parseAndClassify ──► submitParsedMessage ──► route...    │
+                    │  (routing runs synchronously inside parse tasks)           │
+                    └───────┬──────────────────┬──────────────────┬────────────┘
+                            │                  │                  │
+              ┌─────────────▼───┐  ┌───────────▼──────────┐  ┌───▼──────────────┐
+              │ notification ×1  │  │ handler pool ×N      │  │ async completion │
+              │ notificationLoop │  │ requests / opt-out   │  │ ×1               │
+              │ FIFO serial      │  │ / outbound callbacks │  │ outbound cb      │
+              └─────────────────┘  └──────────────────────┘  └──────────────────┘
+```
+
+**Seven-stage main chain**
+
+```
+① frame read    ② backpressure   ③ parse          ④ reorder route
+StreamMessage   postParseTask    parseAndClassify submitParsedMessage
+Producer        acquireSlot      ParsedMessage    reorder buffer
+   │                │                │                │
+   ▼                ▼                ▼                ▼
+ frame size      parse queue      JSON→typed       sync by seq
+ assign seq      limit post       register cancel  routeParsedIncoming
+   │                │                │                │
+   └────────────────┴────────────────┴────────────────┘
+                                    │
+        ┌───────────────────────────┼───────────────────────────┐
+        ▼                           ▼                           ▼
+⑤ type dispatch            ⑥ ordered dispatch         ⑦ handler execution
+routeParsedIncoming        gate / parked_requests    postToWorker
+   │                           │                           │
+   ├── cancel → onCancel       ├── ordered N → notif thread └── mainLoopCatching
+   ├── ordered N → enqueueN    ├── request → may park            → user handler
+   ├── opt-out → handler pool  └── N done → release parked       → write response
+   ├── request → enqueueR
+   └── response → completePending
+```
+
+**② postParseTask / parse-queue backpressure**
+
+```
+postParseTask
+    │
+    ├─ quit or no parse_pool ───────────────────────────► drop
+    │
+    └─ acquireParseQueueSlot
+            │
+            ├─ queue not full ──► asio::post(parse pool)
+            │                        │
+            │                        ├─ parseAndClassify
+            │                        └─ submitParsedMessage  ◄── normal path, once per message
+            │
+            └─ queue full
+                    │
+                    ├─ DropNewest ──► submitParsedMessage(empty placeholder)  no JSON parse
+                    │
+                    └─ StopProcessing (default) ──► stop session
+```
+
+**④ reorder buffer**
+
+```
+submitParsedMessage(seq, parsed)     [route_dispatch_mutex]
+    │
+    ├─ seq == next_route_sequence ──► ready[]  next++
+    │
+    └─ seq != next ──► reorder_buffer[seq]  wait for gap
+                              │
+                              ▼
+                    drain next, next+1, … → ready[]
+                              │
+                              ▼
+                    for item in ready:  routeParsedIncoming  (sync serial)
+```
+
+**⑤ routeParsedIncoming dispatch**
+
+```
+routeParsedIncoming
+    │
+    ├─ $/cancelRequest ──────────────► onCancel (side channel, no gate)
+    │
+    ├─ notification + ordered ────────► enqueueNotification ──► notification thread FIFO
+    │
+    ├─ notification + opt-out ────────► postToWorker ──────────► handler pool
+    │
+    ├─ request ───────────────────────► enqueueRequest
+    │                                       │
+    │                                       ├─ prior ordered N incomplete ──► parked_requests
+    │                                       └─ no pending N ────────────────► handler pool
+    │
+    ├─ response (matches pending) ────► completePendingResponse
+    │
+    └─ other ─────────────────────────► postToWorker
+```
+
+**⑥ notification gate (wire: N1 → R1)**
+
+```
+wire:  N1 ──────► R1
+
+route: enqueueNotification(N1)     last_seq = N1
+              │
+notif thread: handler(N1) ... done
+              │                  completed_seq = N1
+              │                  releaseParkedRequests
+              │
+route: enqueueRequest(R1)  ──if N1 incomplete──► parked (gate=N1)
+              │
+              └─ after N1 completes ─────────────► postToWorker(R1)
+
+one-way gate:  N→R  request waits;  R→N  routing order (N not enqueued when R is routed)
+```
+
+**End-to-end timeline**
+
+```
+[reader]       seq++ ──► postParseTask
+                              │
+[parse pool]                  ▼
+              parseAndClassify ──► submitParsedMessage ──► routeParsedIncoming
+                              │
+              ┌───────────────┼───────────────┬──────────────┐
+              ▼               ▼               ▼              ▼
+         onCancel      notification thread  handler pool  completePending
+         (side)        + parked_requests   (request/     (outbound response)
+                                          opt-out)
+```
+
+#### Ordering and concurrency (summary)
 
 `RemoteEndPoint` keeps message reading separate from parsing and handler execution. Incoming message bodies are assigned a sequence number in wire order, parsed in a dedicated parse pool, then released by a reorder buffer so routing still observes wire order:
 
@@ -151,8 +296,13 @@ It does not add new protocol behavior; it reduces boilerplate for the common std
 
 ## Threading and cancellation
 
-- Message reading runs on a dedicated thread inside `RemoteEndPoint`.
-- Handlers run on worker threads from the internal queue.
+See **Inbound pipeline (detailed)** above: “Threads and execution units” and “End-to-end timeline”.
+
+- **Frame read**: dedicated `message_producer` thread (not the handler pool).
+- **Parse**: `asio::thread_pool` (`max_workers`).
+- **Ordered notifications**: single-threaded FIFO `notificationLoop`.
+- **Handlers**: `asio::thread_pool` (`max_workers`); requests may be gated in `parked_requests`.
+- **Cancellation**: `$/cancelRequest` uses `onCancel()` side channel; not delayed by slow notifications.
 - `CancelMonitor` is a callable passed to handlers for long requests; it reflects LSP `$/cancelRequest`.
 - `Condition<T>` provides a simple wait/notify primitive used in examples for shutdown signaling.
 

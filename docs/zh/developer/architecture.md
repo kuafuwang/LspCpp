@@ -56,6 +56,8 @@ LspCpp/
 
 ### 消息流（服务器）
 
+#### 入站总览
+
 ```
 stdin / TCP / WebSocket
         │
@@ -85,6 +87,149 @@ stdin / TCP / WebSocket
                                                        ▼
                                                    stdout / socket
 ```
+
+#### 入站流水线（详细）
+
+与入站总览同风格的展开图。解析可并行；`submitParsedMessage` 之后的**路由**与**有序通知**按 `sequence` 串行推进。
+
+**线程与执行单元**
+
+```
+                    ┌─────────────────────────────────────────────────────────┐
+                    │  读帧线程 ×1                                             │
+                    │  message_producer.listen → seq++ → postParseTask        │
+                    └──────────────────────────┬──────────────────────────────┘
+                                               │
+                    ┌──────────────────────────▼──────────────────────────────┐
+                    │  parse 池 ×N  (N = max_workers, 0→1)                     │
+                    │  parseAndClassify ──► submitParsedMessage ──► route...   │
+                    │  （路由在 parse 任务内同步执行，无独立路由线程）              │
+                    └───────┬──────────────────┬──────────────────┬────────────┘
+                            │                  │                  │
+              ┌─────────────▼───┐  ┌───────────▼──────────┐  ┌───▼──────────────┐
+              │ 通知线程 ×1      │  │ handler 池 ×N        │  │ async completion │
+              │ notificationLoop │  │ request / opt-out    │  │ ×1               │
+              │ FIFO 串行        │  │ 通知 / 出站 callback │  │ 出站 callback    │
+              └─────────────────┘  └──────────────────────┘  └──────────────────┘
+```
+
+**七阶段主链**
+
+```
+① 读帧          ② 背压           ③ 解析           ④ 重排序路由
+StreamMessage   postParseTask    parseAndClassify submitParsedMessage
+Producer        acquireSlot      ParsedMessage    reorder buffer
+   │                │                │                │
+   ▼                ▼                ▼                ▼
+ frame size      parse 队列       JSON→类型        按 seq 同步
+ seq 编号        限流投递         注册 cancel      routeParsedIncoming
+   │                │                │                │
+   └────────────────┴────────────────┴────────────────┘
+                                    │
+        ┌───────────────────────────┼───────────────────────────┐
+        ▼                           ▼                           ▼
+⑤ 类型分流                  ⑥ 有序分发                   ⑦ handler 执行
+routeParsedIncoming         gate / parked_requests       postToWorker
+   │                           │                           │
+   ├── cancel → onCancel       ├── 有序通知 → 通知线程      └── mainLoopCatching
+   ├── 有序通知 → enqueueN     ├── request → 可能停车           → 用户 handler
+   ├── opt-out → handler池     └── 通知完成 → 放行停车           → 写回响应
+   ├── request → enqueueR
+   └── response → completePending
+```
+
+**② postParseTask / parse 队列背压**
+
+```
+postParseTask
+    │
+    ├─ quit 或 无 parse_pool ──────────────────────────► 丢弃
+    │
+    └─ acquireParseQueueSlot
+            │
+            ├─ 队列未满 ──► asio::post(parse 池)
+            │                    │
+            │                    ├─ parseAndClassify
+            │                    └─ submitParsedMessage  ◄── 正常路径，每条消息仅一次
+            │
+            └─ 队列已满
+                    │
+                    ├─ DropNewest ──► submitParsedMessage(空占位)  不解析 JSON，推进 sequence
+                    │
+                    └─ StopProcessing (默认) ──► stop session
+```
+
+**④ reorder buffer**
+
+```
+submitParsedMessage(seq, parsed)     [route_dispatch_mutex]
+    │
+    ├─ seq == next_route_sequence ──► ready[]  next++
+    │
+    └─ seq != next ──► reorder_buffer[seq]  等待前序洞补齐
+                              │
+                              ▼
+                    连续弹出 next, next+1, … → ready[]
+                              │
+                              ▼
+                    for item in ready:  routeParsedIncoming  （同步串行）
+```
+
+**⑤ routeParsedIncoming 分流**
+
+```
+routeParsedIncoming
+    │
+    ├─ $/cancelRequest ──────────────► onCancel (side-channel，无 gate)
+    │
+    ├─ notification + 有序 ───────────► enqueueNotification ──► 通知线程 FIFO
+    │
+    ├─ notification + opt-out ────────► postToWorker ──────────► handler 池
+    │
+    ├─ request ───────────────────────► enqueueRequest
+    │                                       │
+    │                                       ├─ 前序有序通知未完成 ──► parked_requests
+    │                                       └─ 无待完成通知 ────────► handler 池
+    │
+    ├─ response (匹配 pending) ───────► completePendingResponse
+    │
+    └─ 其他 ──────────────────────────► postToWorker
+```
+
+**⑥ notification gate（线路：N1 → R1）**
+
+```
+线路:  N1 ──────► R1
+
+路由:  enqueueNotification(N1)     last_seq = N1
+              │
+通知线程:      handler(N1) ... 完成
+              │                  completed_seq = N1
+              │                  releaseParkedRequests
+              │
+路由:  enqueueRequest(R1)  ──若 N1 未完成──► parked (gate=N1)
+              │
+              └─ N1 完成后 ──────────────────► postToWorker(R1)
+
+单向门控:  N→R  request 等待通知；R→N  靠路由顺序（处理 R 时 N 尚未入队）
+```
+
+**端到端时间线**
+
+```
+[读帧线程]     seq++ ──► postParseTask
+                              │
+[parse 池]                    ▼
+              parseAndClassify ──► submitParsedMessage ──► routeParsedIncoming
+                              │
+              ┌───────────────┼───────────────┬──────────────┐
+              ▼               ▼               ▼              ▼
+         onCancel      notification线程   handler池    completePending
+         (side)        + parked_requests  (request/     (出站响应)
+                                          opt-out)
+```
+
+#### 有序性与并发语义（摘要）
 
 `RemoteEndPoint` 将消息读取、解析与 handler 执行分离。入站消息体按线路顺序分配 sequence，在专用 parse 池中解析，然后由重排序缓冲按 sequence 连续放行，因此路由仍然遵守线路顺序：
 
@@ -151,8 +296,13 @@ LanguageSession
 
 ## 线程与取消
 
-- 消息读取在 `RemoteEndPoint` 内专用线程上运行。
-- Handler 在内部队列的工作线程上运行。
+入站消息处理的线程模型见上文 **入站流水线（详细）** 中的「线程与执行单元」「端到端时间线」图。
+
+- **读帧**：`message_producer` 专用线程（非 handler 池）。
+- **解析**：`asio::thread_pool`（`max_workers`）。
+- **有序通知**：单线程 FIFO `notificationLoop`。
+- **handler**：`asio::thread_pool`（`max_workers`）；request 可能被 `parked_requests` 门控。
+- **取消**：`$/cancelRequest` 走 `onCancel()` side-channel，不排队等慢通知。
 - `CancelMonitor` 是传给 handler 的可调用对象，用于长时间请求；对应 LSP `$/cancelRequest`。
 - `Condition<T>` 提供简单的 wait/notify 原语，示例中用于关闭信号。
 
