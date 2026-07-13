@@ -1,5 +1,6 @@
 #include "LibLsp/LspCpp.h"
 #include "LibLsp/JsonRpc/RequestError.h"
+#include "LibLsp/lsp/BindLspHandler.h"
 #include "LibLsp/lsp/general/exit.h"
 #include "LibLsp/lsp/general/shutdown.h"
 #include "LibLsp/lsp/windows/MessageNotify.h"
@@ -525,6 +526,21 @@ void TestLanguageSessionCanEnableJdtlsExtensions()
         "LanguageSessionOptions must allow opt-in JDTLS notification parsers");
 }
 
+void TestBindLspHandlerRegistersTypedHandler()
+{
+    lsp::NullLog log;
+    lsp::LanguageSession session(log);
+    bool bound = lsp::BindLspHandler(
+        session.endpoint(),
+        [](td_initialize::request const& req) -> td_initialize::response
+        {
+            td_initialize::response rsp;
+            rsp.id = req.id;
+            return rsp;
+        });
+    Expect(bound, "BindLspHandler must register before startProcessingMessages");
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -546,5 +562,6 @@ RUN_TEST(TestLanguageSessionInitializeRoundTrip);
     RUN_TEST(TestLanguageSessionDelimitedRoundTrip);
     RUN_TEST(TestLanguageSessionClientRequestRoundTrip);
     RUN_TEST(TestLanguageSessionCanEnableJdtlsExtensions);
+    RUN_TEST(TestBindLspHandlerRegistersTypedHandler);
     return test::Failures() == 0 ? 0 : 1;
 }
