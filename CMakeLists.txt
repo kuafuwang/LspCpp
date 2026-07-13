@@ -495,6 +495,9 @@ set(LSPCPP_LIST
         src/lsp/textDocument.cpp
         src/lsp/utils.cpp
         src/lsp/working_files.cpp
+        src/lsp/uri.cpp
+        src/lsp/path_mapping.cpp
+        src/lsp/offset_encoding.cpp
         )
 
 if(LSPCPP_BUILD_WEBSOCKETS)
@@ -630,6 +633,7 @@ if(LSPCPP_BUILD_TESTS)
     lspcpp_add_test_executable(lspcpp_lsp_types_tests lsp_types_roundtrip_tests.cpp)
     lspcpp_add_test_executable(lspcpp_protocol_json_handler_tests protocol_json_handler_tests.cpp)
     lspcpp_add_test_executable(lspcpp_clangd_fixture_tests clangd_fixture_tests.cpp)
+    lspcpp_add_test_executable(lspcpp_uri_path_mapping_tests uri_path_mapping_tests.cpp)
     lspcpp_add_test_executable(lspcpp_language_session_tests language_session_tests.cpp)
     lspcpp_add_test_executable(lspcpp_lsp_3_18_tests lsp_3_18_tests.cpp)
     lspcpp_add_test_executable(lspcpp_lsp_3_16_17_tests lsp_3_16_17_tests.cpp)
@@ -681,6 +685,8 @@ if(LSPCPP_BUILD_TESTS)
             COMMAND $<TARGET_FILE:lspcpp_protocol_json_handler_tests>)
     add_test(NAME lspcpp.clangd_fixture
             COMMAND $<TARGET_FILE:lspcpp_clangd_fixture_tests>)
+    add_test(NAME lspcpp.uri_path_mapping
+            COMMAND $<TARGET_FILE:lspcpp_uri_path_mapping_tests>)
     add_test(NAME lspcpp.language_session
             COMMAND $<TARGET_FILE:lspcpp_language_session_tests>)
     add_test(NAME lspcpp.lsp_3_18
