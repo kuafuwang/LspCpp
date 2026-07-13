@@ -10,24 +10,16 @@
     "textDocument/colorPresentation",
     "textDocument/documentColor",
     "textDocument/linkedEditingRange",
-    "textDocument/onTypeFormatting",
     "textDocument/prepareCallHierarchy",
-    "textDocument/prepareRename",
-    "textDocument/rangeFormatting",
-    "textDocument/selectionRange",
-    "textDocument/typeDefinition",
-    "window/showMessage",
-    "workspace/applyEdit"
+    "window/showMessage"
   ],
   "missing_response_parser": [
     "callHierarchy/incomingCalls",
     "client/registerCapability",
     "client/unregisterCapability",
     "textDocument/linkedEditingRange",
-    "textDocument/onTypeFormatting",
     "textDocument/prepareCallHierarchy",
     "window/showMessage",
-    "workspace/applyEdit",
     "workspace/configuration",
     "workspace/workspaceFolders"
   ],
@@ -79,10 +71,6 @@
     "codeLens/resolve",
     "completionItem/resolve",
     "textDocument/colorPresentation",
-    "textDocument/documentColor",
-    "textDocument/prepareRename",
-    "textDocument/rangeFormatting",
-    "textDocument/selectionRange",
-    "textDocument/typeDefinition"
+    "textDocument/documentColor"
   ]
 }

@@ -7,7 +7,7 @@
 namespace lsp
 {
 
-template<typename F, typename RequestType = ParamType<F, 0>, typename ResponseType = typename RequestType::Response>
+template<typename F, typename RequestType = lsp::traits::ParameterType<F, 0>, typename ResponseType = typename RequestType::Response>
 bool BindLspHandler(RemoteEndPoint& endpoint, F&& handler)
 {
     return endpoint.registerHandler(
