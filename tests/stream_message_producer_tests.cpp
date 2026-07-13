@@ -799,6 +799,32 @@ void TestShortBodyExitsWithoutDeliveringMessage()
     Expect(!issues.issues.empty(), "short body must report an issue");
 }
 
+// Adapted from clangd/test/protocol.test
+void TestTruncatedBodyThenNextMessageRecovers()
+{
+    std::string const truncated = R"({"jsonrpc")";
+    std::string const next = R"({"jsonrpc":"2.0","id":5,"method":"next"})";
+    auto input = std::make_shared<StringIStream>(
+        "Content-Length: " + std::to_string(truncated.size()) + "\r\n\r\n" + truncated +
+        "Content-Length: " + std::to_string(next.size()) + "\r\n\r\n" + next);
+    CollectingIssueHandler issues;
+    LSPStreamMessageProducer producer(issues, input);
+
+    std::vector<std::string> messages;
+    producer.listen(
+        [&](std::string&& content)
+        {
+            messages.push_back(std::move(content));
+        });
+
+    Expect(messages.size() == 2, "producer must recover after a truncated JSON body");
+    if (messages.size() == 2)
+    {
+        Expect(messages[0] == truncated, "first recovered frame must contain the truncated body");
+        Expect(messages[1] == next, "next valid frame must be delivered after truncated body");
+    }
+}
+
 void TestBadStreamExitsCleanly()
 {
     auto input = std::make_shared<StringIStream>("");
@@ -1206,6 +1232,127 @@ void TestDelimitedProducerFailRecoveryContinuesAfterClear()
             "second delimited message after fail recovery mismatch");
     }
 }
+
+// Adapted from clangd/test/protocol.test
+void TestDuplicateContentLengthUsesLastValue()
+{
+    std::string const body = R"({"jsonrpc":"2.0","id":3,"method":"test"})";
+    auto input = std::make_shared<StringIStream>(
+        "Content-Length: 10\r\nContent-Length: " + std::to_string(body.size()) + "\r\n\r\n" + body);
+    CollectingIssueHandler issues;
+    LSPStreamMessageProducer producer(issues, input);
+
+    std::vector<std::string> messages;
+    producer.listen(
+        [&](std::string&& content)
+        {
+            messages.push_back(std::move(content));
+        });
+
+    Expect(messages.size() == 1, "duplicate Content-Length must still deliver one message");
+    if (!messages.empty())
+    {
+        Expect(messages[0] == body, "duplicate Content-Length must use the last header value");
+    }
+}
+
+void TestExtraHeadersBetweenMessages()
+{
+    std::string const body1 = R"({"jsonrpc":"2.0","id":1,"method":"one"})";
+    std::string const body2 = R"({"jsonrpc":"2.0","id":2,"method":"two"})";
+    auto input = std::make_shared<StringIStream>(
+        "X-Test: Testing\r\nContent-Type: application/vscode-jsonrpc; charset=utf-8\r\nContent-Length: " +
+        std::to_string(body1.size()) + "\r\n\r\n" + body1 + "Content-Type: application/json\r\nContent-Length: " +
+        std::to_string(body2.size()) + "\r\n\r\n" + body2);
+    CollectingIssueHandler issues;
+    LSPStreamMessageProducer producer(issues, input);
+
+    std::vector<std::string> messages;
+    producer.listen(
+        [&](std::string&& content)
+        {
+            messages.push_back(std::move(content));
+        });
+
+    Expect(messages.size() == 2, "extra headers must not block subsequent frames");
+    if (messages.size() == 2)
+    {
+        Expect(messages[0] == body1, "first extra-header frame body mismatch");
+        Expect(messages[1] == body2, "second extra-header frame body mismatch");
+    }
+}
+
+void TestCrlfOnlyFraming()
+{
+    std::string const body = R"({"jsonrpc":"2.0","id":4,"method":"crlf"})";
+    auto input = std::make_shared<StringIStream>("Content-Length: " + std::to_string(body.size()) + "\r\n\r\n" + body);
+    CollectingIssueHandler issues;
+    LSPStreamMessageProducer producer(issues, input);
+
+    std::vector<std::string> messages;
+    producer.listen(
+        [&](std::string&& content)
+        {
+            messages.push_back(std::move(content));
+        });
+
+    Expect(messages.size() == 1, "CRLF-delimited framing must deliver one message");
+    if (!messages.empty())
+    {
+        Expect(messages[0] == body, "CRLF-delimited frame body mismatch");
+    }
+}
+
+void TestContentLengthExceedsLimit()
+{
+    std::string const body(32, 'x');
+    auto input = std::make_shared<StringIStream>(
+        "Content-Length: " + std::to_string(body.size()) + "\r\n\r\n" + body);
+    CollectingIssueHandler issues;
+    LSPStreamMessageProducer producer(issues, input);
+    producer.setMaxFrameSize(16);
+    producer.setOverloadHandler(
+        [](std::string const& message)
+        {
+            return message.find("exceeds configured maximum") != std::string::npos;
+        });
+
+    std::vector<std::string> messages;
+    producer.listen(
+        [&](std::string&& content)
+        {
+            messages.push_back(std::move(content));
+        });
+
+    Expect(messages.empty(), "oversized Content-Length must not deliver a message");
+    Expect(!issues.issues.empty(), "oversized Content-Length must report an issue");
+}
+
+void TestDelimitedCommentAfterMessage()
+{
+    auto input = std::make_shared<StringIStream>(
+        "{\"jsonrpc\":\"2.0\",\"method\":\"one\"}\n"
+        "// -----\n"
+        "// comment after delimiter\n"
+        "{\"jsonrpc\":\"2.0\",\"method\":\"two\"}\n"
+        "// -----\n");
+    CollectingIssueHandler issues;
+    DelimitedStreamMessageProducer producer(issues, input);
+
+    std::vector<std::string> messages;
+    producer.listen(
+        [&](std::string&& content)
+        {
+            messages.push_back(std::move(content));
+        });
+
+    Expect(messages.size() == 2, "delimited producer must ignore comment-only lines");
+    if (messages.size() == 2)
+    {
+        Expect(messages[0] == R"({"jsonrpc":"2.0","method":"one"})", "first delimited comment message mismatch");
+        Expect(messages[1] == R"({"jsonrpc":"2.0","method":"two"})", "second delimited comment message mismatch");
+    }
+}
 } // namespace
 
 int main(int argc, char** argv)
@@ -1229,6 +1376,7 @@ RUN_TEST(TestValidFrameDeliversBody);
     RUN_TEST(TestMultipleHeaderLinesParsedCorrectly);
     RUN_TEST(TestPartialHeaderThenEofExitsCleanly);
     RUN_TEST(TestShortBodyExitsWithoutDeliveringMessage);
+    RUN_TEST(TestTruncatedBodyThenNextMessageRecovers);
     RUN_TEST(TestBadStreamExitsCleanly);
     RUN_TEST(TestBadDuringBodyReadReportsSevere);
     RUN_TEST(TestFailDuringBodyReadReportsWarning);
@@ -1242,6 +1390,11 @@ RUN_TEST(TestValidFrameDeliversBody);
     RUN_TEST(TestDelimitedProducerBadStreamExitsCleanly);
     RUN_TEST(TestDelimitedProducerFailWithoutRecoveryExitsCleanly);
     RUN_TEST(TestDelimitedProducerFailRecoveryContinuesAfterClear);
+    RUN_TEST(TestDuplicateContentLengthUsesLastValue);
+    RUN_TEST(TestExtraHeadersBetweenMessages);
+    RUN_TEST(TestCrlfOnlyFraming);
+    RUN_TEST(TestContentLengthExceedsLimit);
+    RUN_TEST(TestDelimitedCommentAfterMessage);
 
     return test::Failures() == 0 ? 0 : 1;
 }

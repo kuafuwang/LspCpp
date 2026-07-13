@@ -363,6 +363,22 @@ void TestCapabilitiesSerialize316317Fields()
         client_json.find("\"dataSupport\":true") != std::string::npos,
         "publish diagnostics capabilities must expose dataSupport");
 }
+
+void TestClangdDerived316RequestFixturesParse()
+{
+    lsp::ProtocolJsonHandler handler;
+
+    test::ExpectParsesRequest(
+        handler, td_foldingRange::request::kMethodInfo, test::ReadFixture("folding_range_request.json").c_str(),
+        "clangd-derived foldingRange request fixture must parse");
+
+    rapidjson::Document selection_document;
+    selection_document.Parse(test::ReadFixture("selection_range_request.json").c_str());
+    JsonReader selection_reader(&selection_document);
+    Expect(
+        td_selectionRange::request::ReflectReader(selection_reader) != nullptr,
+        "clangd-derived selectionRange request fixture must parse");
+}
 } // namespace
 
 int main(int argc, char** argv)
@@ -373,6 +389,7 @@ RUN_TEST(TestProtocolJsonHandlerRegisters316317Requests);
     RUN_TEST(Test316ModelsSerializeExpectedFields);
     RUN_TEST(Test317ModelsSerializeExpectedFields);
     RUN_TEST(TestCapabilitiesSerialize316317Fields);
+    RUN_TEST(TestClangdDerived316RequestFixturesParse);
 
     return test::Failures() == 0 ? 0 : 1;
 }

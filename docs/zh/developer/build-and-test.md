@@ -46,6 +46,7 @@ ctest -R language_session --output-on-failure
 | `lspcpp_working_files_tests` | 文档缓冲区管理 |
 | `lspcpp_lsp_types_tests` | LSP 类型 JSON reflection |
 | `lspcpp_protocol_json_handler_tests` | `ProtocolJsonHandler` 注册、allowlist 边界、golden LSP fixture |
+| `lspcpp_clangd_fixture_tests` | clangd 衍生 golden fixture、session manifest、生命周期与错误码 |
 | `lspcpp_lsp_3_16_17_tests` | 协议 3.16/3.17 类型 |
 | `lspcpp_lsp_3_18_tests` | 协议 3.18 类型 |
 | `lspcpp_tcp_write_queue_tests` | TCP 写队列 |

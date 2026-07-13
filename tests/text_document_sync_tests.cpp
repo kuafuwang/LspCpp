@@ -633,6 +633,85 @@ void TestDidOpenChangeCloseThroughEndpoint()
     Expect(!files.GetFileBufferContent(path, content), "didClose must remove the endpoint document");
 }
 
+// Adapted from clangd/test/version.test
+void TestDidChangeVersionPropagationThroughEndpoint()
+{
+    DummyLog log;
+    WorkingFiles files;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+    AbsolutePath const path = MakePath("version-endpoint.c");
+    std::atomic<bool> opened {false};
+
+    RemoteEndPoint point(json_handler, endpoint, log);
+    point.registerHandler(
+        [&](Notify_TextDocumentDidOpen::notify const& notification)
+        {
+            auto params = notification.params;
+            opened.store(files.OnOpen(params.textDocument) != nullptr, std::memory_order_relaxed);
+        });
+    point.registerHandler(
+        [&](Notify_TextDocumentDidChange::notify const& notification)
+        {
+            files.OnChange(notification.params);
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    std::string const uri = lsDocumentUri(path).raw_uri_;
+    input_stream->append(test::MakeLspFrame(
+        R"({"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":")" + uri +
+        R"(","languageId":"c","version":0,"text":""}}})"));
+    Expect(WaitUntil([&]() { return opened.load(std::memory_order_relaxed); }), "version scenario didOpen must dispatch");
+
+    input_stream->append(test::MakeLspFrame(
+        R"({"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":")" + uri +
+        R"(","version":5},"contentChanges":[{"text":"a"}]}})"));
+    Expect(
+        WaitUntil(
+            [&]()
+            {
+                auto current = files.GetFileByFilename(path);
+                if (current == nullptr)
+                {
+                    return false;
+                }
+                std::string content;
+                return files.GetFileBufferContent(current, content) && content == "a" && current->version == 5;
+            }),
+        "version scenario didChange must apply explicit version and content");
+    auto file = files.GetFileByFilename(path);
+    Expect(file != nullptr, "version scenario file must exist after didChange");
+    if (file)
+    {
+        AssertDocument(files, file, "a", 5);
+    }
+
+    input_stream->append(test::MakeLspFrame(
+        R"({"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":")" + uri +
+        R"("},"contentChanges":[{"text":"b"}]}})"));
+    Expect(
+        WaitUntil(
+            [&]()
+            {
+                auto current = files.GetFileByFilename(path);
+                if (current == nullptr)
+                {
+                    return false;
+                }
+                std::string content;
+                return files.GetFileBufferContent(current, content) && content == "b" && current->version == 5;
+            }),
+        "version scenario didChange without version must preserve previous version");
+    if (file)
+    {
+        AssertDocument(files, file, "b", 5);
+    }
+
+    point.stop();
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -655,5 +734,6 @@ RUN_TEST(TestFullContentUpdates);
     RUN_TEST(TestIncrementalAdditionThroughEndpoint);
     RUN_TEST(TestIncrementalReplacementThroughEndpoint);
     RUN_TEST(TestSeveralIncrementalChangesThroughEndpoint);
+    RUN_TEST(TestDidChangeVersionPropagationThroughEndpoint);
     return test::Failures() == 0 ? 0 : 1;
 }

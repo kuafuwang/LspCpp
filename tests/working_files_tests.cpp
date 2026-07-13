@@ -491,6 +491,73 @@ void TestConcurrentReadSnapshotsDuringChanges()
     Expect(ContentOf(files, file) == "value 200\n", "last concurrent change must win");
 }
 
+// Adapted from clangd/test/positionencoding.test
+void TestMultibyteCharacterColumnOffsets()
+{
+    WorkingFiles files;
+    auto file = OpenFile(files, MakePath("position-encoding.cpp"), "/*\xc3\xb6*/int x;\nint y=x;");
+
+    Expect(file->GetOffsetForPosition(lsPosition(1, 6)) == 19, "column offset must count multibyte characters as one column");
+    Expect(file->GetOffsetForPosition(lsPosition(0, 9)) == 10, "first-line column offset must reach the x identifier");
+}
+
+// Adapted from clangd/test/version.test
+void TestVersionPropagationFromClangdScenario()
+{
+    WorkingFiles files;
+    AbsolutePath const foo_path = MakePath("version-foo.c");
+    AbsolutePath const bar_path = MakePath("version-bar.c");
+
+    lsTextDocumentItem open_foo;
+    open_foo.uri = lsDocumentUri(foo_path);
+    open_foo.languageId = "c";
+    open_foo.version = 0;
+    open_foo.text = "";
+    auto foo = files.OnOpen(open_foo);
+    Expect(foo->version == 0, "didOpen must preserve explicit version zero");
+
+    lsTextDocumentDidChangeParams change_foo;
+    change_foo.textDocument.uri = lsDocumentUri(foo_path);
+    change_foo.textDocument.version = optional<int>(5);
+    lsTextDocumentContentChangeEvent full_foo;
+    full_foo.text = "a";
+    change_foo.contentChanges.push_back(full_foo);
+    files.OnChange(change_foo);
+    Expect(foo->version == 5, "didChange must apply explicit version from clangd version.test");
+
+    lsTextDocumentDidChangeParams infer_foo;
+    infer_foo.textDocument.uri = lsDocumentUri(foo_path);
+    lsTextDocumentContentChangeEvent full_infer;
+    full_infer.text = "b";
+    infer_foo.contentChanges.push_back(full_infer);
+    files.OnChange(infer_foo);
+    Expect(foo->version == 5, "didChange without version must preserve the previous version");
+
+    lsTextDocumentItem open_bar;
+    open_bar.uri = lsDocumentUri(bar_path);
+    open_bar.languageId = "c";
+    open_bar.version = 1;
+    open_bar.text = "";
+    files.OnOpen(open_bar);
+
+    lsTextDocumentItem reopen_bar;
+    reopen_bar.uri = lsDocumentUri(bar_path);
+    reopen_bar.languageId = "c";
+    reopen_bar.version = 42;
+    reopen_bar.text = "";
+    auto bar = files.OnOpen(reopen_bar);
+    Expect(bar->version == 42, "reopening must preserve explicit non-zero version");
+
+    lsTextDocumentDidChangeParams change_bar;
+    change_bar.textDocument.uri = lsDocumentUri(bar_path);
+    change_bar.textDocument.version = optional<int>(123);
+    lsTextDocumentContentChangeEvent full_bar;
+    full_bar.text = "d";
+    change_bar.contentChanges.push_back(full_bar);
+    files.OnChange(change_bar);
+    Expect(bar->version == 123, "didChange must honor explicit version override");
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -517,6 +584,8 @@ RUN_TEST(TestOffsetBoundariesAndLineEndings);
     RUN_TEST(TestCloseFilesInDirectoryMultipleRoots);
     RUN_TEST(TestGetFileByFilenameRejectsInvalidPath);
     RUN_TEST(TestOnChangeWithoutVersionPreservesVersion);
+    RUN_TEST(TestMultibyteCharacterColumnOffsets);
+    RUN_TEST(TestVersionPropagationFromClangdScenario);
     RUN_TEST(TestConcurrentReadSnapshotsDuringChanges);
     return test::Failures() == 0 ? 0 : 1;
 }

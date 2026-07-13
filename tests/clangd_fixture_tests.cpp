@@ -10,6 +10,9 @@
 #include "LibLsp/lsp/textDocument/hover.h"
 #include "LibLsp/lsp/textDocument/references.h"
 #include "LibLsp/lsp/textDocument/signature_help.h"
+#include "LibLsp/lsp/textDocument/code_action.h"
+#include "LibLsp/lsp/textDocument/rename.h"
+#include "LibLsp/lsp/workspace/symbol.h"
 #include "LibLsp/lsp/workspace/did_change_configuration.h"
 #include "protocol_test_helpers.h"
 #include "test_helpers.h"
@@ -77,12 +80,22 @@ struct SessionStep
     std::string response_fixture;
 };
 
-std::vector<SessionStep> LoadSessionSteps()
+td_shutdown::response MakeNullShutdownResponse(lsRequestId id)
+{
+    td_shutdown::response rsp;
+    rsp.id = id;
+    lsp::Any result;
+    result.SetJsonString("null", lsp::Any::kNullType);
+    rsp.result = result;
+    return rsp;
+}
+
+std::vector<SessionStep> LoadSessionSteps(char const* manifest_file)
 {
     std::vector<SessionStep> steps;
     rapidjson::Document document;
-    document.Parse(test::ReadFixture("lsp_session_steps.json").c_str());
-    Expect(document.IsArray(), "lsp_session_steps.json must be a JSON array");
+    document.Parse(test::ReadFixture(manifest_file).c_str());
+    Expect(document.IsArray(), "session manifest must be a JSON array");
     if (!document.IsArray())
     {
         return steps;
@@ -118,6 +131,47 @@ std::vector<SessionStep> LoadSessionSteps()
 
 void RegisterFixtureSessionHandlers(RemoteEndPoint& point, std::atomic<int>& notification_count)
 {
+    point.registerHandler(
+        [](td_shutdown::request const& req) -> lsp::ResponseOrError<td_shutdown::response>
+        {
+            return MakeNullShutdownResponse(req.id);
+        });
+    point.registerHandler(
+        [](td_semanticTokens_full::request const& req) -> lsp::ResponseOrError<td_semanticTokens_full::response>
+        {
+            td_semanticTokens_full::response rsp;
+            rsp.id = req.id;
+            SemanticTokens tokens;
+            tokens.data = {0, 4, 1, 0, 131075};
+            tokens.resultId = "1";
+            rsp.result = tokens;
+            return rsp;
+        });
+    point.registerHandler(
+        [](td_rename::request const& req) -> lsp::ResponseOrError<td_rename::response>
+        {
+            td_rename::response rsp;
+            rsp.id = req.id;
+            lsTextEdit edit;
+            edit.range.start.line = 0;
+            edit.range.start.character = 0;
+            edit.range.end.line = 0;
+            edit.range.end.character = 3;
+            edit.newText = "renamed";
+            rsp.result.changes = std::map<std::string, std::vector<lsTextEdit>>();
+            rsp.result.changes->emplace("file:///fixture.cpp", std::vector<lsTextEdit> {edit});
+            return rsp;
+        });
+    point.registerHandler(
+        [](td_codeAction::request const& req) -> lsp::ResponseOrError<td_codeAction::response>
+        {
+            td_codeAction::response rsp;
+            rsp.id = req.id;
+            lsCommandWithAny action;
+            action.title = "Fixture action";
+            rsp.result.push_back(action);
+            return rsp;
+        });
     point.registerHandler(
         [](td_initialize::request const& req) -> lsp::ResponseOrError<td_initialize::response>
         {
@@ -215,6 +269,93 @@ void RegisterFixtureSessionHandlers(RemoteEndPoint& point, std::atomic<int>& not
         });
 }
 
+void RegisterLifecycleSessionHandlers(RemoteEndPoint& point, std::atomic<bool>& initialized)
+{
+    point.registerHandler(
+        [&](td_initialize::request const& req) -> lsp::ResponseOrError<td_initialize::response>
+        {
+            if (initialized.load(std::memory_order_relaxed))
+            {
+                throw lsp::RequestError(lsErrorCodes::InvalidRequest, "server already initialized");
+            }
+            initialized.store(true, std::memory_order_relaxed);
+            td_initialize::response rsp;
+            rsp.id = req.id;
+            rsp.result.capabilities = lsServerCapabilities();
+            return rsp;
+        });
+    point.registerHandler(
+        [&](wp_symbol::request const& req) -> lsp::ResponseOrError<wp_symbol::response>
+        {
+            if (!initialized.load(std::memory_order_relaxed))
+            {
+                throw lsp::RequestError(lsErrorCodes::ServerNotInitialized, "server not initialized");
+            }
+            wp_symbol::response rsp;
+            rsp.id = req.id;
+            return rsp;
+        });
+    point.registerHandler(
+        [](td_shutdown::request const& req) -> lsp::ResponseOrError<td_shutdown::response>
+        {
+            return MakeNullShutdownResponse(req.id);
+        });
+}
+
+void RunFixtureDrivenSession(
+    char const* manifest_file,
+    std::shared_ptr<FeedableIStream> const& input_stream,
+    std::shared_ptr<StringOStream> const& output_stream,
+    std::atomic<int>& notification_count)
+{
+    auto const steps = LoadSessionSteps(manifest_file);
+    Expect(steps.size() >= 2, "session manifest must describe at least two steps");
+
+    int expected_notifications = 0;
+    for (auto const& step : steps)
+    {
+        std::string const payload = test::ReadFixture(step.file.c_str());
+        Expect(!payload.empty(), "session step fixture must be readable");
+        input_stream->append(test::MakeLspFrame(payload));
+
+        if (step.kind == "notification")
+        {
+            ++expected_notifications;
+            Expect(
+                WaitUntil([&] { return notification_count.load(std::memory_order_relaxed) >= expected_notifications; }),
+                "fixture-driven session must dispatch notification steps");
+            continue;
+        }
+
+        if (step.kind != "request")
+        {
+            continue;
+        }
+
+        std::string const request_id = ExtractRequestId(payload);
+        Expect(!request_id.empty(), "request step fixture must include an id");
+        std::string const output = WaitForOutputContaining(output_stream, "\"id\":" + request_id);
+        Expect(output.find("\"id\":" + request_id) != std::string::npos, "request step must receive a response");
+
+        if (!step.response_fixture.empty())
+        {
+            std::string response_body;
+            for (auto const& body : test::ExtractLspFrameBodies(output_stream->snapshot()))
+            {
+                if (body.find("\"id\":" + request_id) != std::string::npos)
+                {
+                    response_body = body;
+                }
+            }
+            Expect(!response_body.empty(), "request step response frame must be present");
+            test::ExpectJsonFixture(
+                response_body,
+                step.response_fixture.c_str(),
+                "fixture-driven session response must match golden fixture");
+        }
+    }
+}
+
 void TestClangdDerivedGoldenFixturesParse()
 {
     lsp::ProtocolJsonHandler handler;
@@ -228,6 +369,29 @@ void TestClangdDerivedGoldenFixturesParse()
     test::ExpectParsesRequest(
         handler, td_signatureHelp::request::kMethodInfo, test::ReadFixture("signature_help_request.json").c_str(),
         "clangd-derived signatureHelp request fixture must parse");
+    test::ExpectParsesRequest(
+        handler, td_initialize::request::kMethodInfo, test::ReadFixture("initialize_root_uri_request.json").c_str(),
+        "clangd-derived initialize rootUri request fixture must parse");
+    test::ExpectParsesRequest(
+        handler, td_initialize::request::kMethodInfo,
+        test::ReadFixture("initialize_position_encodings_request.json").c_str(),
+        "clangd-derived initialize positionEncodings request fixture must parse");
+    test::ExpectParsesRequest(
+        handler, wp_symbol::request::kMethodInfo, test::ReadFixture("initialize_before_init_request.json").c_str(),
+        "clangd-derived workspace/symbol request fixture must parse");
+    test::ExpectParsesRequest(
+        handler, td_semanticTokens_full::request::kMethodInfo,
+        test::ReadFixture("semantic_tokens_full_request.json").c_str(),
+        "clangd-derived semanticTokens/full request fixture must parse");
+    test::ExpectParsesRequest(
+        handler, td_rename::request::kMethodInfo, test::ReadFixture("rename_request.json").c_str(),
+        "clangd-derived rename request fixture must parse");
+    test::ExpectParsesRequest(
+        handler, td_codeAction::request::kMethodInfo, test::ReadFixture("code_action_request.json").c_str(),
+        "clangd-derived codeAction request fixture must parse");
+    test::ExpectParsesRequest(
+        handler, td_shutdown::request::kMethodInfo, test::ReadFixture("shutdown_request.json").c_str(),
+        "clangd-derived shutdown request fixture must parse");
 
     test::ExpectParsesResponse(
         handler, td_hover::request::kMethodInfo, test::ReadFixture("hover_markup_content_response.json").c_str(),
@@ -290,13 +454,34 @@ void TestClangdDerivedGoldenFixturesParse()
             invalid_error->error.code == lsErrorCodes::InvalidRequest,
             "invalid request fixture must preserve -32600");
     }
+
+    auto const invalid_params = test::ParseProtocolResponse(
+        handler, td_initialize::request::kMethodInfo,
+        test::ReadFixture("invalid_params_error_response.json").c_str());
+    auto* params_error = dynamic_cast<Rsp_Error*>(invalid_params.get());
+    Expect(params_error != nullptr, "invalid params fixture must deserialize as Rsp_Error");
+    if (params_error != nullptr)
+    {
+        Expect(
+            params_error->error.code == lsErrorCodes::InvalidParams,
+            "invalid params fixture must preserve -32602");
+    }
+
+    auto const already_initialized = test::ParseProtocolResponse(
+        handler, td_initialize::request::kMethodInfo,
+        test::ReadFixture("already_initialized_error_response.json").c_str());
+    auto* duplicate_init_error = dynamic_cast<Rsp_Error*>(already_initialized.get());
+    Expect(duplicate_init_error != nullptr, "already initialized fixture must deserialize as Rsp_Error");
+    if (duplicate_init_error != nullptr)
+    {
+        Expect(
+            duplicate_init_error->error.code == lsErrorCodes::InvalidRequest,
+            "already initialized fixture must preserve -32600");
+    }
 }
 
 void TestFixtureDrivenSessionFromStepsManifest()
 {
-    auto const steps = LoadSessionSteps();
-    Expect(steps.size() >= 4, "lsp_session_steps.json must describe a multi-step session");
-
     DummyLog log;
     auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
     auto endpoint = std::make_shared<GenericEndpoint>(log);
@@ -307,51 +492,41 @@ void TestFixtureDrivenSessionFromStepsManifest()
     RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 1);
     RegisterFixtureSessionHandlers(point, notification_count);
     point.startProcessingMessages(input_stream, output_stream);
+    RunFixtureDrivenSession("lsp_session_steps.json", input_stream, output_stream, notification_count);
+    point.stop();
+}
 
-    int expected_notifications = 0;
-    for (auto const& step : steps)
-    {
-        std::string const payload = test::ReadFixture(step.file.c_str());
-        Expect(!payload.empty(), "session step fixture must be readable");
-        input_stream->append(test::MakeLspFrame(payload));
+// Adapted from clangd/test/initialize-sequence.test
+void TestFixtureDrivenLifecycleFromStepsManifest()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+    std::atomic<int> notification_count {0};
+    std::atomic<bool> initialized {false};
 
-        if (step.kind == "notification")
-        {
-            ++expected_notifications;
-            Expect(
-                WaitUntil([&] { return notification_count.load(std::memory_order_relaxed) >= expected_notifications; }),
-                "fixture-driven session must dispatch notification steps");
-            continue;
-        }
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 1);
+    RegisterLifecycleSessionHandlers(point, initialized);
+    point.startProcessingMessages(input_stream, output_stream);
+    RunFixtureDrivenSession("lsp_lifecycle_steps.json", input_stream, output_stream, notification_count);
+    point.stop();
+}
 
-        if (step.kind != "request")
-        {
-            continue;
-        }
+void TestFixtureDrivenExtendedSessionFromStepsManifest()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+    std::atomic<int> notification_count {0};
 
-        std::string const request_id = ExtractRequestId(payload);
-        Expect(!request_id.empty(), "request step fixture must include an id");
-        std::string const output = WaitForOutputContaining(output_stream, "\"id\":" + request_id);
-        Expect(output.find("\"id\":" + request_id) != std::string::npos, "request step must receive a response");
-
-        if (!step.response_fixture.empty())
-        {
-            std::string response_body;
-            for (auto const& body : test::ExtractLspFrameBodies(output_stream->snapshot()))
-            {
-                if (body.find("\"id\":" + request_id) != std::string::npos)
-                {
-                    response_body = body;
-                }
-            }
-            Expect(!response_body.empty(), "request step response frame must be present");
-            test::ExpectJsonFixture(
-                response_body,
-                step.response_fixture.c_str(),
-                "fixture-driven session response must match golden fixture");
-        }
-    }
-
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 1);
+    RegisterFixtureSessionHandlers(point, notification_count);
+    point.startProcessingMessages(input_stream, output_stream);
+    RunFixtureDrivenSession("lsp_extended_session_steps.json", input_stream, output_stream, notification_count);
     point.stop();
 }
 
@@ -429,9 +604,7 @@ void TestDelimitedSessionWithBlankLines()
         [&](td_shutdown::request const& req) -> td_shutdown::response
         {
             shutdown.store(true, std::memory_order_relaxed);
-            td_shutdown::response rsp;
-            rsp.id = req.id;
-            return rsp;
+            return MakeNullShutdownResponse(req.id);
         });
     session.on(
         [&](Notify_Exit::notify const&)
@@ -475,6 +648,71 @@ void TestRequestErrorFixturesMatchClangdLifecycle()
     }
 }
 
+// Adapted from clangd/test/delimited-input-comment-at-the-end.test
+void TestDelimitedSessionIgnoresCommentLines()
+{
+    lsp::NullLog log;
+    lsp::LanguageSession session(log, lsp::JSONStreamStyle::Delimited);
+    auto input = std::make_shared<StringIStream>(
+        "{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"initialize\",\"params\":{}}\n"
+        "// -----\n"
+        "// trailing comment must be ignored\n"
+        "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"shutdown\",\"params\":null}\n"
+        "// -----\n"
+        "{\"jsonrpc\":\"2.0\",\"method\":\"exit\",\"params\":{}}\n");
+    auto output = std::make_shared<StringOStream>();
+    std::atomic<bool> shutdown {false};
+
+    session.on([](td_initialize::request const& req) -> td_initialize::response
+               {
+                   td_initialize::response rsp;
+                   rsp.id = req.id;
+                   return rsp;
+               });
+    session.on(
+        [&](td_shutdown::request const& req) -> td_shutdown::response
+        {
+            shutdown.store(true, std::memory_order_relaxed);
+            return MakeNullShutdownResponse(req.id);
+        });
+    session.start(input, output);
+
+    Expect(
+        WaitForOutputContaining(output, "\"id\":0").find("\"id\":0") != std::string::npos,
+        "comment lines must not break initialize");
+    Expect(WaitUntil([&] { return shutdown.load(std::memory_order_relaxed); }), "comment lines must not break shutdown");
+    session.stop();
+}
+
+void TestRequestInvalidParamsFixtureParse()
+{
+    lsp::NullLog log;
+    lsp::LanguageSession session(log);
+    auto input = std::make_shared<FeedableIStream>();
+    auto output = std::make_shared<StringOStream>();
+
+    session.on(
+        [](td_initialize::request const&) -> td_initialize::response
+        {
+            throw lsp::RequestError(lsErrorCodes::InvalidParams, "invalid params");
+        });
+    session.start(input, output);
+
+    input->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":114,"method":"initialize","params":{}})"));
+    std::string const response = WaitForOutputContaining(output, "\"code\":-32602");
+    session.stop();
+
+    auto const bodies = test::ExtractLspFrameBodies(response);
+    Expect(!bodies.empty(), "InvalidParams response frame must be present");
+    if (!bodies.empty())
+    {
+        test::ExpectJsonFixture(
+            bodies.back(),
+            "invalid_params_error_response.json",
+            "InvalidParams response must match clangd-derived fixture");
+    }
+}
+
 void TestDidChangeConfigurationNotificationRoundTrip()
 {
     DummyLog log;
@@ -507,9 +745,13 @@ int main(int argc, char** argv)
     test::InitTestFilter(argc, argv);
     RUN_TEST(TestClangdDerivedGoldenFixturesParse);
     RUN_TEST(TestFixtureDrivenSessionFromStepsManifest);
+    RUN_TEST(TestFixtureDrivenLifecycleFromStepsManifest);
+    RUN_TEST(TestFixtureDrivenExtendedSessionFromStepsManifest);
     RUN_TEST(TestLanguageSessionRejectsUnsupportedMethod);
     RUN_TEST(TestDelimitedSessionWithBlankLines);
+    RUN_TEST(TestDelimitedSessionIgnoresCommentLines);
     RUN_TEST(TestRequestErrorFixturesMatchClangdLifecycle);
+    RUN_TEST(TestRequestInvalidParamsFixtureParse);
     RUN_TEST(TestDidChangeConfigurationNotificationRoundTrip);
     return test::Failures() == 0 ? 0 : 1;
 }

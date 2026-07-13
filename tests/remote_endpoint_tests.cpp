@@ -9,6 +9,9 @@
 #include "LibLsp/lsp/textDocument/completion.h"
 #include "LibLsp/lsp/textDocument/did_change.h"
 #include "LibLsp/lsp/textDocument/did_open.h"
+#include "LibLsp/lsp/workspace/applyEdit.h"
+#include "LibLsp/JsonRpc/json.h"
+#include "protocol_test_helpers.h"
 #include "test_helpers.h"
 
 #include <atomic>
@@ -3127,6 +3130,84 @@ void TestSendNotificationBeforeStartDoesNotCrash()
     Expect(!point.isWorking(), "sending a notification before start must not mark endpoint as working");
 }
 
+// Adapted from clangd/test/request-reply.test
+void TestServerInitiatedApplyEditRoundTrip()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    json_handler->SetResponseJsonHandler(
+        WorkspaceApply::request::kMethodInfo,
+        [](Reader& visitor) -> std::unique_ptr<LspMessage>
+        {
+            if (visitor.HasMember("error"))
+            {
+                return Rsp_Error::ReflectReader(visitor);
+            }
+            return WorkspaceApply::response::ReflectReader(visitor);
+        });
+    RemoteEndPoint point(json_handler, endpoint, log);
+    point.startProcessingMessages(input_stream, output_stream);
+
+    WorkspaceApply::request req;
+    req.id.set(5501);
+    lsTextEdit edit;
+    edit.range.start.line = 0;
+    edit.range.start.character = 0;
+    edit.range.end.line = 0;
+    edit.range.end.character = 4;
+    edit.newText = "int";
+    req.params.edit.changes = std::map<std::string, std::vector<lsTextEdit>>();
+    req.params.edit.changes->emplace("file:///fixture.cpp", std::vector<lsTextEdit> {edit});
+
+    std::atomic<bool> completed {false};
+    std::atomic<bool> applied {false};
+    std::thread waiter(
+        [&]
+        {
+            auto future = point.send(req);
+            auto result = future.get();
+            completed.store(true, std::memory_order_relaxed);
+            Expect(!result.IsError(), "workspace/applyEdit round trip must succeed");
+            if (!result.IsError())
+            {
+                applied.store(result.response.result.applied, std::memory_order_relaxed);
+            }
+        });
+
+    std::string const output = WaitForOutputContaining(output_stream, "workspace/applyEdit");
+    Expect(output.find("\"id\":5501") != std::string::npos, "server-initiated applyEdit must preserve request id");
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":"invalid","result":{"applied":true}})"));
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    Expect(!completed.load(std::memory_order_relaxed), "workspace/applyEdit invalid reply id must be ignored");
+    input_stream->append(test::MakeLspFrame(test::ReadFixture("workspace_apply_edit_response.json")));
+    waiter.join();
+    point.stop();
+
+    Expect(completed.load(std::memory_order_relaxed), "workspace/applyEdit client reply must complete pending request");
+    Expect(applied.load(std::memory_order_relaxed), "workspace/applyEdit client reply must deserialize applied=true");
+}
+
+void TestServerInitiatedApplyEditFixtureParse()
+{
+    rapidjson::Document request_document;
+    request_document.Parse(test::ReadFixture("workspace_apply_edit_request.json").c_str());
+    JsonReader request_reader(&request_document);
+    Expect(
+        WorkspaceApply::request::ReflectReader(request_reader) != nullptr,
+        "clangd-derived workspace/applyEdit request fixture must parse");
+
+    rapidjson::Document response_document;
+    response_document.Parse(test::ReadFixture("workspace_apply_edit_response.json").c_str());
+    JsonReader response_reader(&response_document);
+    Expect(
+        WorkspaceApply::response::ReflectReader(response_reader) != nullptr,
+        "clangd-derived workspace/applyEdit response fixture must parse");
+}
+
 void TestRemoteEndPointRestartTwice()
 {
     DummyLog log;
@@ -3869,6 +3950,8 @@ RUN_TEST(TestDuplicateRequestIdReturnsError);
     RUN_TEST(TestRegisterHandlerAfterStartIsIgnored);
     RUN_TEST(TestCancelRequestWhenNotWorkingOrUnknownId);
     RUN_TEST(TestSendNotificationBeforeStartDoesNotCrash);
+    RUN_TEST(TestServerInitiatedApplyEditRoundTrip);
+    RUN_TEST(TestServerInitiatedApplyEditFixtureParse);
     RUN_TEST(TestRemoteEndPointRestartTwice);
     RUN_TEST(TestLspSessionInitDidOpenDidChangeCompletion);
 

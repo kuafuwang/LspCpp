@@ -46,6 +46,7 @@ Tests are standalone executables in `tests/`, not a separate framework binary. E
 | `lspcpp_working_files_tests` | Document buffer management |
 | `lspcpp_lsp_types_tests` | LSP type JSON reflection |
 | `lspcpp_protocol_json_handler_tests` | `ProtocolJsonHandler` registrations, allowlist boundaries, golden LSP fixtures |
+| `lspcpp_clangd_fixture_tests` | clangd-derived golden fixtures, session manifests, lifecycle and error codes |
 | `lspcpp_lsp_3_16_17_tests` | Protocol 3.16/3.17 types |
 | `lspcpp_lsp_3_18_tests` | Protocol 3.18 types |
 | `lspcpp_tcp_write_queue_tests` | TCP write queue |

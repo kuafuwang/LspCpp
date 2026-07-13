@@ -5,5 +5,6 @@
   {"step":"completion","file":"completion_request.json","kind":"request","response_fixture":"completion_list_response.json"},
   {"step":"hover","file":"hover_request.json","kind":"request","response_fixture":"hover_markup_content_response.json"},
   {"step":"references","file":"references_request.json","kind":"request","response_fixture":"references_locations_response.json"},
-  {"step":"signatureHelp","file":"signature_help_request.json","kind":"request","response_fixture":"signature_help_response.json"}
+  {"step":"signatureHelp","file":"signature_help_request.json","kind":"request","response_fixture":"signature_help_response.json"},
+  {"step":"shutdown","file":"shutdown_request.json","kind":"request","response_fixture":"shutdown_null_response.json"}
 ]

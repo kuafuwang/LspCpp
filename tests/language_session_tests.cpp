@@ -7,6 +7,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <functional>
 #include <memory>
 #include <string>
 #include <thread>
@@ -18,6 +19,19 @@ using test::FeedableIStream;
 using test::StringOStream;
 using test::StringIStream;
 using test::WaitForOutputContaining;
+
+bool WaitUntil(std::function<bool()> const& predicate, int attempts = 100)
+{
+    for (int i = 0; i < attempts; ++i)
+    {
+        if (predicate())
+        {
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return predicate();
+}
 
 void TestLanguageSessionInitializeRoundTrip()
 {
@@ -197,6 +211,9 @@ void TestLanguageSessionShutdownSequence()
             shutdown_handled.store(true, std::memory_order_relaxed);
             td_shutdown::response rsp;
             rsp.id = req.id;
+            lsp::Any result;
+            result.SetJsonString("null", lsp::Any::kNullType);
+            rsp.result = result;
             return rsp;
         });
     session.on(
@@ -404,6 +421,46 @@ void TestLanguageSessionClientRequestRoundTrip()
     }
 }
 
+void TestLanguageSessionExitAfterShutdownOnly()
+{
+    // Adapted from clangd/test/exit-with-shutdown.test
+    lsp::NullLog log;
+    lsp::LanguageSession session(log);
+    auto input = std::make_shared<FeedableIStream>();
+    auto output = std::make_shared<StringOStream>();
+    std::atomic<bool> exited {false};
+
+    session.on([](td_initialize::request const& req) -> td_initialize::response
+               {
+                   td_initialize::response rsp;
+                   rsp.id = req.id;
+                   return rsp;
+               });
+    session.on([](td_shutdown::request const& req) -> td_shutdown::response
+               {
+                   td_shutdown::response rsp;
+                   rsp.id = req.id;
+                   lsp::Any result;
+                   result.SetJsonString("null", lsp::Any::kNullType);
+                   rsp.result = result;
+                   return rsp;
+               });
+    session.on(
+        [&](Notify_Exit::notify const&)
+        {
+            exited.store(true, std::memory_order_relaxed);
+        });
+    session.start(input, output);
+
+    input->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":0,"method":"initialize","params":{}})"));
+    Expect(WaitForOutputContaining(output, "\"id\":0").find("\"id\":0") != std::string::npos, "shutdown sequence must initialize");
+    input->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":3,"method":"shutdown","params":null})"));
+    Expect(WaitForOutputContaining(output, "\"id\":3").find("\"id\":3") != std::string::npos, "shutdown sequence must shutdown");
+    input->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","method":"exit","params":{}})"));
+    Expect(WaitUntil([&] { return exited.load(std::memory_order_relaxed); }), "exit notification must run after shutdown");
+    session.stop();
+}
+
 void TestLanguageSessionCanEnableJdtlsExtensions()
 {
     lsp::LanguageSessionOptions options;
@@ -430,6 +487,7 @@ RUN_TEST(TestLanguageSessionInitializeRoundTrip);
     RUN_TEST(TestLanguageSessionOverrideRequestParserTemplate);
     RUN_TEST(TestLanguageServerAliasConstructsUsableSession);
     RUN_TEST(TestLanguageSessionShutdownSequence);
+    RUN_TEST(TestLanguageSessionExitAfterShutdownOnly);
     RUN_TEST(TestLanguageSessionThrowsRequestError);
     RUN_TEST(TestLanguageSessionAsyncHandlerCompletesLater);
     RUN_TEST(TestLanguageSessionRunningRequestObservesCancellation);
