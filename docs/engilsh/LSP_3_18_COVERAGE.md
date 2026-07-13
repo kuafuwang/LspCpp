@@ -56,3 +56,8 @@ specification. Status values:
 `tools/check_lsp_metamodel_coverage.py` compares `DEFINE_*` declarations and `ProtocolJsonHandler` registrations against a vendored LSP 3.18 metaModel snapshot. Known intentional gaps are tracked in `tools/lsp-metamodel-allowlist.json`.
 
 The checker also surfaces a doc/source mismatch: `window/showMessageRequest` is a distinct request in the metaModel, but the current `WindowShowMessage` type still uses the `"window/showMessage"` method string (colliding with the `window/showMessage` notification). The request therefore remains classified as missing until that method string is corrected.
+
+Opt-in parser groups are available via `ProtocolJsonHandlerOptions`:
+
+- `enableExperimentalStandardRequests`: registers omitted standard request/response parsers such as `prepareRename`, `selectionRange`, `typeDefinition`, and `workspace/applyEdit`.
+- `enableServerRefreshRequests`: registers server-initiated refresh request/response parsers such as `workspace/semanticTokens/refresh`, `workspace/inlayHint/refresh`, and `workspace/diagnostic/refresh`.

@@ -13,12 +13,14 @@
 #include "LibLsp/lsp/textDocument/hover.h"
 #include "LibLsp/lsp/textDocument/implementation.h"
 #include "LibLsp/lsp/textDocument/range_formatting.h"
+#include "LibLsp/lsp/textDocument/onTypeFormatting.h"
 #include "LibLsp/lsp/textDocument/references.h"
 #include "LibLsp/lsp/textDocument/rename.h"
 #include "LibLsp/lsp/textDocument/signature_help.h"
 #include "LibLsp/lsp/textDocument/type_definition.h"
 #include "LibLsp/lsp/workspace/execute_command.h"
 #include "LibLsp/lsp/workspace/symbol.h"
+#include "LibLsp/lsp/workspace/applyEdit.h"
 #include "LibLsp/lsp/textDocument/typeHierarchy.h"
 #include "LibLsp/lsp/out_list.h"
 #include "LibLsp/lsp/extention/jdtls/codeActionResult.h"
@@ -886,6 +888,74 @@ void AddStandardRequestJsonRpcMethod(MessageJsonHandler& handler)
 
 }
 
+void AddExperimentalStandardRequestJsonRpcMethod(MessageJsonHandler& handler)
+{
+    handler.method2request[td_prepareRename::request::kMethodInfo] = [](Reader& visitor)
+    { return td_prepareRename::request::ReflectReader(visitor); };
+    handler.method2request[td_selectionRange::request::kMethodInfo] = [](Reader& visitor)
+    { return td_selectionRange::request::ReflectReader(visitor); };
+    handler.method2request[td_typeDefinition::request::kMethodInfo] = [](Reader& visitor)
+    { return td_typeDefinition::request::ReflectReader(visitor); };
+    handler.method2request[td_rangeFormatting::request::kMethodInfo] = [](Reader& visitor)
+    { return td_rangeFormatting::request::ReflectReader(visitor); };
+    handler.method2request[td_onTypeFormatting::request::kMethodInfo] = [](Reader& visitor)
+    { return td_onTypeFormatting::request::ReflectReader(visitor); };
+    handler.method2request[WorkspaceApply::request::kMethodInfo] = [](Reader& visitor)
+    { return WorkspaceApply::request::ReflectReader(visitor); };
+
+    handler.method2response[td_onTypeFormatting::request::kMethodInfo] = [](Reader& visitor)
+    {
+        if (visitor.HasMember("error"))
+        {
+            return Rsp_Error::ReflectReader(visitor);
+        }
+        return td_onTypeFormatting::response::ReflectReader(visitor);
+    };
+    handler.method2response[WorkspaceApply::request::kMethodInfo] = [](Reader& visitor)
+    {
+        if (visitor.HasMember("error"))
+        {
+            return Rsp_Error::ReflectReader(visitor);
+        }
+        return WorkspaceApply::response::ReflectReader(visitor);
+    };
+}
+
+void AddServerRefreshRequestJsonRpcMethod(MessageJsonHandler& handler)
+{
+    handler.method2request[workspace_semanticTokens_refresh::request::kMethodInfo] = [](Reader& visitor)
+    { return workspace_semanticTokens_refresh::request::ReflectReader(visitor); };
+    handler.method2request[workspace_inlayHint_refresh::request::kMethodInfo] = [](Reader& visitor)
+    { return workspace_inlayHint_refresh::request::ReflectReader(visitor); };
+    handler.method2request[workspace_diagnostic_refresh::request::kMethodInfo] = [](Reader& visitor)
+    { return workspace_diagnostic_refresh::request::ReflectReader(visitor); };
+
+    handler.method2response[workspace_semanticTokens_refresh::request::kMethodInfo] = [](Reader& visitor)
+    {
+        if (visitor.HasMember("error"))
+        {
+            return Rsp_Error::ReflectReader(visitor);
+        }
+        return workspace_semanticTokens_refresh::response::ReflectReader(visitor);
+    };
+    handler.method2response[workspace_inlayHint_refresh::request::kMethodInfo] = [](Reader& visitor)
+    {
+        if (visitor.HasMember("error"))
+        {
+            return Rsp_Error::ReflectReader(visitor);
+        }
+        return workspace_inlayHint_refresh::response::ReflectReader(visitor);
+    };
+    handler.method2response[workspace_diagnostic_refresh::request::kMethodInfo] = [](Reader& visitor)
+    {
+        if (visitor.HasMember("error"))
+        {
+            return Rsp_Error::ReflectReader(visitor);
+        }
+        return workspace_diagnostic_refresh::response::ReflectReader(visitor);
+    };
+}
+
 lsp::ProtocolJsonHandler::ProtocolJsonHandler()
     : ProtocolJsonHandler(lsp::ProtocolJsonHandlerOptions {})
 {
@@ -901,5 +971,13 @@ lsp::ProtocolJsonHandler::ProtocolJsonHandler(lsp::ProtocolJsonHandlerOptions co
     if (options.enableJdtlsExtensions)
     {
         AddJdtlsExtensionJsonRpcMethod(*this);
+    }
+    if (options.enableExperimentalStandardRequests)
+    {
+        AddExperimentalStandardRequestJsonRpcMethod(*this);
+    }
+    if (options.enableServerRefreshRequests)
+    {
+        AddServerRefreshRequestJsonRpcMethod(*this);
     }
 }

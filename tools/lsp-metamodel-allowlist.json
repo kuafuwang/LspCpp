@@ -50,15 +50,30 @@
     "window/workDoneProgress/cancel",
     "window/workDoneProgress/create",
     "workspace/codeLens/refresh",
-    "workspace/diagnostic/refresh",
     "workspace/didCreateFiles",
     "workspace/didDeleteFiles",
     "workspace/didRenameFiles",
-    "workspace/inlayHint/refresh",
-    "workspace/semanticTokens/refresh",
     "workspace/willCreateFiles",
     "workspace/willDeleteFiles",
     "workspace/willRenameFiles"
+  ],
+  "opt_in_request_parser": [
+    "textDocument/onTypeFormatting",
+    "textDocument/prepareRename",
+    "textDocument/rangeFormatting",
+    "textDocument/selectionRange",
+    "textDocument/typeDefinition",
+    "workspace/applyEdit",
+    "workspace/diagnostic/refresh",
+    "workspace/inlayHint/refresh",
+    "workspace/semanticTokens/refresh"
+  ],
+  "opt_in_response_parser": [
+    "textDocument/onTypeFormatting",
+    "workspace/applyEdit",
+    "workspace/diagnostic/refresh",
+    "workspace/inlayHint/refresh",
+    "workspace/semanticTokens/refresh"
   ],
   "response_only_no_request": [
     "codeLens/resolve",

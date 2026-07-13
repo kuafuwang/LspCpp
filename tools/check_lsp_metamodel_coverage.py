@@ -28,6 +28,12 @@ ISSUE_CATEGORIES = (
     "duplicate_registrations",
 )
 
+OPT_IN_CATEGORIES = (
+    "opt_in_request_parser",
+    "opt_in_response_parser",
+    "opt_in_notification_parser",
+)
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -266,6 +272,7 @@ class CoverageReport:
     allowlist: Dict[str, List[str]] = field(default_factory=dict)
     remaining: Dict[str, List[str]] = field(default_factory=dict)
     stale: Dict[str, List[str]] = field(default_factory=dict)
+    opt_in: Dict[str, List[str]] = field(default_factory=dict)
 
 
 def analyze_coverage(
@@ -292,6 +299,8 @@ def analyze_coverage(
 
     allowlist = load_json(allowlist_path) if allowlist_path.exists() else {}
     remaining, stale = subtract_allowlist(issues, allowlist)
+    opt_in, stale_opt_in = validate_opt_in_allowlist(registrations, allowlist)
+    stale.update(stale_opt_in)
 
     return CoverageReport(
         repo_root=repo_root,
@@ -307,6 +316,7 @@ def analyze_coverage(
         allowlist=allowlist,
         remaining=remaining,
         stale=stale,
+        opt_in=opt_in,
     )
 
 
@@ -325,6 +335,27 @@ def subtract_allowlist(
         if stale_items:
             stale[category] = stale_items
     return remaining, stale
+
+
+def validate_opt_in_allowlist(
+    registrations: Dict[str, List[str]], allowlist: Dict[str, List[str]]
+) -> Tuple[Dict[str, List[str]], Dict[str, List[str]]]:
+    opt_in: Dict[str, List[str]] = {}
+    stale: Dict[str, List[str]] = {}
+    map_by_category = {
+        "opt_in_request_parser": "method2request",
+        "opt_in_response_parser": "method2response",
+        "opt_in_notification_parser": "method2notification",
+    }
+    for category, map_name in map_by_category.items():
+        configured = sorted(allowlist.get(category, []))
+        if configured:
+            opt_in[category] = configured
+        registered = set(registrations.get(map_name, []))
+        stale_items = [method for method in configured if method not in registered]
+        if stale_items:
+            stale[category] = stale_items
+    return opt_in, stale
 
 
 def print_section(title: str, items: Iterable[str]) -> None:
@@ -352,9 +383,13 @@ def main() -> int:
     allowlist = report.allowlist
     remaining = report.remaining
     stale = report.stale
+    opt_in = report.opt_in
 
     if args.write_allowlist:
         payload = {category: issues[category] for category in ISSUE_CATEGORIES}
+        for category in OPT_IN_CATEGORIES:
+            if category in allowlist:
+                payload[category] = allowlist[category]
         write_json(allowlist_path, payload)
         print(f"Wrote allowlist to {allowlist_path}")
         return 0
@@ -379,6 +414,13 @@ def main() -> int:
             allowed = allowlist.get(category, [])
             if allowed:
                 print_section(f"allowlisted {category}", allowed)
+        if opt_in:
+            print()
+            print("Opt-in parser registrations")
+            for category in OPT_IN_CATEGORIES:
+                configured = opt_in.get(category, [])
+                if configured:
+                    print_section(category, configured)
         print()
         print("Unexpected standard LSP issues")
         if remaining:

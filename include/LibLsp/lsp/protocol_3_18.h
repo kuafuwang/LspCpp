@@ -307,6 +307,11 @@ DEFINE_REQUEST_RESPONSE_TYPE(
     td_rangesFormatting, DocumentRangesFormattingParams, std::vector<lsTextEdit>, "textDocument/rangesFormatting"
 )
 DEFINE_REQUEST_RESPONSE_TYPE(workspace_foldingRange_refresh, JsonNull, JsonNull, "workspace/foldingRange/refresh")
+DEFINE_REQUEST_RESPONSE_TYPE(
+    workspace_semanticTokens_refresh, JsonNull, JsonNull, "workspace/semanticTokens/refresh"
+)
+DEFINE_REQUEST_RESPONSE_TYPE(workspace_inlayHint_refresh, JsonNull, JsonNull, "workspace/inlayHint/refresh")
+DEFINE_REQUEST_RESPONSE_TYPE(workspace_diagnostic_refresh, JsonNull, JsonNull, "workspace/diagnostic/refresh")
 
 struct DocumentRangeFormattingClientCapabilities
 {

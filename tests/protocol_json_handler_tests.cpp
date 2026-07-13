@@ -9,8 +9,11 @@
 #include "LibLsp/lsp/textDocument/did_open.h"
 #include "LibLsp/lsp/textDocument/hover.h"
 #include "LibLsp/lsp/textDocument/publishDiagnostics.h"
-#include "LibLsp/lsp/textDocument/rename.h"
-#include "protocol_test_helpers.h"
+#include "LibLsp/lsp/textDocument/prepareRename.h"
+#include "LibLsp/lsp/textDocument/selectionRange.h"
+#include "LibLsp/lsp/textDocument/type_definition.h"
+#include "LibLsp/lsp/workspace/applyEdit.h"
+#include "LibLsp/lsp/protocol_3_18.h"
 #include "test_helpers.h"
 
 #include <fstream>
@@ -378,6 +381,62 @@ void TestJdtlsExtensionsAreOptIn()
         "standard workspace/workspaceFolders client request parser must remain enabled");
 }
 
+void TestExperimentalStandardRequestsAreOptIn()
+{
+    lsp::ProtocolJsonHandler standard_handler;
+    Expect(
+        standard_handler.GetRequestJsonHandler(td_prepareRename::request::kMethodInfo) == nullptr,
+        "prepareRename request parser must stay disabled by default");
+    Expect(
+        standard_handler.GetRequestJsonHandler(WorkspaceApply::request::kMethodInfo) == nullptr,
+        "workspace/applyEdit request parser must stay disabled by default");
+    Expect(
+        standard_handler.GetResponseJsonHandler(WorkspaceApply::request::kMethodInfo) == nullptr,
+        "workspace/applyEdit response parser must stay disabled by default");
+
+    lsp::ProtocolJsonHandlerOptions options;
+    options.enableExperimentalStandardRequests = true;
+    lsp::ProtocolJsonHandler experimental_handler(options);
+
+    Expect(
+        experimental_handler.GetRequestJsonHandler(td_prepareRename::request::kMethodInfo) != nullptr,
+        "prepareRename request parser must register when configured");
+    Expect(
+        experimental_handler.GetRequestJsonHandler(td_selectionRange::request::kMethodInfo) != nullptr,
+        "selectionRange request parser must register when configured");
+    Expect(
+        experimental_handler.GetRequestJsonHandler(td_typeDefinition::request::kMethodInfo) != nullptr,
+        "typeDefinition request parser must register when configured");
+    Expect(
+        experimental_handler.GetRequestJsonHandler(WorkspaceApply::request::kMethodInfo) != nullptr,
+        "workspace/applyEdit request parser must register when configured");
+    Expect(
+        experimental_handler.GetResponseJsonHandler(WorkspaceApply::request::kMethodInfo) != nullptr,
+        "workspace/applyEdit response parser must register when configured");
+}
+
+void TestServerRefreshRequestsAreOptIn()
+{
+    lsp::ProtocolJsonHandler standard_handler;
+    Expect(
+        standard_handler.GetRequestJsonHandler(workspace_semanticTokens_refresh::request::kMethodInfo) == nullptr,
+        "semanticTokens refresh request parser must stay disabled by default");
+    Expect(
+        standard_handler.GetResponseJsonHandler(workspace_inlayHint_refresh::request::kMethodInfo) == nullptr,
+        "inlayHint refresh response parser must stay disabled by default");
+
+    lsp::ProtocolJsonHandlerOptions options;
+    options.enableServerRefreshRequests = true;
+    lsp::ProtocolJsonHandler refresh_handler(options);
+
+    Expect(
+        refresh_handler.GetRequestJsonHandler(workspace_semanticTokens_refresh::request::kMethodInfo) != nullptr,
+        "semanticTokens refresh request parser must register when configured");
+    Expect(
+        refresh_handler.GetResponseJsonHandler(workspace_diagnostic_refresh::request::kMethodInfo) != nullptr,
+        "diagnostic refresh response parser must register when configured");
+}
+
 void TestGoldenLspFixturesParse()
 {
     lsp::ProtocolJsonHandler handler;
@@ -454,6 +513,8 @@ int main(int argc, char** argv)
     RUN_TEST(TestProgressNotificationIsRegistered);
     RUN_TEST(TestMalformedCoreRequestParamsDoNotEscape);
     RUN_TEST(TestJdtlsExtensionsAreOptIn);
+    RUN_TEST(TestExperimentalStandardRequestsAreOptIn);
+    RUN_TEST(TestServerRefreshRequestsAreOptIn);
     RUN_TEST(TestGoldenLspFixturesParse);
 
     return test::Failures() == 0 ? 0 : 1;
