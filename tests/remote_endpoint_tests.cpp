@@ -11,6 +11,7 @@
 #include "LibLsp/lsp/textDocument/did_open.h"
 #include "LibLsp/lsp/workspace/applyEdit.h"
 #include "LibLsp/JsonRpc/json.h"
+#include "lsp_client_test_helpers.h"
 #include "protocol_test_helpers.h"
 #include "test_helpers.h"
 
@@ -3728,6 +3729,80 @@ void TestPendingCancelRequestsArePrunedByLimit()
     Expect(cancelled_by_id[9202] == true, "newest pending cancel must be retained within the limit");
 }
 
+void TestMaxPendingOutgoingRequestsLimitsServerInitiatedRpc()
+{
+    DummyLog log;
+    lsp::ProtocolJsonHandlerOptions options;
+    options.enableExperimentalStandardRequests = true;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>(options);
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    RemoteEndPointLimits limits;
+    limits.max_pending_outgoing_requests = 1;
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 1, limits);
+    point.startProcessingMessages(input_stream, output_stream);
+
+    WorkspaceApply::request first;
+    first.id.set(9601);
+    first.params.edit.changes = std::map<std::string, std::vector<lsTextEdit>>();
+
+    WorkspaceApply::request second;
+    second.id.set(9602);
+    second.params.edit.changes = std::map<std::string, std::vector<lsTextEdit>>();
+
+    auto first_future = point.send(first);
+    auto second_future = point.send(second);
+    auto second_result = second_future.get();
+
+    Expect(second_result.IsError(), "second outgoing request must fail when pending cap is reached");
+    if (second_result.IsError())
+    {
+        Expect(
+            second_result.error.error.code == lsErrorCodes::InternalError,
+            "pending outgoing cap must surface InternalError on send failure");
+    }
+
+    input_stream->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":9601,"result":{"applied":true}})"));
+    auto first_result = first_future.get();
+    Expect(!first_result.IsError(), "first outgoing request must still complete after client reply");
+    point.stop();
+}
+
+void TestLSPClientHelperExpectsServerCall()
+{
+    DummyLog log;
+    lsp::ProtocolJsonHandlerOptions options;
+    options.enableExperimentalStandardRequests = true;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>(options);
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    RemoteEndPoint point(json_handler, endpoint, log);
+    point.startProcessingMessages(input_stream, output_stream);
+
+    test::LSPClient client;
+    client.attach(output_stream, input_stream);
+
+    WorkspaceApply::request req;
+    req.id.set(9701);
+    req.params.edit.changes = std::map<std::string, std::vector<lsTextEdit>>();
+    auto future = point.send(req);
+
+    Expect(client.expectServerCall("workspace/applyEdit"), "LSPClient helper must observe server-initiated RPC");
+    auto const call_body = client.takeLastServerCallBody("workspace/applyEdit");
+    Expect(call_body.find("\"id\":9701") != std::string::npos, "LSPClient helper must capture server call body");
+    auto const params = client.takeCallParams("workspace/applyEdit");
+    Expect(params.IsObject() && params.HasMember("edit"), "LSPClient helper must extract server call params");
+    client.reply(R"({"jsonrpc":"2.0","id":9701,"result":{"applied":true}})");
+
+    auto result = future.get();
+    Expect(!result.IsError(), "LSPClient helper reply injection must complete pending request");
+    point.stop();
+}
+
 void TestRegisterHandlerAfterStartIsIgnored()
 {
 #ifndef NDEBUG
@@ -3947,6 +4022,8 @@ RUN_TEST(TestDuplicateRequestIdReturnsError);
     RUN_TEST(TestFrameSizeLimitStopsEndpointBeforeDispatch);
     RUN_TEST(TestParseQueueLimitStopsEndpoint);
     RUN_TEST(TestPendingCancelRequestsArePrunedByLimit);
+    RUN_TEST(TestMaxPendingOutgoingRequestsLimitsServerInitiatedRpc);
+    RUN_TEST(TestLSPClientHelperExpectsServerCall);
     RUN_TEST(TestRegisterHandlerAfterStartIsIgnored);
     RUN_TEST(TestCancelRequestWhenNotWorkingOrUnknownId);
     RUN_TEST(TestSendNotificationBeforeStartDoesNotCrash);

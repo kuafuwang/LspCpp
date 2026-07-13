@@ -952,6 +952,11 @@ struct RemoteEndPoint::Data
     )
     {
         std::lock_guard<std::mutex> lock(m_requestInfo);
+        if (limits.max_pending_outgoing_requests != 0 &&
+            _client_request_futures.size() >= limits.max_pending_outgoing_requests)
+        {
+            return {};
+        }
         if (!info.id.has_value())
         {
             auto id = getNextRequestId();

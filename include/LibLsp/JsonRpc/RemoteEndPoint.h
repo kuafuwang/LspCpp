@@ -52,6 +52,7 @@ struct RemoteEndPointLimits
     size_t max_parked_request_queue_size = 0;
     size_t max_pending_cancel_requests = 0;
     size_t max_seen_request_ids = 0;
+    size_t max_pending_outgoing_requests = 0;
     RemoteEndPointOverloadPolicy overload_policy = RemoteEndPointOverloadPolicy::StopProcessing;
 };
 
