@@ -12,6 +12,9 @@
 #include "LibLsp/lsp/textDocument/signature_help.h"
 #include "LibLsp/lsp/textDocument/code_action.h"
 #include "LibLsp/lsp/textDocument/rename.h"
+#include "LibLsp/lsp/textDocument/foldingRange.h"
+#include "LibLsp/lsp/textDocument/selectionRange.h"
+#include "LibLsp/lsp/textDocument/inlayHint.h"
 #include "LibLsp/lsp/workspace/symbol.h"
 #include "LibLsp/lsp/workspace/did_change_configuration.h"
 #include "protocol_test_helpers.h"
@@ -266,6 +269,48 @@ void RegisterFixtureSessionHandlers(RemoteEndPoint& point, std::atomic<int>& not
                 !notify.params.settings.Data().empty(),
                 "didChangeConfiguration settings must parse as object");
             notification_count.fetch_add(1, std::memory_order_relaxed);
+        });
+}
+
+void RegisterFeatureSessionHandlers(RemoteEndPoint& point, std::atomic<int>& notification_count)
+{
+    RegisterFixtureSessionHandlers(point, notification_count);
+    point.registerHandler(
+        [](td_foldingRange::request const& req) -> lsp::ResponseOrError<td_foldingRange::response>
+        {
+            td_foldingRange::response rsp;
+            rsp.id = req.id;
+            FoldingRange range {};
+            range.startLine = 0;
+            range.endLine = 1;
+            range.kind = "region";
+            rsp.result.push_back(range);
+            return rsp;
+        });
+    point.registerHandler(
+        [](td_selectionRange::request const& req) -> lsp::ResponseOrError<td_selectionRange::response>
+        {
+            td_selectionRange::response rsp;
+            rsp.id = req.id;
+            SelectionRange selection;
+            selection.range.start.line = 0;
+            selection.range.start.character = 0;
+            selection.range.end.line = 0;
+            selection.range.end.character = 3;
+            rsp.result.push_back(selection);
+            return rsp;
+        });
+    point.registerHandler(
+        [](td_inlayHint::request const& req) -> lsp::ResponseOrError<td_inlayHint::response>
+        {
+            td_inlayHint::response rsp;
+            rsp.id = req.id;
+            lsInlayHint hint;
+            hint.position.line = 0;
+            hint.position.character = 5;
+            hint.label = "int";
+            rsp.result.push_back(hint);
+            return rsp;
         });
 }
 
@@ -530,6 +575,40 @@ void TestFixtureDrivenExtendedSessionFromStepsManifest()
     point.stop();
 }
 
+// Adapted from clangd/test/folding-range.test, selection-range.test, inlayHints.test
+void TestFixtureDrivenFeatureSessionFromStepsManifest()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+    std::atomic<int> notification_count {0};
+
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 1);
+    RegisterFeatureSessionHandlers(point, notification_count);
+    point.startProcessingMessages(input_stream, output_stream);
+    RunFixtureDrivenSession("lsp_feature_steps.json", input_stream, output_stream, notification_count);
+    point.stop();
+}
+
+// Adapted from clangd/test/unsupported-method.test
+void TestFixtureDrivenUnsupportedMethodSession()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+    std::atomic<int> notification_count {0};
+
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 1);
+    RegisterFixtureSessionHandlers(point, notification_count);
+    point.startProcessingMessages(input_stream, output_stream);
+    RunFixtureDrivenSession("lsp_error_steps.json", input_stream, output_stream, notification_count);
+    point.stop();
+}
+
 void TestLanguageSessionRejectsUnsupportedMethod()
 {
     lsp::NullLog log;
@@ -747,6 +826,8 @@ int main(int argc, char** argv)
     RUN_TEST(TestFixtureDrivenSessionFromStepsManifest);
     RUN_TEST(TestFixtureDrivenLifecycleFromStepsManifest);
     RUN_TEST(TestFixtureDrivenExtendedSessionFromStepsManifest);
+    RUN_TEST(TestFixtureDrivenFeatureSessionFromStepsManifest);
+    RUN_TEST(TestFixtureDrivenUnsupportedMethodSession);
     RUN_TEST(TestLanguageSessionRejectsUnsupportedMethod);
     RUN_TEST(TestDelimitedSessionWithBlankLines);
     RUN_TEST(TestDelimitedSessionIgnoresCommentLines);

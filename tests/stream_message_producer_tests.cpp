@@ -1053,6 +1053,130 @@ void TestDelimitedProducerTrimsWhitespace()
     }
 }
 
+// Adapted from clangd/test/spaces-in-delimited-input.test
+void TestDelimitedProducerIgnoresSpacesAroundSeparator()
+{
+    auto input = std::make_shared<StringIStream>(
+        "{\"jsonrpc\":\"2.0\",\"method\":\"one\"}\n"
+        "   // -----   \n"
+        "   \n"
+        "{\"jsonrpc\":\"2.0\",\"method\":\"two\"}\n"
+        "   // -----   \n");
+    CollectingIssueHandler issues;
+    DelimitedStreamMessageProducer producer(issues, input);
+
+    std::vector<std::string> messages;
+    producer.listen(
+        [&](std::string&& content)
+        {
+            messages.push_back(std::move(content));
+        });
+
+    Expect(messages.size() == 2, "spaces around delimiters must not break delimited input");
+    if (messages.size() == 2)
+    {
+        Expect(messages[0] == "{\"jsonrpc\":\"2.0\",\"method\":\"one\"}", "first spaced-delimiter message mismatch");
+        Expect(messages[1] == "{\"jsonrpc\":\"2.0\",\"method\":\"two\"}", "second spaced-delimiter message mismatch");
+    }
+}
+
+class MirroringIStream : public lsp::istream
+{
+public:
+    explicit MirroringIStream(std::shared_ptr<lsp::istream> inner) : inner_(std::move(inner))
+    {
+    }
+
+    std::string const& mirrored() const
+    {
+        return mirrored_;
+    }
+
+    int get() override
+    {
+        int const c = inner_->get();
+        if (c != EOF)
+        {
+            mirrored_.push_back(static_cast<char>(c));
+        }
+        return c;
+    }
+
+    lsp::istream& read(char* str, std::streamsize count) override
+    {
+        for (std::streamsize i = 0; i < count; ++i)
+        {
+            int const c = get();
+            if (c == EOF)
+            {
+                break;
+            }
+            str[i] = static_cast<char>(c);
+        }
+        return *this;
+    }
+
+    bool fail() override
+    {
+        return inner_->fail();
+    }
+
+    bool bad() override
+    {
+        return inner_->bad();
+    }
+
+    bool eof() override
+    {
+        return inner_->eof();
+    }
+
+    bool good() override
+    {
+        return inner_->good();
+    }
+
+    void clear() override
+    {
+        inner_->clear();
+    }
+
+    std::string what() override
+    {
+        return inner_->what();
+    }
+
+    void interrupt() override
+    {
+        inner_->interrupt();
+    }
+
+private:
+    std::shared_ptr<lsp::istream> inner_;
+    std::string mirrored_;
+};
+
+// Adapted from clangd/test/input-mirror.test — portable reader-side byte replay check.
+void TestMirroringIStreamRecordsConsumedBytes()
+{
+    std::string const body = R"({"jsonrpc":"2.0","method":"x"})";
+    std::string const payload = MakeLspFrame(body);
+    auto inner = std::make_shared<StringIStream>(payload);
+    auto mirror = std::make_shared<MirroringIStream>(inner);
+    CollectingIssueHandler issues;
+    LSPStreamMessageProducer producer(issues, mirror);
+
+    std::vector<std::string> messages;
+    producer.listen(
+        [&](std::string&& content)
+        {
+            messages.push_back(std::move(content));
+        });
+
+    Expect(messages.size() == 1, "mirroring stream must still deliver one framed message");
+    Expect(mirror->mirrored() == payload, "mirroring stream must record every consumed byte");
+}
+
 class DelimitedErrorIStream : public lsp::istream
 {
 public:
@@ -1387,6 +1511,8 @@ RUN_TEST(TestValidFrameDeliversBody);
     RUN_TEST(TestDelimitedProducerDropsUnterminatedTrailingBlock);
     RUN_TEST(TestDelimitedProducerIgnoresEmptyLines);
     RUN_TEST(TestDelimitedProducerTrimsWhitespace);
+    RUN_TEST(TestDelimitedProducerIgnoresSpacesAroundSeparator);
+    RUN_TEST(TestMirroringIStreamRecordsConsumedBytes);
     RUN_TEST(TestDelimitedProducerBadStreamExitsCleanly);
     RUN_TEST(TestDelimitedProducerFailWithoutRecoveryExitsCleanly);
     RUN_TEST(TestDelimitedProducerFailRecoveryContinuesAfterClear);

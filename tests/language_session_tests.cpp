@@ -461,6 +461,56 @@ void TestLanguageSessionExitAfterShutdownOnly()
     session.stop();
 }
 
+// Adapted from clangd/test/exit-eof.test — records current behavior when stdin closes with no frames.
+void TestLanguageSessionEofWithoutMessages()
+{
+    lsp::NullLog log;
+    lsp::LanguageSession session(log);
+    auto input = std::make_shared<StringIStream>("");
+    auto output = std::make_shared<StringOStream>();
+    std::atomic<bool> exited {false};
+
+    session.on(
+        [&](Notify_Exit::notify const&)
+        {
+            exited.store(true, std::memory_order_relaxed);
+        });
+    session.start(input, output);
+    session.stop();
+
+    Expect(!exited.load(std::memory_order_relaxed), "EOF without LSP frames must not dispatch exit notification");
+    Expect(output->snapshot().empty(), "EOF without LSP frames must not write responses");
+}
+
+// Adapted from clangd/test/exit-without-shutdown.test — records current LspCpp behavior.
+void TestLanguageSessionExitWithoutPriorShutdown()
+{
+    lsp::NullLog log;
+    lsp::LanguageSession session(log);
+    auto input = std::make_shared<FeedableIStream>();
+    auto output = std::make_shared<StringOStream>();
+    std::atomic<bool> exited {false};
+
+    session.on([](td_initialize::request const& req) -> td_initialize::response
+               {
+                   td_initialize::response rsp;
+                   rsp.id = req.id;
+                   return rsp;
+               });
+    session.on(
+        [&](Notify_Exit::notify const&)
+        {
+            exited.store(true, std::memory_order_relaxed);
+        });
+    session.start(input, output);
+
+    input->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","id":0,"method":"initialize","params":{}})"));
+    Expect(WaitForOutputContaining(output, "\"id\":0").find("\"id\":0") != std::string::npos, "initialize must succeed");
+    input->append(test::MakeLspFrame(R"({"jsonrpc":"2.0","method":"exit","params":{}})"));
+    Expect(WaitUntil([&] { return exited.load(std::memory_order_relaxed); }), "exit without shutdown must still dispatch exit");
+    session.stop();
+}
+
 void TestLanguageSessionCanEnableJdtlsExtensions()
 {
     lsp::LanguageSessionOptions options;
@@ -488,6 +538,8 @@ RUN_TEST(TestLanguageSessionInitializeRoundTrip);
     RUN_TEST(TestLanguageServerAliasConstructsUsableSession);
     RUN_TEST(TestLanguageSessionShutdownSequence);
     RUN_TEST(TestLanguageSessionExitAfterShutdownOnly);
+    RUN_TEST(TestLanguageSessionEofWithoutMessages);
+    RUN_TEST(TestLanguageSessionExitWithoutPriorShutdown);
     RUN_TEST(TestLanguageSessionThrowsRequestError);
     RUN_TEST(TestLanguageSessionAsyncHandlerCompletesLater);
     RUN_TEST(TestLanguageSessionRunningRequestObservesCancellation);
