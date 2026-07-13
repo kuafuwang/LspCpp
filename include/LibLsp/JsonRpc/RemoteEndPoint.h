@@ -172,8 +172,22 @@ struct is_valid_async_request_return<lsp::future<ValueType>, ResponseType>
 {
 };
 
+template<typename T>
+struct async_future_value
+{
+};
+
+template<typename V>
+struct async_future_value<lsp::future<V>>
+{
+    using type = V;
+};
+
 template<typename F>
 using handler_return_t = typename lsp::traits::SignatureOfT<F>::ret;
+
+template<typename F>
+using async_handler_value_t = typename async_future_value<handler_return_t<F>>::type;
 
 // Output state for one startProcessingMessages() session.
 //

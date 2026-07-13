@@ -5,6 +5,7 @@
 #include <future>
 #include <functional>
 #include "LibLsp/JsonRpc/Cancellation.h"
+#include "LibLsp/JsonRpc/RequestCancellation.h"
 #include "LibLsp/JsonRpc/StreamMessageProducer.h"
 #include "LibLsp/JsonRpc/NotificationInMessage.h"
 #include "LibLsp/JsonRpc/lsResponseMessage.h"
@@ -42,102 +43,7 @@ namespace lsp
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //===----------------------------------------------------------------------===//
 
-// Cancellation mechanism for long-running tasks.
-//
-// This manages interactions between:
-//
-// 1. Client code that starts some long-running work, and maybe cancels later.
-//
-//   std::pair<Context, Canceler> Task = cancelableTask();
-//   {
-//     WithContext Cancelable(std::move(Task.first));
-//     Expected
-//     deepThoughtAsync([](int answer){ errs() << answer; });
-//   }
-//   // ...some time later...
-//   if (User.fellAsleep())
-//     Task.second();
-//
-//  (This example has an asynchronous computation, but synchronous examples
-//  work similarly - the Canceler should be invoked from another thread).
-//
-// 2. Library code that executes long-running work, and can exit early if the
-//   result is not needed.
-//
-//   void deepThoughtAsync(std::function<void(int)> Callback) {
-//     runAsync([Callback]{
-//       int A = ponder(6);
-//       if (getCancelledMonitor())
-//         return;
-//       int B = ponder(9);
-//       if (getCancelledMonitor())
-//         return;
-//       Callback(A * B);
-//     });
-//   }
-//
-//   (A real example may invoke the callback with an error on cancellation,
-//   the CancelledError is provided for this purpose).
-//
-// Cancellation has some caveats:
-//   - the work will only stop when/if the library code next checks for it.
-//     Code outside clangd such as Sema will not do this.
-//   - it's inherently racy: client code must be prepared to accept results
-//     even after requesting cancellation.
-//   - it's Context-based, so async work must be dispatched to threads in
-//     ways that preserve the context. (Like runAsync() or TUScheduler).
-//
-
-/// A canceller requests cancellation of a task, when called.
-/// Calling it again has no effect.
-using Canceler = std::function<void()>;
-
-// We don't want a cancelable scope to "shadow" an enclosing one.
-struct CancelState
-{
-    std::shared_ptr<std::atomic<int>> cancelled;
-    CancelState const* parent = nullptr;
-    lsRequestId id;
-};
-static Key<CancelState> g_stateKey;
 static Key<std::shared_ptr<lsp::detail::SessionOutputState>> g_sessionOutputStateKey;
-
-/// Defines a new task whose cancellation may be requested.
-/// The returned Context defines the scope of the task.
-/// When the context is active, getCancelledMonitor() is 0 until the Canceler is
-/// invoked, and equal to Reason afterwards.
-/// Conventionally, Reason may be the LSP error code to return.
-std::pair<Context, Canceler> cancelableTask(lsRequestId const& id, int reason = 1)
-{
-    assert(reason != 0 && "Can't detect cancellation if Reason is zero");
-    CancelState state;
-    state.id = id;
-    state.cancelled = std::make_shared<std::atomic<int>>();
-    state.parent = Context::current().get(g_stateKey);
-    return {
-        Context::current().derive(g_stateKey, state),
-        [reason, cancelled(state.cancelled)] { *cancelled = reason; },
-    };
-}
-/// If the current context is within a cancelled task, returns the reason.
-/// (If the context is within multiple nested tasks, true if any are cancelled).
-/// Always zero if there is no active cancelable task.
-/// This isn't free (context lookup) - don't call it in a tight loop.
-optional<CancelMonitor> getCancelledMonitor(lsRequestId const& id, Context const& ctx = Context::current())
-{
-    for (CancelState const* state = ctx.get(g_stateKey); state != nullptr; state = state->parent)
-    {
-        if (id != state->id)
-        {
-            continue;
-        }
-        std::shared_ptr<std::atomic<int>> const cancelled = state->cancelled;
-        std::function<int()> temp = [=] { return cancelled->load(); };
-        return std::move(temp);
-    }
-
-    return {};
-}
 } // namespace lsp
 
 using namespace lsp;

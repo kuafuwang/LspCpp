@@ -1,6 +1,7 @@
 #include "LibLsp/JsonRpc/Endpoint.h"
 #include "LibLsp/JsonRpc/TcpServer.h"
 #include "LibLsp/JsonRpc/ScopeExit.h"
+#include "LibLsp/JsonRpc/Transport.h"
 #include "LibLsp/lsp/ProtocolJsonHandler.h"
 #include "LibLsp/lsp/asio.h"
 #include "LibLsp/lsp/general/initialize.h"
@@ -432,6 +433,57 @@ void TestTcpStopWithActiveConnectionReturns()
 
     Expect(!server.point.isWorking(), "TcpServer stop with an active client must stop the RemoteEndPoint");
 }
+
+void TestTcpTransportFacadeNotify()
+{
+    lsp::NullLog log;
+    auto protocol_json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+
+    int const port = PickPort();
+    lsp::TcpServer server("127.0.0.1", std::to_string(port), protocol_json_handler, endpoint, log);
+    std::thread server_thread([&]() { server.run(); });
+    auto cleanup = lsp::make_scope_exit(
+        [&]()
+        {
+            server.stop();
+            if (server_thread.joinable())
+            {
+                server_thread.join();
+            }
+        });
+
+    asio::ip::tcp::iostream client;
+    bool const connected = ConnectWithRetry(client, port);
+    Expect(connected, "TCP transport facade test client must connect");
+    if (!connected)
+    {
+        return;
+    }
+
+    bool const server_ready = WaitForServerConnection(server.point);
+    Expect(server_ready, "TcpServer must install RemoteEndPoint streams before facade notify");
+    if (!server_ready)
+    {
+        return;
+    }
+
+    lsp::Transport transport(server.point);
+    Notify_LogMessage::notify notify;
+    notify.params.type = lsMessageType::Log;
+    notify.params.message = "transport-facade-tcp";
+    transport.notify(notify);
+
+    std::string body;
+    bool const got_frame = ReadLspFrame(client, body);
+    Expect(got_frame, "Transport facade must emit a complete LSP frame over TCP");
+    Expect(
+        body.find("\"method\":\"window/logMessage\"") != std::string::npos,
+        "Transport facade notify must serialize window/logMessage over TCP");
+    Expect(
+        body.find("transport-facade-tcp") != std::string::npos,
+        "Transport facade notify must preserve payload over TCP");
+}
 } // namespace
 
 int main(int argc, char** argv)
@@ -443,5 +495,6 @@ RUN_TEST(TestTcpWriteQueuePreservesLargeNotificationOrder);
     RUN_TEST(TestTcpSecondClientPreemptsFirstConnection);
     RUN_TEST(TestTcpDisconnectAllowsNewClient);
     RUN_TEST(TestTcpStopWithActiveConnectionReturns);
+    RUN_TEST(TestTcpTransportFacadeNotify);
     return test::Failures() == 0 ? 0 : 1;
 }

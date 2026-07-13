@@ -10,10 +10,12 @@
 #include "LibLsp/lsp/textDocument/hover.h"
 #include "LibLsp/lsp/textDocument/publishDiagnostics.h"
 #include "LibLsp/lsp/textDocument/prepareRename.h"
+#include "LibLsp/lsp/textDocument/rename.h"
 #include "LibLsp/lsp/textDocument/selectionRange.h"
 #include "LibLsp/lsp/textDocument/type_definition.h"
 #include "LibLsp/lsp/workspace/applyEdit.h"
 #include "LibLsp/lsp/protocol_3_18.h"
+#include "protocol_test_helpers.h"
 #include "test_helpers.h"
 
 #include <fstream>

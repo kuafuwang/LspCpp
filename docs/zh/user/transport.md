@@ -84,3 +84,22 @@ lsp::LanguageSession server(lsp::JSONStreamStyle::Standard);
 | **自定义流** | 自动化测试、嵌入其他进程 |
 
 生产环境的编辑器插件几乎总是选择 stdio。
+
+## 可选 Transport 门面
+
+`LibLsp/JsonRpc/Transport.h` 提供可选的薄门面，包装已有的 `RemoteEndPoint`。**它不能**替代 `LanguageSession`、`TcpServer` 或 `WebSocketServer`；网络生命周期与流连接仍由这些类型负责。
+
+当你已持有 `RemoteEndPoint&`（例如 `TcpServer` 上的 `server.point`）并需要 clangd 风格的辅助 API 时，可以使用：
+
+```cpp
+#include "LibLsp/JsonRpc/Transport.h"
+
+lsp::Transport transport(server.point);
+transport.notify(exit_notify);
+transport.reply(error_response);
+auto future = transport.call(client_request);
+transport.run(input, output);  // 或 transport.loop(...) — 与 run 相同的异步启动语义
+transport.stop();
+```
+
+`run()` 与 `loop()` 均调用 `RemoteEndPoint::startProcessingMessages()` 并立即返回，不会在关闭前阻塞。除非明确需要底层 endpoint API，stdio 服务器仍应优先使用 `LanguageSession::start()`。

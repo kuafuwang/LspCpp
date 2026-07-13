@@ -51,6 +51,7 @@ ctest -R language_session --output-on-failure
 | `lspcpp_lsp_3_18_tests` | 协议 3.18 类型 |
 | `lspcpp_tcp_write_queue_tests` | TCP 写队列 |
 | `lspcpp_websocket_write_queue_tests` | WebSocket 写队列 |
+| `lspcpp_api_compat_tests` | 可选取消、错误、Transport、请求上下文与 binder 兼容性 |
 | `lspcpp_perf_smoke_tests` | 可选性能冒烟（默认关闭） |
 
 共享辅助（`FeedableIStream`、`StringOStream`、`MakeLspFrame`）在 `tests/test_helpers.h`。
@@ -97,7 +98,7 @@ cmake --build _build_consumer
 
 | 工作流 | 用途 |
 |--------|------|
-| `build-lsp-linux.yaml` | 使用 vcpkg preset 的 Linux 构建 |
+| `build-lsp-linux.yaml` | 使用 vcpkg preset 的 Linux 构建（C++17 含/不含 GC 矩阵，以及非 GC/非 WebSocket C++14 leg） |
 | `build-lsp-windows.yaml` | Windows 构建 |
 | `pull-req-precheck.yaml` | PR 验证 |
 | `check-format-cpp.yaml` | clang-format 合规 |
@@ -110,6 +111,16 @@ export LSPCPP_CI_VCPKG_FEATURES=tests
 cmake --preset ci/default
 cmake --build --preset ci/default -j
 ctest --preset ci/default
+```
+
+C++14 兼容性验证（与 Linux 非 GC/非 WebSocket CI leg 一致）：
+
+```shell
+export VCPKG_ROOT=/path/to/vcpkg
+export LSPCPP_CI_VCPKG_FEATURES=tests
+cmake --preset ci/cpp14
+cmake --build --preset ci/cpp14 -j
+ctest --preset ci/cpp14 -R lspcpp --output-on-failure
 ```
 
 ## Sanitizer 构建

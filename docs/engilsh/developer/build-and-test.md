@@ -51,6 +51,7 @@ Tests are standalone executables in `tests/`, not a separate framework binary. E
 | `lspcpp_lsp_3_18_tests` | Protocol 3.18 types |
 | `lspcpp_tcp_write_queue_tests` | TCP write queue |
 | `lspcpp_websocket_write_queue_tests` | WebSocket write queue |
+| `lspcpp_api_compat_tests` | Opt-in cancellation, error, Transport, request context, and binder compatibility |
 | `lspcpp_perf_smoke_tests` | Optional perf smoke (off by default) |
 
 Shared helpers (`FeedableIStream`, `StringOStream`, `MakeLspFrame`) live in `tests/test_helpers.h`.
@@ -97,7 +98,7 @@ GitHub Actions workflows under `.github/workflows/`:
 
 | Workflow | Purpose |
 |----------|---------|
-| `build-lsp-linux.yaml` | Linux build with vcpkg preset |
+| `build-lsp-linux.yaml` | Linux build with vcpkg preset (C++17 matrix with/without GC, plus non-GC/non-WebSocket C++14 leg) |
 | `build-lsp-windows.yaml` | Windows build |
 | `pull-req-precheck.yaml` | PR validation |
 | `check-format-cpp.yaml` | clang-format compliance |
@@ -110,6 +111,16 @@ export LSPCPP_CI_VCPKG_FEATURES=tests
 cmake --preset ci/default
 cmake --build --preset ci/default -j
 ctest --preset ci/default
+```
+
+C++14 compatibility verification (matches the non-GC/non-WebSocket Linux CI leg):
+
+```shell
+export VCPKG_ROOT=/path/to/vcpkg
+export LSPCPP_CI_VCPKG_FEATURES=tests
+cmake --preset ci/cpp14
+cmake --build --preset ci/cpp14 -j
+ctest --preset ci/cpp14 -R lspcpp --output-on-failure
 ```
 
 ## Sanitizer builds

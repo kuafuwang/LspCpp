@@ -479,6 +479,7 @@ set(JSONRPC_LIST
         src/jsonrpc/message.cpp
         src/jsonrpc/MessageJsonHandler.cpp
         src/jsonrpc/RemoteEndPoint.cpp
+        src/jsonrpc/RequestCancellation.cpp
         src/jsonrpc/Process.cpp
         src/jsonrpc/serializer.cpp
         src/jsonrpc/StreamMessageProducer.cpp
@@ -498,6 +499,7 @@ set(LSPCPP_LIST
         src/lsp/uri.cpp
         src/lsp/path_mapping.cpp
         src/lsp/offset_encoding.cpp
+        src/lsp/request_context.cpp
         )
 
 if(LSPCPP_BUILD_WEBSOCKETS)
@@ -634,6 +636,7 @@ if(LSPCPP_BUILD_TESTS)
     lspcpp_add_test_executable(lspcpp_protocol_json_handler_tests protocol_json_handler_tests.cpp)
     lspcpp_add_test_executable(lspcpp_clangd_fixture_tests clangd_fixture_tests.cpp)
     lspcpp_add_test_executable(lspcpp_uri_path_mapping_tests uri_path_mapping_tests.cpp)
+    lspcpp_add_test_executable(lspcpp_api_compat_tests api_compat_tests.cpp)
     lspcpp_add_test_executable(lspcpp_language_session_tests language_session_tests.cpp)
     lspcpp_add_test_executable(lspcpp_lsp_3_18_tests lsp_3_18_tests.cpp)
     lspcpp_add_test_executable(lspcpp_lsp_3_16_17_tests lsp_3_16_17_tests.cpp)
@@ -687,6 +690,8 @@ if(LSPCPP_BUILD_TESTS)
             COMMAND $<TARGET_FILE:lspcpp_clangd_fixture_tests>)
     add_test(NAME lspcpp.uri_path_mapping
             COMMAND $<TARGET_FILE:lspcpp_uri_path_mapping_tests>)
+    add_test(NAME lspcpp.api_compat
+            COMMAND $<TARGET_FILE:lspcpp_api_compat_tests>)
     add_test(NAME lspcpp.language_session
             COMMAND $<TARGET_FILE:lspcpp_language_session_tests>)
     add_test(NAME lspcpp.lsp_3_18
@@ -784,8 +789,10 @@ if(LSPCPP_BUILD_EXAMPLES)
             StdIOClientExample
             StdIOServerExample
             TcpServerExample
-            WebsocketExample
             )
+    if(LSPCPP_BUILD_WEBSOCKETS)
+        list(APPEND EXAMPLES WebsocketExample)
+    endif()
 
     foreach (example ${EXAMPLES})
         build_example(${example})
@@ -810,15 +817,17 @@ if(LSPCPP_BUILD_EXAMPLES)
                 DEPENDS lspcpp.process_client_example_build
                 TIMEOUT 30)
 
-        add_test(NAME lspcpp.websocket_example_build
-                COMMAND ${CMAKE_COMMAND} --build "${CMAKE_BINARY_DIR}" --target WebsocketExample)
-        set_tests_properties(lspcpp.websocket_example_build PROPERTIES TIMEOUT 60)
+        if(LSPCPP_BUILD_WEBSOCKETS)
+            add_test(NAME lspcpp.websocket_example_build
+                    COMMAND ${CMAKE_COMMAND} --build "${CMAKE_BINARY_DIR}" --target WebsocketExample)
+            set_tests_properties(lspcpp.websocket_example_build PROPERTIES TIMEOUT 60)
 
-        add_test(NAME lspcpp.websocket_example
-                COMMAND $<TARGET_FILE:WebsocketExample>)
-        set_tests_properties(lspcpp.websocket_example PROPERTIES
-                DEPENDS lspcpp.websocket_example_build
-                TIMEOUT 30)
+            add_test(NAME lspcpp.websocket_example
+                    COMMAND $<TARGET_FILE:WebsocketExample>)
+            set_tests_properties(lspcpp.websocket_example PROPERTIES
+                    DEPENDS lspcpp.websocket_example_build
+                    TIMEOUT 30)
+        endif()
     endif()
 endif()
 

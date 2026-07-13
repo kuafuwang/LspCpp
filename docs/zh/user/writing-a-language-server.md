@@ -223,6 +223,56 @@ lsp::LanguageSession server(log);
 
 生产环境若不需要 stderr 输出，使用 `NullLog`（默认）。
 
+## 可选 clangd 风格辅助 API（按需启用）
+
+以下头文件均为增量添加；现有 `LanguageSession`、`RemoteEndPoint`、`WorkingFiles` 与 `ProtocolJsonHandler` 的默认行为不变。
+
+### 请求取消（`LibLsp/JsonRpc/RequestCancellation.h`）
+
+为长时间运行的任务安装可取消作用域，并从当前 `Context` 轮询取消状态：
+
+```cpp
+#include "LibLsp/JsonRpc/RequestCancellation.h"
+
+server.on([](td_definition::request const& req) -> lsp::ResponseOrError<td_definition::response> {
+    if (auto monitor = lsp::getCancelledMonitor(req.id)) {
+        if (lsp::isCancellationRequested(*monitor)) {
+            throw lsp::makeRequestCancelledError();
+        }
+    }
+    // ...
+});
+```
+
+`LibLsp/lsp/BindLspHandler.h` 中的 `BindLspHandlerWithMonitor` 与 `BindLspAsyncHandlerWithMonitor` 会直接传入 `CancelMonitor`。异步 binder 保留 handler 的精确 `lsp::future<T>` 返回类型，包括 `lsp::future<lsp::ResponseOrError<T>>`。
+
+### 错误辅助（`LibLsp/JsonRpc/Error.h`）
+
+用于 `RequestCancelled (-32800)`、`ContentModified (-32801)` 等 LSP 专用错误码：
+
+```cpp
+#include "LibLsp/JsonRpc/Error.h"
+
+throw lsp::makeRequestCancelledError();
+throw lsp::makeContentModifiedError("buffer changed");
+return lsp::makeRequestCancelledResponse(req.id);
+```
+
+**参数格式错误**仍应使用 `RequestError(lsErrorCodes::InvalidParams, ...)`。取消与内容变更辅助函数不能替代 `InvalidParams` 处理。
+
+### 请求上下文（`LibLsp/lsp/request_context.h`）
+
+为 handler 代码提供可选的环境 offset 编码与路径映射：
+
+```cpp
+#include "LibLsp/lsp/request_context.h"
+
+lsp::WithContext scope(lsp::withOffsetEncodingContext(lsp::OffsetEncoding::Utf8));
+int offset = lsp::GetOffsetForPositionInContext(position, buffer);
+```
+
+未安装上下文时，默认仍为 UTF-16。
+
 ## 自定义请求解析
 
 当需要对某方法做非标准参数处理时，可覆盖内置 JSON 解析器。解析器必须返回与该 method 的 handler 接受的相同具体请求类型：

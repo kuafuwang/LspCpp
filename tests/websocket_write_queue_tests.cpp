@@ -1,5 +1,6 @@
 #include "LibLsp/JsonRpc/Endpoint.h"
 #include "LibLsp/JsonRpc/ScopeExit.h"
+#include "LibLsp/JsonRpc/Transport.h"
 #include "LibLsp/JsonRpc/WebSocketServer.h"
 #include "LibLsp/lsp/ProtocolJsonHandler.h"
 #include "LibLsp/lsp/general/initialize.h"
@@ -606,6 +607,87 @@ void TestWebSocketStopWithActiveConnectionReturns()
 
     Expect(!server.point.isWorking(), "WebSocketServer stop with an active client must stop the RemoteEndPoint");
 }
+
+void TestWebSocketTransportFacadeNotify()
+{
+    ix::initNetSystem();
+    lsp::NullLog log;
+    auto protocol_json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+
+    int const port = PickPort();
+    lsp::WebSocketServer server(
+        "lspcpp-websocket-transport-facade-test",
+        "127.0.0.1",
+        std::to_string(port),
+        protocol_json_handler,
+        endpoint,
+        log);
+    RegisterInitializeHandler(server);
+    std::thread server_thread(
+        [&]()
+        {
+            server.run();
+        });
+    auto cleanup = lsp::make_scope_exit(
+        [&]()
+        {
+            server.stop();
+            if (server_thread.joinable())
+            {
+                server_thread.join();
+            }
+        });
+
+    WebSocketTestClient client(port);
+    bool const connected = client.connect();
+    Expect(connected, "WebSocket transport facade test client must connect");
+    if (!connected)
+    {
+        return;
+    }
+
+    bool const server_ready = WaitForServerConnection(server.point);
+    Expect(server_ready, "WebSocketServer must install RemoteEndPoint streams before facade notify");
+    if (!server_ready)
+    {
+        return;
+    }
+
+    std::string initialize_body;
+    bool const got_initialize = SendInitializeAndReadResponse(client, 4404, initialize_body);
+    Expect(got_initialize, "WebSocket transport facade test must establish bidirectional LSP traffic first");
+    if (!got_initialize)
+    {
+        return;
+    }
+    Expect(
+        initialize_body.find("\"id\":4404") != std::string::npos,
+        "WebSocket transport facade initialize response must preserve request id");
+
+    lsp::Transport transport(server.point);
+    Notify_LogMessage::notify notify;
+    notify.params.type = lsMessageType::Log;
+    notify.params.message = "transport-facade-websocket";
+    transport.notify(notify);
+
+    bool const got_message = client.waitForMessageCount(1);
+    Expect(got_message, "Transport facade must emit a complete LSP frame over WebSocket");
+    if (!got_message)
+    {
+        return;
+    }
+
+    std::string body;
+    bool const got_frame = ExtractLspBody(client.popMessage(), body);
+    Expect(got_frame, "Transport facade must preserve WebSocket framing");
+    Expect(
+        body.find("\"method\":\"window/logMessage\"") != std::string::npos,
+        "Transport facade notify must serialize window/logMessage over WebSocket");
+    Expect(
+        body.find("transport-facade-websocket") != std::string::npos,
+        "Transport facade notify must preserve payload over WebSocket");
+}
 } // namespace
 
 int main(int argc, char** argv)
@@ -617,5 +699,6 @@ RUN_TEST(TestWebSocketWriteQueuePreservesLargeNotificationOrder);
     RUN_TEST(TestWebSocketSecondClientPreemptsFirstConnection);
     RUN_TEST(TestWebSocketDisconnectAllowsNewClient);
     RUN_TEST(TestWebSocketStopWithActiveConnectionReturns);
+    RUN_TEST(TestWebSocketTransportFacadeNotify);
     return test::Failures() == 0 ? 0 : 1;
 }

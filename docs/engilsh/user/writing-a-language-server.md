@@ -223,6 +223,56 @@ lsp::LanguageSession server(log);
 
 Use `NullLog` (the default) in production if you do not need stderr output.
 
+## Optional clangd-style helpers (opt-in)
+
+These headers are additive; existing `LanguageSession`, `RemoteEndPoint`, `WorkingFiles`, and `ProtocolJsonHandler` defaults are unchanged.
+
+### Request cancellation (`LibLsp/JsonRpc/RequestCancellation.h`)
+
+Install a cancelable task scope around long-running work and poll cancellation from ambient `Context`:
+
+```cpp
+#include "LibLsp/JsonRpc/RequestCancellation.h"
+
+server.on([](td_definition::request const& req) -> lsp::ResponseOrError<td_definition::response> {
+    if (auto monitor = lsp::getCancelledMonitor(req.id)) {
+        if (lsp::isCancellationRequested(*monitor)) {
+            throw lsp::makeRequestCancelledError();
+        }
+    }
+    // ...
+});
+```
+
+`BindLspHandlerWithMonitor` and `BindLspAsyncHandlerWithMonitor` in `LibLsp/lsp/BindLspHandler.h` pass a `CancelMonitor` directly. Async binders preserve the handler's exact `lsp::future<T>` return type, including `lsp::future<lsp::ResponseOrError<T>>`.
+
+### Error helpers (`LibLsp/JsonRpc/Error.h`)
+
+Helpers for LSP-specific error codes such as `RequestCancelled (-32800)` and `ContentModified (-32801)`:
+
+```cpp
+#include "LibLsp/JsonRpc/Error.h"
+
+throw lsp::makeRequestCancelledError();
+throw lsp::makeContentModifiedError("buffer changed");
+return lsp::makeRequestCancelledResponse(req.id);
+```
+
+**Malformed parameters** must still use `RequestError(lsErrorCodes::InvalidParams, ...)`. Cancellation and content-modified helpers do not replace `InvalidParams` handling.
+
+### Request context (`LibLsp/lsp/request_context.h`)
+
+Opt-in ambient offset encoding and path mapping for handler code:
+
+```cpp
+#include "LibLsp/lsp/request_context.h"
+
+lsp::WithContext scope(lsp::withOffsetEncodingContext(lsp::OffsetEncoding::Utf8));
+int offset = lsp::GetOffsetForPositionInContext(position, buffer);
+```
+
+UTF-16 remains the default when no context is installed.
+
 ## Custom request parsing
 
 Override the built-in JSON parser for a method when you need non-standard parameter handling. The parser must return the same concrete request type accepted by the handler for that method:

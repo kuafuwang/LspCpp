@@ -84,3 +84,22 @@ Both `LanguageSession` and `RemoteEndPoint` accept a `max_workers` parameter (de
 | **Custom streams** | Automated tests, embedding in another process |
 
 For production editor plugins, stdio is almost always the right choice.
+
+## Optional Transport facade
+
+`LibLsp/JsonRpc/Transport.h` provides an optional thin facade over an existing `RemoteEndPoint`. It does **not** replace `LanguageSession`, `TcpServer`, or `WebSocketServer`; those types still own network lifecycle and stream wiring.
+
+Use it when you already hold a `RemoteEndPoint&` (for example `server.point` on `TcpServer`) and want clangd-style helpers:
+
+```cpp
+#include "LibLsp/JsonRpc/Transport.h"
+
+lsp::Transport transport(server.point);
+transport.notify(exit_notify);
+transport.reply(error_response);
+auto future = transport.call(client_request);
+transport.run(input, output);  // or transport.loop(...) — same async-start semantics
+transport.stop();
+```
+
+`run()` and `loop()` both call `RemoteEndPoint::startProcessingMessages()` and return immediately; they do not block until shutdown. Prefer `LanguageSession::start()` for stdio servers unless you explicitly want the lower-level endpoint API.
