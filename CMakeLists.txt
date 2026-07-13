@@ -629,6 +629,7 @@ if(LSPCPP_BUILD_TESTS)
     lspcpp_add_test_executable(lspcpp_text_document_sync_tests text_document_sync_tests.cpp)
     lspcpp_add_test_executable(lspcpp_lsp_types_tests lsp_types_roundtrip_tests.cpp)
     lspcpp_add_test_executable(lspcpp_protocol_json_handler_tests protocol_json_handler_tests.cpp)
+    lspcpp_add_test_executable(lspcpp_clangd_fixture_tests clangd_fixture_tests.cpp)
     lspcpp_add_test_executable(lspcpp_language_session_tests language_session_tests.cpp)
     lspcpp_add_test_executable(lspcpp_lsp_3_18_tests lsp_3_18_tests.cpp)
     lspcpp_add_test_executable(lspcpp_lsp_3_16_17_tests lsp_3_16_17_tests.cpp)
@@ -678,6 +679,8 @@ if(LSPCPP_BUILD_TESTS)
             COMMAND $<TARGET_FILE:lspcpp_lsp_types_tests>)
     add_test(NAME lspcpp.protocol_json_handler
             COMMAND $<TARGET_FILE:lspcpp_protocol_json_handler_tests>)
+    add_test(NAME lspcpp.clangd_fixture
+            COMMAND $<TARGET_FILE:lspcpp_clangd_fixture_tests>)
     add_test(NAME lspcpp.language_session
             COMMAND $<TARGET_FILE:lspcpp_language_session_tests>)
     add_test(NAME lspcpp.lsp_3_18

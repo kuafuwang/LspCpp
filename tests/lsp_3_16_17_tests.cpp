@@ -365,13 +365,14 @@ void TestCapabilitiesSerialize316317Fields()
 }
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
-    TestProtocolJsonHandlerRegisters316317Requests();
-    TestProtocolJsonHandlerParses316317Responses();
-    Test316ModelsSerializeExpectedFields();
-    Test317ModelsSerializeExpectedFields();
-    TestCapabilitiesSerialize316317Fields();
+    test::InitTestFilter(argc, argv);
+RUN_TEST(TestProtocolJsonHandlerRegisters316317Requests);
+    RUN_TEST(TestProtocolJsonHandlerParses316317Responses);
+    RUN_TEST(Test316ModelsSerializeExpectedFields);
+    RUN_TEST(Test317ModelsSerializeExpectedFields);
+    RUN_TEST(TestCapabilitiesSerialize316317Fields);
 
     return test::Failures() == 0 ? 0 : 1;
 }

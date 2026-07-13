@@ -608,13 +608,14 @@ void TestWebSocketStopWithActiveConnectionReturns()
 }
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
-    TestWebSocketWriteQueuePreservesLargeNotificationOrder();
-    TestWebSocketWriteQueuePreservesConcurrentLargeNotifications();
-    TestWebSocketInboundRequestReceivesResponse();
-    TestWebSocketSecondClientPreemptsFirstConnection();
-    TestWebSocketDisconnectAllowsNewClient();
-    TestWebSocketStopWithActiveConnectionReturns();
+    test::InitTestFilter(argc, argv);
+RUN_TEST(TestWebSocketWriteQueuePreservesLargeNotificationOrder);
+    RUN_TEST(TestWebSocketWriteQueuePreservesConcurrentLargeNotifications);
+    RUN_TEST(TestWebSocketInboundRequestReceivesResponse);
+    RUN_TEST(TestWebSocketSecondClientPreemptsFirstConnection);
+    RUN_TEST(TestWebSocketDisconnectAllowsNewClient);
+    RUN_TEST(TestWebSocketStopWithActiveConnectionReturns);
     return test::Failures() == 0 ? 0 : 1;
 }

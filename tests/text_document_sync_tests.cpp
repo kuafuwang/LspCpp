@@ -635,24 +635,25 @@ void TestDidOpenChangeCloseThroughEndpoint()
 
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
-    TestFullContentUpdates();
-    TestIncrementalRemovals();
-    TestIncrementalMultiLineRemovals();
-    TestIncrementalAdditions();
-    TestSingleLineReplacements();
-    TestMultiLineReplacements();
-    TestHugeMultiLineInsertion();
-    TestSeveralIncrementalChangesInOneNotification();
-    TestAppendDeleteAndCharacterReplace();
-    TestEditStyleInsertReplaceAndMultiline();
-    TestInvalidRangesClamp();
-    TestDidOpenChangeCloseThroughEndpoint();
-    TestSeveralFullContentUpdatesThroughEndpoint();
-    TestIncrementalRemovalThroughEndpoint();
-    TestIncrementalAdditionThroughEndpoint();
-    TestIncrementalReplacementThroughEndpoint();
-    TestSeveralIncrementalChangesThroughEndpoint();
+    test::InitTestFilter(argc, argv);
+RUN_TEST(TestFullContentUpdates);
+    RUN_TEST(TestIncrementalRemovals);
+    RUN_TEST(TestIncrementalMultiLineRemovals);
+    RUN_TEST(TestIncrementalAdditions);
+    RUN_TEST(TestSingleLineReplacements);
+    RUN_TEST(TestMultiLineReplacements);
+    RUN_TEST(TestHugeMultiLineInsertion);
+    RUN_TEST(TestSeveralIncrementalChangesInOneNotification);
+    RUN_TEST(TestAppendDeleteAndCharacterReplace);
+    RUN_TEST(TestEditStyleInsertReplaceAndMultiline);
+    RUN_TEST(TestInvalidRangesClamp);
+    RUN_TEST(TestDidOpenChangeCloseThroughEndpoint);
+    RUN_TEST(TestSeveralFullContentUpdatesThroughEndpoint);
+    RUN_TEST(TestIncrementalRemovalThroughEndpoint);
+    RUN_TEST(TestIncrementalAdditionThroughEndpoint);
+    RUN_TEST(TestIncrementalReplacementThroughEndpoint);
+    RUN_TEST(TestSeveralIncrementalChangesThroughEndpoint);
     return test::Failures() == 0 ? 0 : 1;
 }

@@ -370,14 +370,15 @@ void PerfWorkingFilesOffsetLookupComparison()
 }
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
-    PerfStreamSmallFrames();
-    PerfStreamLargeBodies();
-    PerfRemoteEndpointDispatch();
-    PerfRemoteEndpointLargeJsonNotifications();
-    PerfWorkingFilesRangeEdits();
-    PerfWorkingFilesOffsetLookupComparison();
+    test::InitTestFilter(argc, argv);
+RUN_TEST(PerfStreamSmallFrames);
+    RUN_TEST(PerfStreamLargeBodies);
+    RUN_TEST(PerfRemoteEndpointDispatch);
+    RUN_TEST(PerfRemoteEndpointLargeJsonNotifications);
+    RUN_TEST(PerfWorkingFilesRangeEdits);
+    RUN_TEST(PerfWorkingFilesOffsetLookupComparison);
 
 #ifdef LSPCPP_PERF_WARNINGS_AS_ERRORS
     if (PerfWarnings() != 0)

@@ -1446,58 +1446,59 @@ void TestProtocolJsonHandlerParsesNoParamsMessages()
 
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
-    TestPositionRangeLocationAndTextEditRoundTrip();
-    TestWorkspaceEditAndDiagnosticRoundTrip();
-    TestCompletionHoverAndInitializeRoundTrip();
-    TestTextDocumentSyncUnionRoundTrip();
-    TestDocumentUriEscapingRoundTrip();
-    TestDocumentUriFromPathAndSimpleFileUri();
-    TestDocumentUriReservedCharacterEscaping();
-    TestDocumentUriPercentAndUtf8Escaping();
-    TestDocumentUriFileLocalhostAndInvalidPercentDecoding();
-    TestDocumentUriRelativePathAndQueryFragmentGuards();
-    TestAbsolutePathFromNormalized();
-    TestDirectoryEnsuresTrailingSlash();
-    TestAbsolutePathJsonRoundTrip();
-    TestAbsolutePathValidationNormalizesRelativePaths();
-    TestAbsolutePathQualifyConsistency();
-    TestAbsolutePathOperatorsAndConversion();
-    TestNormalizePathAllowsMissingPathsWithoutStatState();
-    TestAbsolutePathValidatePreservesAbsoluteInput();
+    test::InitTestFilter(argc, argv);
+    RUN_TEST(TestPositionRangeLocationAndTextEditRoundTrip);
+    RUN_TEST(TestWorkspaceEditAndDiagnosticRoundTrip);
+    RUN_TEST(TestCompletionHoverAndInitializeRoundTrip);
+    RUN_TEST(TestTextDocumentSyncUnionRoundTrip);
+    RUN_TEST(TestDocumentUriEscapingRoundTrip);
+    RUN_TEST(TestDocumentUriFromPathAndSimpleFileUri);
+    RUN_TEST(TestDocumentUriReservedCharacterEscaping);
+    RUN_TEST(TestDocumentUriPercentAndUtf8Escaping);
+    RUN_TEST(TestDocumentUriFileLocalhostAndInvalidPercentDecoding);
+    RUN_TEST(TestDocumentUriRelativePathAndQueryFragmentGuards);
+    RUN_TEST(TestAbsolutePathFromNormalized);
+    RUN_TEST(TestDirectoryEnsuresTrailingSlash);
+    RUN_TEST(TestAbsolutePathJsonRoundTrip);
+    RUN_TEST(TestAbsolutePathValidationNormalizesRelativePaths);
+    RUN_TEST(TestAbsolutePathQualifyConsistency);
+    RUN_TEST(TestAbsolutePathOperatorsAndConversion);
+    RUN_TEST(TestNormalizePathAllowsMissingPathsWithoutStatState);
+    RUN_TEST(TestAbsolutePathValidatePreservesAbsoluteInput);
 #ifndef _WIN32
-    TestNormalizePathCollapsesAbsoluteComponents();
-    TestNormalizePathEnsureExists();
-    TestDocumentUriDotDotNormalization();
+    RUN_TEST(TestNormalizePathCollapsesAbsoluteComponents);
+    RUN_TEST(TestNormalizePathEnsureExists);
+    RUN_TEST(TestDocumentUriDotDotNormalization);
 #endif
-    TestAbsolutePathRecognitionGuards();
+    RUN_TEST(TestAbsolutePathRecognitionGuards);
 #if defined(_WIN32)
-    TestDocumentUriWindowsDriveLetterEscaping();
-    TestNormalizePathWindowsDriveLetterAndForceLower();
-    TestNormalizePathWindowsEnsureExistsAndMaxPathGuard();
-    TestDocumentUriDotDotNormalizationWindows();
+    RUN_TEST(TestDocumentUriWindowsDriveLetterEscaping);
+    RUN_TEST(TestNormalizePathWindowsDriveLetterAndForceLower);
+    RUN_TEST(TestNormalizePathWindowsEnsureExistsAndMaxPathGuard);
+    RUN_TEST(TestDocumentUriDotDotNormalizationWindows);
 #endif
-    TestDocumentUriGetAbsolutePathInvalidPaths();
-    TestDocumentUriUncAuthorityRoundTrip();
+    RUN_TEST(TestDocumentUriGetAbsolutePathInvalidPaths);
+    RUN_TEST(TestDocumentUriUncAuthorityRoundTrip);
 #ifndef _WIN32
-    TestNormalizePathForceLowerIgnoredOnUnix();
+    RUN_TEST(TestNormalizePathForceLowerIgnoredOnUnix);
 #endif
-    TestDocumentUriDefaultCopyEqualityAndSwap();
-    TestDocumentUriNonFileSchemePassthrough();
-    TestDocumentUriJsonDeserialization();
-    TestOptionalFieldsAreOmittedWhenUnsetAndReadFromNull();
-    TestLocationListEitherRoundTrip();
-    TestCompletionResponseArrayVsList();
-    TestCodeActionEitherVariants();
-    TestWorkspaceEditDocumentChanges();
-    TestHoverContentsAllRepresentations();
-    TestTypeGuardInspiredMalformedInputs();
-    TestProgressTokenParamsRoundTrip();
-    TestDocumentSymbolEitherVariants();
-    TestProtocolJsonHandlerParsesPolymorphicResponseEnvelopes();
-    TestProtocolJsonHandlerParsesErrorResponses();
-    TestProtocolJsonHandlerRegistersCoreRequestsAndNotifications();
-    TestProtocolJsonHandlerParsesNoParamsMessages();
+    RUN_TEST(TestDocumentUriDefaultCopyEqualityAndSwap);
+    RUN_TEST(TestDocumentUriNonFileSchemePassthrough);
+    RUN_TEST(TestDocumentUriJsonDeserialization);
+    RUN_TEST(TestOptionalFieldsAreOmittedWhenUnsetAndReadFromNull);
+    RUN_TEST(TestLocationListEitherRoundTrip);
+    RUN_TEST(TestCompletionResponseArrayVsList);
+    RUN_TEST(TestCodeActionEitherVariants);
+    RUN_TEST(TestWorkspaceEditDocumentChanges);
+    RUN_TEST(TestHoverContentsAllRepresentations);
+    RUN_TEST(TestTypeGuardInspiredMalformedInputs);
+    RUN_TEST(TestProgressTokenParamsRoundTrip);
+    RUN_TEST(TestDocumentSymbolEitherVariants);
+    RUN_TEST(TestProtocolJsonHandlerParsesPolymorphicResponseEnvelopes);
+    RUN_TEST(TestProtocolJsonHandlerParsesErrorResponses);
+    RUN_TEST(TestProtocolJsonHandlerRegistersCoreRequestsAndNotifications);
+    RUN_TEST(TestProtocolJsonHandlerParsesNoParamsMessages);
     return test::Failures() == 0 ? 0 : 1;
 }

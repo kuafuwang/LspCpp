@@ -1250,56 +1250,57 @@ void TestMiscStringUtilities()
 }
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
-    TestEnqueueAndDequeueBasic();
-    TestTryDequeueOnEmptyReturnsNullopt();
-    TestEnqueueAllAndTryDequeueSome();
-    TestDequeueAllReturnsEverything();
-    TestPriorityQueueOrdering();
-    TestTryDequeuePreferenceAndPriorityBoundary();
-    TestBlockingDequeueWaitsForProducer();
-    TestMultiQueueWaiterWakesOnEnqueue();
-    TestMultiQueueWaiterInterruptReturnsTrue();
-    TestMultiQueueWaiterWakesOnSecondQueue();
-    TestThreadedQueueIterateVisitsPriorityThenNormalItems();
-    TestMultiQueueWaiterWaitUntilTimesOutWhenQueuesEmpty();
-    TestMultiQueueWaiterWaitUntilReturnsImmediatelyWhenQueueHasState();
-    TestContextDeriveAndGet();
-    TestWithContextRestoresOnDestruction();
-    TestScopeExitRunsOnDestruction();
-    TestScopeExitReleasePreventsExecution();
-    TestToStringIntId();
-    TestToStringStringId();
-    TestToStringNoneId();
-    TestPublicLogAndStreamHelpers();
-    TestStandardIStreamInterruptStopsFurtherReads();
-    TestStandardIStreamReadSomeBulkReadsMultipleBytes();
-    TestStdinStreamInterruptStopsReads();
+    test::InitTestFilter(argc, argv);
+RUN_TEST(TestEnqueueAndDequeueBasic);
+    RUN_TEST(TestTryDequeueOnEmptyReturnsNullopt);
+    RUN_TEST(TestEnqueueAllAndTryDequeueSome);
+    RUN_TEST(TestDequeueAllReturnsEverything);
+    RUN_TEST(TestPriorityQueueOrdering);
+    RUN_TEST(TestTryDequeuePreferenceAndPriorityBoundary);
+    RUN_TEST(TestBlockingDequeueWaitsForProducer);
+    RUN_TEST(TestMultiQueueWaiterWakesOnEnqueue);
+    RUN_TEST(TestMultiQueueWaiterInterruptReturnsTrue);
+    RUN_TEST(TestMultiQueueWaiterWakesOnSecondQueue);
+    RUN_TEST(TestThreadedQueueIterateVisitsPriorityThenNormalItems);
+    RUN_TEST(TestMultiQueueWaiterWaitUntilTimesOutWhenQueuesEmpty);
+    RUN_TEST(TestMultiQueueWaiterWaitUntilReturnsImmediatelyWhenQueueHasState);
+    RUN_TEST(TestContextDeriveAndGet);
+    RUN_TEST(TestWithContextRestoresOnDestruction);
+    RUN_TEST(TestScopeExitRunsOnDestruction);
+    RUN_TEST(TestScopeExitReleasePreventsExecution);
+    RUN_TEST(TestToStringIntId);
+    RUN_TEST(TestToStringStringId);
+    RUN_TEST(TestToStringNoneId);
+    RUN_TEST(TestPublicLogAndStreamHelpers);
+    RUN_TEST(TestStandardIStreamInterruptStopsFurtherReads);
+    RUN_TEST(TestStandardIStreamReadSomeBulkReadsMultipleBytes);
+    RUN_TEST(TestStdinStreamInterruptStopsReads);
 #ifndef _WIN32
-    TestStdinIStreamReadsAvailableBytes();
-    TestStdinIStreamGetAndReadConsumePipeData();
-    TestStdinIStreamBufferedSmallReadsPreserveOrder();
-    TestStdinIStreamMixedBufferedAndBulkReads();
-    TestStdinIStreamStressMixedReads();
-    TestStdinIStreamPseudoRandomLengthStress();
-    TestStdinIStreamEofOnClosedPipe();
-    TestStdinIStreamRejectsInvalidFileDescriptor();
-    TestStdinIStreamInterruptWhileBlockedInSelect();
-    TestStdinIStreamInterruptClearAndResume();
-    TestStdinIStreamRepeatedInterruptWhileBlocked();
+    RUN_TEST(TestStdinIStreamReadsAvailableBytes);
+    RUN_TEST(TestStdinIStreamGetAndReadConsumePipeData);
+    RUN_TEST(TestStdinIStreamBufferedSmallReadsPreserveOrder);
+    RUN_TEST(TestStdinIStreamMixedBufferedAndBulkReads);
+    RUN_TEST(TestStdinIStreamStressMixedReads);
+    RUN_TEST(TestStdinIStreamPseudoRandomLengthStress);
+    RUN_TEST(TestStdinIStreamEofOnClosedPipe);
+    RUN_TEST(TestStdinIStreamRejectsInvalidFileDescriptor);
+    RUN_TEST(TestStdinIStreamInterruptWhileBlockedInSelect);
+    RUN_TEST(TestStdinIStreamInterruptClearAndResume);
+    RUN_TEST(TestStdinIStreamRepeatedInterruptWhileBlocked);
 #endif
-    TestStderrLogWritesMessages();
-    TestLanguageSessionFacadeKeepsEndpointAccessible();
-    TestWorkingFilesRangeChangeUsesCachedLineOffsets();
-    TestWorkingFilesMaintainsLineOffsetIndex();
-    TestAsciiPositionOffsetRoundTrip();
-    TestStringAndPathUtilities();
-    TestUtf8PositionOffsetUtilities();
-    TestDirectGetOffsetForPositionCrlfAndBounds();
-    TestFileIoUtilities();
-    TestWideStringConversionUtilities();
-    TestMiscStringUtilities();
+    RUN_TEST(TestStderrLogWritesMessages);
+    RUN_TEST(TestLanguageSessionFacadeKeepsEndpointAccessible);
+    RUN_TEST(TestWorkingFilesRangeChangeUsesCachedLineOffsets);
+    RUN_TEST(TestWorkingFilesMaintainsLineOffsetIndex);
+    RUN_TEST(TestAsciiPositionOffsetRoundTrip);
+    RUN_TEST(TestStringAndPathUtilities);
+    RUN_TEST(TestUtf8PositionOffsetUtilities);
+    RUN_TEST(TestDirectGetOffsetForPositionCrlfAndBounds);
+    RUN_TEST(TestFileIoUtilities);
+    RUN_TEST(TestWideStringConversionUtilities);
+    RUN_TEST(TestMiscStringUtilities);
 
     return test::Failures() == 0 ? 0 : 1;
 }

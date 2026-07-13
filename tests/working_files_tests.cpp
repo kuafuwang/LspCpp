@@ -493,29 +493,30 @@ void TestConcurrentReadSnapshotsDuringChanges()
 
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
-    TestOffsetBoundariesAndLineEndings();
-    TestUtf8OffsetsUseCodePointCounting();
-    TestMultipleEditsRebuildLineOffsetsSequentially();
-    TestFullReplaceAndDocumentBoundaryEdits();
-    TestLifecycleOpenCloseClearAndDirectories();
-    TestCloseFilesInDirectoryTrailingSlashMatching();
-    TestOnSaveWritesCurrentContent();
-    TestNonFileUrisDoNotEnterWorkingFiles();
-    TestWorkingFilesRangedEditUtf16SurrogatePairs();
-    TestWorkingFilesUriAliasFindsSameFile();
+    test::InitTestFilter(argc, argv);
+RUN_TEST(TestOffsetBoundariesAndLineEndings);
+    RUN_TEST(TestUtf8OffsetsUseCodePointCounting);
+    RUN_TEST(TestMultipleEditsRebuildLineOffsetsSequentially);
+    RUN_TEST(TestFullReplaceAndDocumentBoundaryEdits);
+    RUN_TEST(TestLifecycleOpenCloseClearAndDirectories);
+    RUN_TEST(TestCloseFilesInDirectoryTrailingSlashMatching);
+    RUN_TEST(TestOnSaveWritesCurrentContent);
+    RUN_TEST(TestNonFileUrisDoNotEnterWorkingFiles);
+    RUN_TEST(TestWorkingFilesRangedEditUtf16SurrogatePairs);
+    RUN_TEST(TestWorkingFilesUriAliasFindsSameFile);
 #if defined(_WIN32)
-    TestWorkingFilesWindowsUriCasingUsesSameMapKey();
+    RUN_TEST(TestWorkingFilesWindowsUriCasingUsesSameMapKey);
 #else
     // TestWorkingFilesWindowsUriCasingUsesSameMapKey requires Windows path casing semantics.
 #endif
-    TestWorkingFilesChangeCloseSaveWithoutOpen();
-    TestWorkingFilesRejectsInvalidFileUris();
-    TestOnSaveWritesContentAfterChange();
-    TestCloseFilesInDirectoryMultipleRoots();
-    TestGetFileByFilenameRejectsInvalidPath();
-    TestOnChangeWithoutVersionPreservesVersion();
-    TestConcurrentReadSnapshotsDuringChanges();
+    RUN_TEST(TestWorkingFilesChangeCloseSaveWithoutOpen);
+    RUN_TEST(TestWorkingFilesRejectsInvalidFileUris);
+    RUN_TEST(TestOnSaveWritesContentAfterChange);
+    RUN_TEST(TestCloseFilesInDirectoryMultipleRoots);
+    RUN_TEST(TestGetFileByFilenameRejectsInvalidPath);
+    RUN_TEST(TestOnChangeWithoutVersionPreservesVersion);
+    RUN_TEST(TestConcurrentReadSnapshotsDuringChanges);
     return test::Failures() == 0 ? 0 : 1;
 }

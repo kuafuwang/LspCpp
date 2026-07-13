@@ -329,19 +329,20 @@ void TestJsonWriterNullRoundTrip()
 }
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
-    TestGenericEndpointDispatchesRegisteredHandlers();
-    TestGenericEndpointRejectsMissingHandlers();
-    TestMessageJsonHandlerParsesRegisteredMethods();
-    TestMessageJsonHandlerResolveResponseSkipsThrowingParsers();
-    TestPrimitiveReaderRejectsWrongTypes();
-    TestCapabilityUnionBoolRoundTrip();
-    TestCapabilityUnionObjectRoundTrip();
-    TestJsonReaderIterArrayRejectsNonArray();
-    TestJsonReaderDoMemberSkipsMissingKey();
-    TestJsonReaderHasMemberAndNull();
-    TestJsonWriterNullRoundTrip();
+    test::InitTestFilter(argc, argv);
+RUN_TEST(TestGenericEndpointDispatchesRegisteredHandlers);
+    RUN_TEST(TestGenericEndpointRejectsMissingHandlers);
+    RUN_TEST(TestMessageJsonHandlerParsesRegisteredMethods);
+    RUN_TEST(TestMessageJsonHandlerResolveResponseSkipsThrowingParsers);
+    RUN_TEST(TestPrimitiveReaderRejectsWrongTypes);
+    RUN_TEST(TestCapabilityUnionBoolRoundTrip);
+    RUN_TEST(TestCapabilityUnionObjectRoundTrip);
+    RUN_TEST(TestJsonReaderIterArrayRejectsNonArray);
+    RUN_TEST(TestJsonReaderDoMemberSkipsMissingKey);
+    RUN_TEST(TestJsonReaderHasMemberAndNull);
+    RUN_TEST(TestJsonWriterNullRoundTrip);
 
     return test::Failures() == 0 ? 0 : 1;
 }

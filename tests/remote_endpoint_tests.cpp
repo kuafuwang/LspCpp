@@ -6,6 +6,9 @@
 #include "LibLsp/lsp/general/exit.h"
 #include "LibLsp/lsp/general/initialize.h"
 #include "LibLsp/lsp/general/progress.h"
+#include "LibLsp/lsp/textDocument/completion.h"
+#include "LibLsp/lsp/textDocument/did_change.h"
+#include "LibLsp/lsp/textDocument/did_open.h"
 #include "test_helpers.h"
 
 #include <atomic>
@@ -3675,94 +3678,199 @@ void TestRegisterHandlerAfterStartIsIgnored()
     Expect(!registered, "registerHandler after start must report failure");
     Expect(output.find("Method not found") != std::string::npos, "late handler registration must leave request unhandled");
 }
+
+void TestLspSessionInitDidOpenDidChangeCompletion()
+{
+    DummyLog log;
+    auto json_handler = std::make_shared<lsp::ProtocolJsonHandler>();
+    auto endpoint = std::make_shared<GenericEndpoint>(log);
+    auto input_stream = std::make_shared<FeedableIStream>();
+    auto output_stream = std::make_shared<StringOStream>();
+
+    std::atomic<int> stage {0};
+    std::vector<std::string> notification_order;
+    std::mutex order_mutex;
+
+    RemoteEndPoint point(json_handler, endpoint, log, lsp::JSONStreamStyle::Standard, 1);
+    point.registerHandler(
+        [](td_initialize::request const& req) -> lsp::ResponseOrError<td_initialize::response>
+        {
+            td_initialize::response rsp;
+            rsp.id = req.id;
+            rsp.result.capabilities = lsServerCapabilities();
+            return rsp;
+        });
+    point.registerHandler(
+        [&](Notify_TextDocumentDidOpen::notify const&)
+        {
+            std::lock_guard<std::mutex> lock(order_mutex);
+            notification_order.push_back("didOpen");
+            stage.store(1, std::memory_order_relaxed);
+        });
+    point.registerHandler(
+        [&](Notify_TextDocumentDidChange::notify const&)
+        {
+            std::lock_guard<std::mutex> lock(order_mutex);
+            notification_order.push_back("didChange");
+            stage.store(2, std::memory_order_relaxed);
+        });
+    point.registerHandler(
+        [](td_completion::request const& req) -> lsp::ResponseOrError<td_completion::response>
+        {
+            td_completion::response rsp;
+            rsp.id = req.id;
+            rsp.result.isIncomplete = false;
+            lsCompletionItem item;
+            item.label = "fixtureItem";
+            item.kind = lsCompletionItemKind::Function;
+            item.detail = "fixture detail";
+            rsp.result.items.push_back(item);
+            return rsp;
+        });
+    point.startProcessingMessages(input_stream, output_stream);
+
+    input_stream->append(test::MakeLspFrame(test::ReadFixture("initialize_request.json")));
+    Expect(
+        !test::WaitForOutputContaining(output_stream, "\"id\":100").empty(),
+        "initialize request must receive a response");
+
+    input_stream->append(test::MakeLspFrame(test::ReadFixture("did_open_notification.json")));
+    Expect(WaitUntil([&] { return stage.load(std::memory_order_relaxed) >= 1; }), "didOpen must be handled");
+
+    input_stream->append(test::MakeLspFrame(test::ReadFixture("did_change_notification.json")));
+    Expect(WaitUntil([&] { return stage.load(std::memory_order_relaxed) >= 2; }), "didChange must be handled");
+
+    input_stream->append(test::MakeLspFrame(test::ReadFixture("completion_request.json")));
+    std::string const output = test::WaitForOutputContaining(output_stream, "\"id\":104");
+    Expect(output.find("\"id\":104") != std::string::npos, "completion request must receive a response");
+
+    std::string completion_body;
+    for (auto const& body : test::ExtractLspFrameBodies(output))
+    {
+        if (body.find("\"id\":104") != std::string::npos)
+        {
+            completion_body = body;
+        }
+    }
+    Expect(!completion_body.empty(), "completion response frame must be present");
+    test::ExpectJsonFixture(
+        completion_body,
+        "completion_list_response.json",
+        "completion response must match golden fixture");
+
+    for (auto const& body : test::ExtractLspFrameBodies(output_stream->snapshot()))
+    {
+        if (body.find("\"id\":100") != std::string::npos)
+        {
+            test::ExpectJsonFixture(
+                body,
+                "initialize_response.json",
+                "initialize response must match golden fixture");
+            break;
+        }
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(order_mutex);
+        Expect(notification_order.size() == 2, "session must observe didOpen then didChange");
+        if (notification_order.size() >= 2)
+        {
+            Expect(notification_order[0] == "didOpen", "didOpen must run before didChange");
+            Expect(notification_order[1] == "didChange", "didChange must follow didOpen");
+        }
+    }
+    point.stop();
+}
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
-    TestDuplicateRequestIdReturnsError();
-    TestWaitResponseTimeoutClearsPendingRequest();
-    TestBadOutputStreamReturnsError();
-    TestStopCompletesPendingRequestWithError();
-    TestStopCancelsRunningRequestHandlers();
-    TestStopFromNotificationHandlerDoesNotDeadlock();
-    TestAsyncFutureCompletedAfterStopIsDroppedSafely();
-    TestUnregisteredRequestReturnsMethodNotFound();
-    TestUnregisteredRequestPreservesStringIdInMethodNotFound();
-    TestRegisteredRequestDoesNotReturnMethodNotFound();
-    TestMalformedJsonDoesNotCrash();
-    TestWrongJsonRpcVersionIsRejected();
-    TestNonStringJsonRpcVersionIsRejected();
-    TestNonStringMethodIsRejected();
-    TestRequestMissingParamsDoesNotCrashEndpoint();
-    TestNullAndZeroParamsDoNotDropValidScalarValues();
-    TestWorkDoneTokenParamsPassThroughToHandler();
-    TestPositionalArrayParamsAreHandledWithoutStoppingEndpoint();
-    TestResponseWithNoMatchingRequestIsIgnored();
-    TestMessageWithIdAndMethodUsesRequestPath();
-    TestMessageWithNoMethodNoResultIsRejected();
-    TestSendRequestAndReceiveSuccessResponse();
-    TestSendRequestAndReceiveErrorResponse();
-    TestDuplicateResponseCompletesFutureOnce();
-    TestRejectedCompletionConsumesResponseAndClearsPendingRequest();
-    TestSendRequestAndReceiveSuccessResponseWithStringId();
-    TestLateResponseAfterTimeoutIsIgnored();
-    TestParsedLateResponseDoesNotCompleteReusedRequestId();
-    TestWaitResponseInsideSingleWorkerHandlerDoesNotDeadlock();
-    TestStoppedSynchronousHandlerDoesNotWriteToRestartedOutput();
-    TestStartProcessingMessagesWhileWorkingDoesNotTerminate();
-    TestResponseParseFailureCompletesFutureAndClearsPendingRequest();
-    TestCreateRequestAssignsMonotonicIds();
-    TestCancelRequestSendsCancelNotification();
-    TestPendingCancelArrivingBeforeRequestIsNotLost();
-    TestLateCancelAfterCompletedRequestDoesNotCancelReusedId();
-    TestOutOfOrderPendingCancelAppliesToReusedRequestId();
-    TestStopClearsPendingCancelRequests();
-    TestRunningRequestObservesCancellation();
-    TestSelectiveCancelAmongConcurrentInFlightRequests();
-    TestBurstRequestsAreAllDispatchedAndResponded();
-    TestMultipleWorkersProcessRequestsConcurrently();
-    TestSingleWorkerProcessesRequestsSerially();
-    TestSendRequestWritesExactContentLengthFrame();
-    TestConcurrentSendWritesCompleteFrames();
-    TestNotificationHandlerReceivesNotification();
-    TestNotificationsRunInWireOrderWithMultipleWorkers();
-    TestParallelParsedMessagesRouteInWireOrder();
-    TestConcurrentNotificationOptOutDoesNotGateRequests();
-    TestRequestWaitsForPriorNotificationWithMultipleWorkers();
-    TestProgressNotificationsDispatchThroughStandardProtocolHandler();
-    TestNotificationWaitResponseDoesNotDeadlockWithParkedRequest();
-    TestCancelRequestBypassesBlockedNotificationQueue();
-    TestFailedNotificationDoesNotBlockFollowingRequest();
-    TestStopWithParkedRequestDoesNotDeadlockAndCanRestart();
-    TestStopAndRestartFromNotificationHandlerKeepsDispatcherAlive();
-    TestThrowingNotificationHandlerDoesNotStopEndpoint();
-    TestConditionTimedWaitReturnsNotifiedValue();
-    TestConditionTimedWaitStillTimesOut();
-    TestConditionWaitZeroBlocksUntilNotify();
-    TestInternalWaitResponseSuccessTimeoutAndSendFailure();
-    TestSendWithOnErrorCallback();
-    TestDelimitedTransportPreservesOrderedDispatchAndCancelBypass();
-    TestDelimitedRemoteEndPointRoundTrip();
-    TestDispatchUnknownNotificationReturnsFalse();
-    TestDispatchResponseParseFailure();
-    TestRegisterHandlerReturnsErrorResponse();
-    TestRegisterHandlerThrowsRequestError();
-    TestRegisterHandlerThrowsStdException();
-    TestAsyncRegisterHandlerCompletesLater();
-    TestAsyncRegisterHandlerReturnsErrorResult();
-    TestAsyncRegisterHandlerWithMonitorCompletesLater();
-    TestAsyncHandlerDoesNotBlockDispatchWorker();
-    TestMultiplePendingAsyncFuturesBothComplete();
-    TestAsyncCancellationAfterHandlerReturns();
-    TestStopDoesNotWaitForUnfinishedAsyncFuture();
-    TestFutureGetSupportsMoveOnlyValue();
-    TestFrameSizeLimitStopsEndpointBeforeDispatch();
-    TestParseQueueLimitStopsEndpoint();
-    TestPendingCancelRequestsArePrunedByLimit();
-    TestRegisterHandlerAfterStartIsIgnored();
-    TestCancelRequestWhenNotWorkingOrUnknownId();
-    TestSendNotificationBeforeStartDoesNotCrash();
-    TestRemoteEndPointRestartTwice();
+    test::InitTestFilter(argc, argv);
+RUN_TEST(TestDuplicateRequestIdReturnsError);
+    RUN_TEST(TestWaitResponseTimeoutClearsPendingRequest);
+    RUN_TEST(TestBadOutputStreamReturnsError);
+    RUN_TEST(TestStopCompletesPendingRequestWithError);
+    RUN_TEST(TestStopCancelsRunningRequestHandlers);
+    RUN_TEST(TestStopFromNotificationHandlerDoesNotDeadlock);
+    RUN_TEST(TestAsyncFutureCompletedAfterStopIsDroppedSafely);
+    RUN_TEST(TestUnregisteredRequestReturnsMethodNotFound);
+    RUN_TEST(TestUnregisteredRequestPreservesStringIdInMethodNotFound);
+    RUN_TEST(TestRegisteredRequestDoesNotReturnMethodNotFound);
+    RUN_TEST(TestMalformedJsonDoesNotCrash);
+    RUN_TEST(TestWrongJsonRpcVersionIsRejected);
+    RUN_TEST(TestNonStringJsonRpcVersionIsRejected);
+    RUN_TEST(TestNonStringMethodIsRejected);
+    RUN_TEST(TestRequestMissingParamsDoesNotCrashEndpoint);
+    RUN_TEST(TestNullAndZeroParamsDoNotDropValidScalarValues);
+    RUN_TEST(TestWorkDoneTokenParamsPassThroughToHandler);
+    RUN_TEST(TestPositionalArrayParamsAreHandledWithoutStoppingEndpoint);
+    RUN_TEST(TestResponseWithNoMatchingRequestIsIgnored);
+    RUN_TEST(TestMessageWithIdAndMethodUsesRequestPath);
+    RUN_TEST(TestMessageWithNoMethodNoResultIsRejected);
+    RUN_TEST(TestSendRequestAndReceiveSuccessResponse);
+    RUN_TEST(TestSendRequestAndReceiveErrorResponse);
+    RUN_TEST(TestDuplicateResponseCompletesFutureOnce);
+    RUN_TEST(TestRejectedCompletionConsumesResponseAndClearsPendingRequest);
+    RUN_TEST(TestSendRequestAndReceiveSuccessResponseWithStringId);
+    RUN_TEST(TestLateResponseAfterTimeoutIsIgnored);
+    RUN_TEST(TestParsedLateResponseDoesNotCompleteReusedRequestId);
+    RUN_TEST(TestWaitResponseInsideSingleWorkerHandlerDoesNotDeadlock);
+    RUN_TEST(TestStoppedSynchronousHandlerDoesNotWriteToRestartedOutput);
+    RUN_TEST(TestStartProcessingMessagesWhileWorkingDoesNotTerminate);
+    RUN_TEST(TestResponseParseFailureCompletesFutureAndClearsPendingRequest);
+    RUN_TEST(TestCreateRequestAssignsMonotonicIds);
+    RUN_TEST(TestCancelRequestSendsCancelNotification);
+    RUN_TEST(TestPendingCancelArrivingBeforeRequestIsNotLost);
+    RUN_TEST(TestLateCancelAfterCompletedRequestDoesNotCancelReusedId);
+    RUN_TEST(TestOutOfOrderPendingCancelAppliesToReusedRequestId);
+    RUN_TEST(TestStopClearsPendingCancelRequests);
+    RUN_TEST(TestRunningRequestObservesCancellation);
+    RUN_TEST(TestSelectiveCancelAmongConcurrentInFlightRequests);
+    RUN_TEST(TestBurstRequestsAreAllDispatchedAndResponded);
+    RUN_TEST(TestMultipleWorkersProcessRequestsConcurrently);
+    RUN_TEST(TestSingleWorkerProcessesRequestsSerially);
+    RUN_TEST(TestSendRequestWritesExactContentLengthFrame);
+    RUN_TEST(TestConcurrentSendWritesCompleteFrames);
+    RUN_TEST(TestNotificationHandlerReceivesNotification);
+    RUN_TEST(TestNotificationsRunInWireOrderWithMultipleWorkers);
+    RUN_TEST(TestParallelParsedMessagesRouteInWireOrder);
+    RUN_TEST(TestConcurrentNotificationOptOutDoesNotGateRequests);
+    RUN_TEST(TestRequestWaitsForPriorNotificationWithMultipleWorkers);
+    RUN_TEST(TestProgressNotificationsDispatchThroughStandardProtocolHandler);
+    RUN_TEST(TestNotificationWaitResponseDoesNotDeadlockWithParkedRequest);
+    RUN_TEST(TestCancelRequestBypassesBlockedNotificationQueue);
+    RUN_TEST(TestFailedNotificationDoesNotBlockFollowingRequest);
+    RUN_TEST(TestStopWithParkedRequestDoesNotDeadlockAndCanRestart);
+    RUN_TEST(TestStopAndRestartFromNotificationHandlerKeepsDispatcherAlive);
+    RUN_TEST(TestThrowingNotificationHandlerDoesNotStopEndpoint);
+    RUN_TEST(TestConditionTimedWaitReturnsNotifiedValue);
+    RUN_TEST(TestConditionTimedWaitStillTimesOut);
+    RUN_TEST(TestConditionWaitZeroBlocksUntilNotify);
+    RUN_TEST(TestInternalWaitResponseSuccessTimeoutAndSendFailure);
+    RUN_TEST(TestSendWithOnErrorCallback);
+    RUN_TEST(TestDelimitedTransportPreservesOrderedDispatchAndCancelBypass);
+    RUN_TEST(TestDelimitedRemoteEndPointRoundTrip);
+    RUN_TEST(TestDispatchUnknownNotificationReturnsFalse);
+    RUN_TEST(TestDispatchResponseParseFailure);
+    RUN_TEST(TestRegisterHandlerReturnsErrorResponse);
+    RUN_TEST(TestRegisterHandlerThrowsRequestError);
+    RUN_TEST(TestRegisterHandlerThrowsStdException);
+    RUN_TEST(TestAsyncRegisterHandlerCompletesLater);
+    RUN_TEST(TestAsyncRegisterHandlerReturnsErrorResult);
+    RUN_TEST(TestAsyncRegisterHandlerWithMonitorCompletesLater);
+    RUN_TEST(TestAsyncHandlerDoesNotBlockDispatchWorker);
+    RUN_TEST(TestMultiplePendingAsyncFuturesBothComplete);
+    RUN_TEST(TestAsyncCancellationAfterHandlerReturns);
+    RUN_TEST(TestStopDoesNotWaitForUnfinishedAsyncFuture);
+    RUN_TEST(TestFutureGetSupportsMoveOnlyValue);
+    RUN_TEST(TestFrameSizeLimitStopsEndpointBeforeDispatch);
+    RUN_TEST(TestParseQueueLimitStopsEndpoint);
+    RUN_TEST(TestPendingCancelRequestsArePrunedByLimit);
+    RUN_TEST(TestRegisterHandlerAfterStartIsIgnored);
+    RUN_TEST(TestCancelRequestWhenNotWorkingOrUnknownId);
+    RUN_TEST(TestSendNotificationBeforeStartDoesNotCrash);
+    RUN_TEST(TestRemoteEndPointRestartTwice);
+    RUN_TEST(TestLspSessionInitDidOpenDidChangeCompletion);
 
     return test::Failures() == 0 ? 0 : 1;
 }

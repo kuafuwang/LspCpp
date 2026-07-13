@@ -1208,39 +1208,40 @@ void TestDelimitedProducerFailRecoveryContinuesAfterClear()
 }
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
-    TestValidFrameDeliversBody();
-    TestMultipleFramesDeliverBothBodies();
-    TestSpuriousCrLfBetweenFramesIsIgnored();
-    TestChunkedReadSomeDeliversMultipleBufferedFrames();
-    TestBulkBodyReadFallbackStreamDeliversLargeBody();
-    TestFallbackStreamUsesSingleBulkReadForLargeBody();
+    test::InitTestFilter(argc, argv);
+RUN_TEST(TestValidFrameDeliversBody);
+    RUN_TEST(TestMultipleFramesDeliverBothBodies);
+    RUN_TEST(TestSpuriousCrLfBetweenFramesIsIgnored);
+    RUN_TEST(TestChunkedReadSomeDeliversMultipleBufferedFrames);
+    RUN_TEST(TestBulkBodyReadFallbackStreamDeliversLargeBody);
+    RUN_TEST(TestFallbackStreamUsesSingleBulkReadForLargeBody);
 #ifndef _WIN32
-    TestStdinIStreamFragmentedFramesStressProducer();
+    RUN_TEST(TestStdinIStreamFragmentedFramesStressProducer);
 #endif
-    TestMissingContentLengthReportsWarning();
-    TestInvalidContentLengthReportsWarning();
-    TestMalformedContentLengthsAreRejected();
-    TestContentLengthAllowsWhitespace();
-    TestContentLengthZeroDeliversEmptyBody();
-    TestContentTypeCharsetIsParsed();
-    TestMultipleHeaderLinesParsedCorrectly();
-    TestPartialHeaderThenEofExitsCleanly();
-    TestShortBodyExitsWithoutDeliveringMessage();
-    TestBadStreamExitsCleanly();
-    TestBadDuringBodyReadReportsSevere();
-    TestFailDuringBodyReadReportsWarning();
+    RUN_TEST(TestMissingContentLengthReportsWarning);
+    RUN_TEST(TestInvalidContentLengthReportsWarning);
+    RUN_TEST(TestMalformedContentLengthsAreRejected);
+    RUN_TEST(TestContentLengthAllowsWhitespace);
+    RUN_TEST(TestContentLengthZeroDeliversEmptyBody);
+    RUN_TEST(TestContentTypeCharsetIsParsed);
+    RUN_TEST(TestMultipleHeaderLinesParsedCorrectly);
+    RUN_TEST(TestPartialHeaderThenEofExitsCleanly);
+    RUN_TEST(TestShortBodyExitsWithoutDeliveringMessage);
+    RUN_TEST(TestBadStreamExitsCleanly);
+    RUN_TEST(TestBadDuringBodyReadReportsSevere);
+    RUN_TEST(TestFailDuringBodyReadReportsWarning);
 #ifndef _WIN32
-    TestStdinIStreamInterruptMidListenExitsProducer();
+    RUN_TEST(TestStdinIStreamInterruptMidListenExitsProducer);
 #endif
-    TestDelimitedProducerDeliversDelimitedJsonBlocks();
-    TestDelimitedProducerDropsUnterminatedTrailingBlock();
-    TestDelimitedProducerIgnoresEmptyLines();
-    TestDelimitedProducerTrimsWhitespace();
-    TestDelimitedProducerBadStreamExitsCleanly();
-    TestDelimitedProducerFailWithoutRecoveryExitsCleanly();
-    TestDelimitedProducerFailRecoveryContinuesAfterClear();
+    RUN_TEST(TestDelimitedProducerDeliversDelimitedJsonBlocks);
+    RUN_TEST(TestDelimitedProducerDropsUnterminatedTrailingBlock);
+    RUN_TEST(TestDelimitedProducerIgnoresEmptyLines);
+    RUN_TEST(TestDelimitedProducerTrimsWhitespace);
+    RUN_TEST(TestDelimitedProducerBadStreamExitsCleanly);
+    RUN_TEST(TestDelimitedProducerFailWithoutRecoveryExitsCleanly);
+    RUN_TEST(TestDelimitedProducerFailRecoveryContinuesAfterClear);
 
     return test::Failures() == 0 ? 0 : 1;
 }

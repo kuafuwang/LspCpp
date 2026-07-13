@@ -6,6 +6,7 @@
 #include "LibLsp/lsp/textDocument/completion.h"
 #include "LibLsp/lsp/textDocument/declaration_definition.h"
 #include "LibLsp/lsp/textDocument/did_change.h"
+#include "LibLsp/lsp/textDocument/did_open.h"
 #include "LibLsp/lsp/textDocument/hover.h"
 #include "LibLsp/lsp/textDocument/publishDiagnostics.h"
 #include "LibLsp/lsp/textDocument/rename.h"
@@ -126,18 +127,7 @@ void ExpectParsed(bool parsed, char const* kind, std::string const& method)
 
 std::string ReadTextFile(std::vector<std::string> const& candidates)
 {
-    for (auto const& candidate : candidates)
-    {
-        std::ifstream input(candidate.c_str());
-        if (!input)
-        {
-            continue;
-        }
-        std::ostringstream buffer;
-        buffer << input.rdbuf();
-        return buffer.str();
-    }
-    return {};
+    return test::ReadTextFile(candidates);
 }
 
 std::map<std::string, std::vector<std::string>> LoadAllowlist()
@@ -185,16 +175,7 @@ std::map<std::string, std::vector<std::string>> LoadAllowlist()
 
 std::string ReadFixture(char const* name)
 {
-    std::string const suffix = std::string("tests/fixtures/lsp/") + name;
-    std::string const json = ReadTextFile(
-        {
-            suffix,
-            "../" + suffix,
-            "../../" + suffix,
-            "../../../" + suffix,
-        });
-    Expect(!json.empty(), "protocol golden fixture must be readable");
-    return json;
+    return test::ReadFixture(name);
 }
 
 bool Contains(std::vector<std::string> const& values, std::string const& needle)
@@ -412,6 +393,18 @@ void TestGoldenLspFixturesParse()
             handler, Notify_TextDocumentDidChange::notify::kMethodInfo, did_change.c_str()) != nullptr,
         "golden didChange notification fixture must parse");
 
+    std::string const did_open = ReadFixture("did_open_notification.json");
+    Expect(
+        test::ParseProtocolNotification(
+            handler, Notify_TextDocumentDidOpen::notify::kMethodInfo, did_open.c_str()) != nullptr,
+        "golden didOpen notification fixture must parse");
+
+    std::string const completion_request = ReadFixture("completion_request.json");
+    Expect(
+        test::ParseProtocolRequest(handler, td_completion::request::kMethodInfo, completion_request.c_str()) !=
+            nullptr,
+        "golden completion request fixture must parse");
+
     std::string const diagnostics = ReadFixture("publish_diagnostics_notification.json");
     Expect(
         test::ParseProtocolNotification(
@@ -451,16 +444,17 @@ void TestGoldenLspFixturesParse()
 
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
-    TestEveryRegisteredRequestParserIsUsable();
-    TestEveryRegisteredNotificationParserIsUsable();
-    TestEveryRegisteredResponseParserIsUsable();
-    TestRegisteredMethodsAreNotMarkedMissingInAllowlist();
-    TestProgressNotificationIsRegistered();
-    TestMalformedCoreRequestParamsDoNotEscape();
-    TestJdtlsExtensionsAreOptIn();
-    TestGoldenLspFixturesParse();
+    test::InitTestFilter(argc, argv);
+    RUN_TEST(TestEveryRegisteredRequestParserIsUsable);
+    RUN_TEST(TestEveryRegisteredNotificationParserIsUsable);
+    RUN_TEST(TestEveryRegisteredResponseParserIsUsable);
+    RUN_TEST(TestRegisteredMethodsAreNotMarkedMissingInAllowlist);
+    RUN_TEST(TestProgressNotificationIsRegistered);
+    RUN_TEST(TestMalformedCoreRequestParamsDoNotEscape);
+    RUN_TEST(TestJdtlsExtensionsAreOptIn);
+    RUN_TEST(TestGoldenLspFixturesParse);
 
     return test::Failures() == 0 ? 0 : 1;
 }

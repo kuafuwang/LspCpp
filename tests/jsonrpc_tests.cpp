@@ -368,26 +368,27 @@ void TestWorkspaceFoldersResponseNullableRoundTrip()
 }
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
-    TestRequestIdOrderingKeepsTypesDistinct();
-    TestRequestIdOrderingKeepsLargeIntegersDistinct();
-    TestRequestIdIntegerRoundTrip();
-    TestRequestIdLargeIntegerRoundTrip();
-    TestRequestIdIntegerReflectRoundTrip();
-    TestRequestIdStringRoundTrip();
-    TestNumericStringRequestIdDoesNotBecomeInteger();
-    TestRequestIdNullAndInvalid();
-    TestLspMessageWriteFraming();
-    TestRequestSwapSwapsMethod();
-    TestHandleMessageReadsContentLengthBody();
-    TestHandleMessageReturnsFalseOnBadStream();
-    TestHandleMessageReturnsFalseOnEof();
-    TestHandleMessageReturnsFalseOnFail();
-    TestNullableObjectMemberSerializesNull();
-    TestOptionalObjectMemberOmitsWhenDisengaged();
-    TestNullableRoundTripNullAndValue();
-    TestWorkspaceFoldersResponseNullableRoundTrip();
+    test::InitTestFilter(argc, argv);
+RUN_TEST(TestRequestIdOrderingKeepsTypesDistinct);
+    RUN_TEST(TestRequestIdOrderingKeepsLargeIntegersDistinct);
+    RUN_TEST(TestRequestIdIntegerRoundTrip);
+    RUN_TEST(TestRequestIdLargeIntegerRoundTrip);
+    RUN_TEST(TestRequestIdIntegerReflectRoundTrip);
+    RUN_TEST(TestRequestIdStringRoundTrip);
+    RUN_TEST(TestNumericStringRequestIdDoesNotBecomeInteger);
+    RUN_TEST(TestRequestIdNullAndInvalid);
+    RUN_TEST(TestLspMessageWriteFraming);
+    RUN_TEST(TestRequestSwapSwapsMethod);
+    RUN_TEST(TestHandleMessageReadsContentLengthBody);
+    RUN_TEST(TestHandleMessageReturnsFalseOnBadStream);
+    RUN_TEST(TestHandleMessageReturnsFalseOnEof);
+    RUN_TEST(TestHandleMessageReturnsFalseOnFail);
+    RUN_TEST(TestNullableObjectMemberSerializesNull);
+    RUN_TEST(TestOptionalObjectMemberOmitsWhenDisengaged);
+    RUN_TEST(TestNullableRoundTripNullAndValue);
+    RUN_TEST(TestWorkspaceFoldersResponseNullableRoundTrip);
 
     return test::Failures() == 0 ? 0 : 1;
 }

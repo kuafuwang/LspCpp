@@ -235,14 +235,15 @@ void TestExisting318FieldExtensionsSerialize()
 }
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
-    TestProtocolJsonHandlerRegistersExistingFeatureRequests();
-    TestProtocolJsonHandlerRegistersNew318Requests();
-    TestProtocolJsonHandlerParses318Responses();
-    TestNew318ModelsSerializeExpectedFields();
-    TestCapabilitiesSerialize318Fields();
-    TestExisting318FieldExtensionsSerialize();
+    test::InitTestFilter(argc, argv);
+RUN_TEST(TestProtocolJsonHandlerRegistersExistingFeatureRequests);
+    RUN_TEST(TestProtocolJsonHandlerRegistersNew318Requests);
+    RUN_TEST(TestProtocolJsonHandlerParses318Responses);
+    RUN_TEST(TestNew318ModelsSerializeExpectedFields);
+    RUN_TEST(TestCapabilitiesSerialize318Fields);
+    RUN_TEST(TestExisting318FieldExtensionsSerialize);
 
     return test::Failures() == 0 ? 0 : 1;
 }

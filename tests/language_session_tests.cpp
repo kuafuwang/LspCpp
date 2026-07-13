@@ -420,20 +420,21 @@ void TestLanguageSessionCanEnableJdtlsExtensions()
 
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
-    TestLanguageSessionInitializeRoundTrip();
-    TestLanguageSessionNotificationHandler();
-    TestLanguageSessionEndpointCanSendNotifications();
-    TestLanguageSessionCanOverrideBuiltinRequestParser();
-    TestLanguageSessionOverrideRequestParserTemplate();
-    TestLanguageServerAliasConstructsUsableSession();
-    TestLanguageSessionShutdownSequence();
-    TestLanguageSessionThrowsRequestError();
-    TestLanguageSessionAsyncHandlerCompletesLater();
-    TestLanguageSessionRunningRequestObservesCancellation();
-    TestLanguageSessionDelimitedRoundTrip();
-    TestLanguageSessionClientRequestRoundTrip();
-    TestLanguageSessionCanEnableJdtlsExtensions();
+    test::InitTestFilter(argc, argv);
+RUN_TEST(TestLanguageSessionInitializeRoundTrip);
+    RUN_TEST(TestLanguageSessionNotificationHandler);
+    RUN_TEST(TestLanguageSessionEndpointCanSendNotifications);
+    RUN_TEST(TestLanguageSessionCanOverrideBuiltinRequestParser);
+    RUN_TEST(TestLanguageSessionOverrideRequestParserTemplate);
+    RUN_TEST(TestLanguageServerAliasConstructsUsableSession);
+    RUN_TEST(TestLanguageSessionShutdownSequence);
+    RUN_TEST(TestLanguageSessionThrowsRequestError);
+    RUN_TEST(TestLanguageSessionAsyncHandlerCompletesLater);
+    RUN_TEST(TestLanguageSessionRunningRequestObservesCancellation);
+    RUN_TEST(TestLanguageSessionDelimitedRoundTrip);
+    RUN_TEST(TestLanguageSessionClientRequestRoundTrip);
+    RUN_TEST(TestLanguageSessionCanEnableJdtlsExtensions);
     return test::Failures() == 0 ? 0 : 1;
 }

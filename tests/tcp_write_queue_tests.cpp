@@ -434,13 +434,14 @@ void TestTcpStopWithActiveConnectionReturns()
 }
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
-    TestTcpWriteQueuePreservesLargeNotificationOrder();
-    TestTcpWriteQueuePreservesConcurrentLargeNotifications();
-    TestTcpInboundRequestReceivesResponse();
-    TestTcpSecondClientPreemptsFirstConnection();
-    TestTcpDisconnectAllowsNewClient();
-    TestTcpStopWithActiveConnectionReturns();
+    test::InitTestFilter(argc, argv);
+RUN_TEST(TestTcpWriteQueuePreservesLargeNotificationOrder);
+    RUN_TEST(TestTcpWriteQueuePreservesConcurrentLargeNotifications);
+    RUN_TEST(TestTcpInboundRequestReceivesResponse);
+    RUN_TEST(TestTcpSecondClientPreemptsFirstConnection);
+    RUN_TEST(TestTcpDisconnectAllowsNewClient);
+    RUN_TEST(TestTcpStopWithActiveConnectionReturns);
     return test::Failures() == 0 ? 0 : 1;
 }
