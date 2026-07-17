@@ -726,6 +726,18 @@ if(LSPCPP_BUILD_TESTS)
     if(CMAKE_TOOLCHAIN_FILE)
         list(APPEND LSPCPP_CONSUMER_SMOKE_CONFIGURE_ARGS
                 -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE})
+        # The consumer project has no vcpkg manifest of its own, so point it at
+        # the dependencies already provisioned for this build tree and disable
+        # manifest install. Otherwise the vcpkg toolchain falls back to classic
+        # mode and cannot locate manifest-installed packages (e.g. asio).
+        if(DEFINED VCPKG_INSTALLED_DIR)
+            set(LSPCPP_CONSUMER_VCPKG_INSTALLED_DIR "${VCPKG_INSTALLED_DIR}")
+        else()
+            set(LSPCPP_CONSUMER_VCPKG_INSTALLED_DIR "${CMAKE_BINARY_DIR}/vcpkg_installed")
+        endif()
+        list(APPEND LSPCPP_CONSUMER_SMOKE_CONFIGURE_ARGS
+                -DVCPKG_INSTALLED_DIR=${LSPCPP_CONSUMER_VCPKG_INSTALLED_DIR}
+                -DVCPKG_MANIFEST_INSTALL=OFF)
     endif()
     add_test(NAME lspcpp.consumer_cmake_configure
             COMMAND ${CMAKE_COMMAND} ${LSPCPP_CONSUMER_SMOKE_CONFIGURE_ARGS})
