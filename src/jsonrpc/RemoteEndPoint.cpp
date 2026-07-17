@@ -1755,6 +1755,10 @@ void RemoteEndPoint::startProcessingMessages(std::shared_ptr<lsp::istream> r, st
         d_ptr->log.log(Log::Level::WARNING, "RemoteEndPoint is already processing messages.");
         return;
     }
+#if defined(LSPCPP_USEGC)
+    // Initialize Boehm GC on the starting thread before worker pools register.
+    GCThreadContext::ensureInitialized();
+#endif
     d_ptr->working = true;
     d_ptr->quit.store(false, std::memory_order_relaxed);
     d_ptr->input = r;
