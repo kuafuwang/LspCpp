@@ -66,6 +66,7 @@ function (option_if_not_defined name description default)
 endfunction()
 
 option_if_not_defined(USE_SYSTEM_RAPIDJSON "Use system RapidJSON instead of the git submodule if exists" OFF)
+option_if_not_defined(USE_SYSTEM_UTFCPP "Use system utfcpp" OFF)
 option_if_not_defined(LSPCPP_WARNINGS_AS_ERRORS "Treat warnings as errors" OFF)
 option_if_not_defined(LSPCPP_BUILD_MINIMAL_EXAMPLE "Build the Boost-free minimal stdio example" OFF)
 option_if_not_defined(LSPCPP_BUILD_EXAMPLES "Build example applications" OFF)
@@ -457,19 +458,34 @@ target_link_libraries(
         PUBLIC ${LSPCPP_EXTERNAL_LIBS}
 )
 
-set(LSPCPP_THIRD_PARTY_DIR_LIST
-        ${LSPCPP_THIRD_PARTY_DIR}/utfcpp/source
-        )
+# utfcpp
+if(USE_SYSTEM_UTFCPP)
+    find_package(PkgConfig QUIET)
+    if(PKG_CONFIG_FOUND)
+        pkg_check_modules(UTFCPP QUIET utf8cpp)
+    endif()
+    if(NOT UTFCPP_FOUND)
+        find_path(UTFCPP_INCLUDE_DIR NAMES utf8.h PATH_SUFFIXES utf8cpp utfcpp)
+    else()
+        set(UTFCPP_INCLUDE_DIR ${UTFCPP_INCLUDE_DIRS})
+    endif()
+    if(NOT UTFCPP_INCLUDE_DIR)
+        message(FATAL_ERROR "System utfcpp not found. Install libutfcpp-devel or set USE_SYSTEM_UTFCPP=OFF.")
+    endif()
+    set(UTFCPP_INCLUDE_DIRS ${UTFCPP_INCLUDE_DIR})
+else()
+    set(UTFCPP_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/utfcpp/source)
+endif()
 
-foreach(include_dir  ${LSPCPP_THIRD_PARTY_DIR_LIST})
-    get_filename_component(include_dir_realpath ${include_dir} REALPATH)
+if(UTFCPP_INCLUDE_DIRS)
+    get_filename_component(utf_include_realpath ${UTFCPP_INCLUDE_DIRS} REALPATH)
     # Don't add as SYSTEM if they are in CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES.
     # It would reorder the system search paths and cause issues with libstdc++'s
     # use of #include_next.
-    if(NOT "${include_dir_realpath}" IN_LIST CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES)
-        target_include_directories(lspcpp SYSTEM PRIVATE ${include_dir})
+    if(NOT "${utf_include_realpath}" IN_LIST CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES)
+        target_include_directories(lspcpp SYSTEM PRIVATE ${UTFCPP_INCLUDE_DIRS})
     endif()
-endforeach()
+endif()
 
 ### Sources
 set(JSONRPC_LIST
