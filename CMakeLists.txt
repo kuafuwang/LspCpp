@@ -65,6 +65,7 @@ function (option_if_not_defined name description default)
     endif()
 endfunction()
 
+option_if_not_defined(LSPCPP_BUILD_SHARED_LIBRARY "Build lspcpp as a shared library" OFF)
 option_if_not_defined(USE_SYSTEM_RAPIDJSON "Use system RapidJSON instead of the git submodule if exists" OFF)
 option_if_not_defined(USE_SYSTEM_UTFCPP "Use system utfcpp" OFF)
 option_if_not_defined(LSPCPP_WARNINGS_AS_ERRORS "Treat warnings as errors" OFF)
@@ -432,8 +433,13 @@ endif()
 # Targets
 ###########################################################
 
-# lsp
-add_library(lspcpp STATIC)
+if(LSPCPP_BUILD_SHARED_LIBRARY)
+    set(LSPCPP_LIB_TYPE SHARED)
+else()
+    set(LSPCPP_LIB_TYPE STATIC)
+endif()
+add_library(lspcpp ${LSPCPP_LIB_TYPE})
+
 set (LSP_INCLUDE_LIST ${LSPCPP_INCLUDE_DIR}
         ${RapidJSON_INCLUDE_DIRS}
         ${Boost_INCLUDE_DIRS}
@@ -549,6 +555,11 @@ set_target_properties(lspcpp PROPERTIES
         COMPILE_PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
         COMPILE_PDB_NAME "lspcpp"
         COMPILE_PDB_NAME_DEBUG "lspcpp${LSPCPP_DEBUG_POSTFIX}")
+if(LSPCPP_BUILD_SHARED_LIBRARY)
+    set_target_properties(lspcpp PROPERTIES
+            VERSION   "${PROJECT_VERSION}"
+            SOVERSION "${PROJECT_VERSION_MAJOR}")
+endif()
 
 # install
 if(LSPCPP_INSTALL)
